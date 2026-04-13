@@ -120,5 +120,69 @@ CREATE POLICY "cbd_avail_update" ON public.cbd_availability FOR UPDATE TO authen
 CREATE POLICY "cbd_avail_delete" ON public.cbd_availability FOR DELETE TO authenticated USING (public.cbd_is_admin());
 
 -- ============================================================
+-- INPUT VALIDATION CONSTRAINTS
+-- ============================================================
+
+ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_name_length CHECK (char_length(name) BETWEEN 1 AND 100);
+ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_role_length CHECK (char_length(role) <= 100);
+ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_color_format CHECK (color ~ '^#[0-9a-fA-F]{6}$');
+ALTER TABLE public.cbd_profiles ADD CONSTRAINT cbd_profiles_name_length CHECK (char_length(full_name) BETWEEN 1 AND 200);
+ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_students_range CHECK (students >= 0 AND students <= 999);
+ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_note_length CHECK (char_length(note) <= 500);
+ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_time_order CHECK (start_time IS NULL OR end_time IS NULL OR start_time < end_time);
+
+-- ============================================================
+-- AUDIT LOGGING
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.cbd_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_name TEXT NOT NULL,
+    record_id UUID,
+    action TEXT NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE')),
+    changed_by UUID REFERENCES auth.users(id),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    old_data JSONB,
+    new_data JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_cbd_audit_log_table ON public.cbd_audit_log(table_name, changed_at DESC);
+
+ALTER TABLE public.cbd_audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "cbd_audit_select" ON public.cbd_audit_log FOR SELECT TO authenticated USING (public.cbd_is_admin());
+
+CREATE OR REPLACE FUNCTION public.cbd_audit_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        INSERT INTO public.cbd_audit_log (table_name, record_id, action, changed_by, old_data)
+        VALUES (TG_TABLE_NAME, OLD.id, TG_OP, auth.uid(), to_jsonb(OLD));
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        INSERT INTO public.cbd_audit_log (table_name, record_id, action, changed_by, old_data, new_data)
+        VALUES (TG_TABLE_NAME, NEW.id, TG_OP, auth.uid(), to_jsonb(OLD), to_jsonb(NEW));
+        RETURN NEW;
+    ELSIF TG_OP = 'INSERT' THEN
+        INSERT INTO public.cbd_audit_log (table_name, record_id, action, changed_by, new_data)
+        VALUES (TG_TABLE_NAME, NEW.id, TG_OP, auth.uid(), to_jsonb(NEW));
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER cbd_audit_staff_members
+    AFTER INSERT OR UPDATE OR DELETE ON public.cbd_staff_members
+    FOR EACH ROW EXECUTE FUNCTION public.cbd_audit_trigger();
+
+CREATE TRIGGER cbd_audit_availability
+    AFTER INSERT OR UPDATE OR DELETE ON public.cbd_availability
+    FOR EACH ROW EXECUTE FUNCTION public.cbd_audit_trigger();
+
+CREATE TRIGGER cbd_audit_profiles
+    AFTER INSERT OR UPDATE OR DELETE ON public.cbd_profiles
+    FOR EACH ROW EXECUTE FUNCTION public.cbd_audit_trigger();
+
+-- ============================================================
 -- DONE! Now create your first admin user via the app's signup.
 -- ============================================================
