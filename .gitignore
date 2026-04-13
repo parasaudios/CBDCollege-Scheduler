@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+
+# Supabase local config (contains tokens)
+.mcp.json
+
+# Node modules
+node_modules/
+
+# Supabase local dev
+supabase/.temp/
+supabase/.branches/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Obsolete setup scripts with credentials
+setup-db.js
+
+# Claude Code local state
+.claude/
