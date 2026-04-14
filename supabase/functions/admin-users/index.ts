@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { full_name, role: role || "assistant" },
+        user_metadata: { full_name, role: role || "assistant", app: "cbd" },
       });
       if (error) throw error;
       return new Response(JSON.stringify({ user: data.user }), {

@@ -534,7 +534,7 @@ async function adminAPI(action, method, body) {
     var session = (await sb.auth.getSession()).data.session;
     if (!session) throw new Error('Not authenticated');
     var url = SUPABASE_URL + '/functions/v1/admin-users?action=' + action;
-    var opts = { method: method, headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' } };
+    var opts = { method: method, headers: { 'Authorization': 'Bearer ' + session.access_token, 'apikey': SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
     var resp = await fetch(url, opts);
     var data = await resp.json();
@@ -1176,17 +1176,17 @@ function renderStaffGrid() {
 
 // ============ Admin Panel ============
 async function loadUsers() {
-    try { var data = await adminAPI('list', 'GET'); var users = data.users || []; } catch (e) { showToast('Error: ' + e.message); return; }
-    var profilesResult = await sb.from('cbd_profiles').select('*');
-    var profiles = {};
-    (profilesResult.data || []).forEach(function(p) { profiles[p.id] = p; });
+    try {
+        var result = await sb.rpc('cbd_list_users');
+        if (result.error) throw result.error;
+        var users = result.data || [];
+    } catch (e) { showToast('Error: ' + (e.message || e)); return; }
     var tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = users.map(function(u) {
-        var p = profiles[u.id] || {};
-        var role = p.role || 'assistant';
-        return '<tr><td>' + escHtml(p.full_name || u.user_metadata.full_name || '') + '</td><td>' + escHtml(u.email) + '</td>' +
+        var role = u.role || 'assistant';
+        return '<tr><td>' + escHtml(u.full_name) + '</td><td>' + escHtml(u.email) + '</td>' +
             '<td><span class="role-badge ' + role + '">' + role + '</span></td><td>' + new Date(u.created_at).toLocaleDateString() + '</td>' +
-            '<td>' + (u.id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
+            '<td>' + (u.user_id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.user_id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.user_id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
     }).join('');
 }
 function openCreateUserModal() { document.getElementById('newUserName').value = ''; document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; document.getElementById('newUserRole').value = 'assistant'; document.getElementById('createUserModal').classList.add('active'); document.getElementById('newUserName').focus(); }

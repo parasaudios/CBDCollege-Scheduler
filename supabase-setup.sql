@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS public.cbd_profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'staff')),
+    role TEXT NOT NULL DEFAULT 'assistant' CHECK (role IN ('trainer', 'assistant')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -69,12 +69,15 @@ CREATE TRIGGER cbd_availability_updated_at
 CREATE OR REPLACE FUNCTION public.cbd_handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.cbd_profiles (id, full_name, role)
-    VALUES (
-        NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-        COALESCE(NEW.raw_user_meta_data->>'role', 'staff')
-    );
+    -- Only create CBD profiles for CBD app users (not other projects sharing this instance)
+    IF NEW.raw_user_meta_data->>'app' = 'cbd' OR NEW.email LIKE '%@cbdcollege.edu.au' THEN
+        INSERT INTO public.cbd_profiles (id, full_name, role)
+        VALUES (
+            NEW.id,
+            COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+            COALESCE(NEW.raw_user_meta_data->>'role', 'assistant')
+        );
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
