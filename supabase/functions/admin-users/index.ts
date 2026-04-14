@@ -45,8 +45,8 @@ Deno.serve(async (req) => {
       .eq("id", caller.id)
       .single();
 
-    if (!profile || profile.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
+    if (!profile || profile.role !== "trainer") {
+      return new Response(JSON.stringify({ error: "Trainer access required" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (role && !["admin", "staff"].includes(role)) {
+      if (role && !["trainer", "assistant"].includes(role)) {
         return new Response(JSON.stringify({ error: "Invalid role" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { full_name, role: role || "staff" },
+        user_metadata: { full_name, role: role || "assistant" },
       });
       if (error) throw error;
       return new Response(JSON.stringify({ user: data.user }), {
