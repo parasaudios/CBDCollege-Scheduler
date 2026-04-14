@@ -527,8 +527,8 @@
 <script>
 // ============ Supabase Config ============
 var SUPABASE_URL = 'https://nqbonrcmbhjutlrpjfpk.supabase.co';
-var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xYm9ucmNtYmhqdXRscnBqZnBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNTMyNzEsImV4cCI6MjA5MTYyOTI3MX0.9JRC6YbJa3fzsz-RHi39GBJDd7qputCtrWUnV775XnU';
-var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_tcEDbGTXXRKm0WJnMC6hGw_2YcqJpUc';
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 // Helper: call admin Edge Function (service key stays server-side only)
 async function adminAPI(action, method, body) {

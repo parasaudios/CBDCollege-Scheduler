@@ -22,11 +22,11 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseSecretKey = Deno.env.get("CBD_SECRET_KEY")!;
+    const supabasePublishableKey = Deno.env.get("CBD_PUBLISHABLE_KEY")!;
 
     // Create a client with the caller's JWT to verify identity
-    const callerClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const callerClient = createClient(supabaseUrl, supabasePublishableKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
@@ -52,8 +52,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Admin verified — use service role client for admin operations
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    // Admin verified — use secret key client for admin operations
+    const adminClient = createClient(supabaseUrl, supabaseSecretKey);
 
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
