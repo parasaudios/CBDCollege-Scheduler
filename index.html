@@ -153,6 +153,20 @@
         .multi-select-bar .bar-actions { display: flex; gap: 8px; }
         .multi-select-bar .btn { background: rgba(255,255,255,0.2); color: white; }
         .multi-select-bar .btn:hover { background: rgba(255,255,255,0.3); }
+        .bulk-panel { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; }
+        .bulk-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .bulk-panel-header h4 { font-size: 0.85rem; font-weight: 600; color: var(--gray-700); margin: 0; }
+        .bulk-panel-hint { font-size: 0.75rem; color: var(--gray-500); margin-bottom: 10px; }
+        .bulk-day-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+        .bulk-day-buttons .btn { font-size: 0.78rem; padding: 6px 12px; font-weight: 500; }
+        .bulk-day-buttons .btn-bulk-toggle { background: var(--primary); color: white; }
+        .bulk-day-buttons .btn-bulk-toggle:hover { background: #1d4ed8; }
+        .bulk-day-buttons .btn-bulk-toggle.active { background: var(--danger); }
+        .bulk-day-buttons .btn-bulk-toggle.active:hover { background: #dc2626; }
+        .bulk-day-buttons .btn-day { transition: all 0.15s; }
+        .bulk-day-buttons .btn-day.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .bulk-day-buttons .btn-day.active:hover { background: #1d4ed8; }
+        .bulk-day-buttons .btn-weekdays.active { background: var(--primary); color: white; border-color: var(--primary); }
 
         .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
         .toast { background: var(--gray-800); color: white; padding: 12px 20px; border-radius: var(--radius); font-size: 0.875rem; box-shadow: var(--shadow-lg); animation: slideIn 0.3s ease; max-width: 360px; }
@@ -245,7 +259,7 @@
                 <div class="card-header">
                     <div>
                         <h2>Roster Management</h2>
-                        <div style="font-size:0.8rem;color:var(--gray-500);margin-top:2px;">Select a staff member, click dates to set roster. Shift+click for multi-select.</div>
+                        <div style="font-size:0.8rem;color:var(--gray-500);margin-top:2px;">Select a staff member, click dates to set roster. Shift+click for multi-select, or use bulk buttons below.</div>
                     </div>
                     <div class="legend">
                         <div class="legend-item"><div class="legend-color available"></div> Rostered</div>
@@ -265,6 +279,23 @@
                                 <button class="btn btn-outline btn-icon" onclick="changeMonth(1)">&#8250;</button>
                             </div>
                             <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
+                        </div>
+                        <div class="bulk-panel">
+                            <div class="bulk-panel-header">
+                                <h4>Bulk Selection</h4>
+                                <button class="btn btn-sm btn-bulk-toggle" id="rosterBulkToggle" onclick="toggleBulkMode('roster')">Enter Bulk Mode</button>
+                            </div>
+                            <div class="bulk-panel-hint">Select by day of week, or enter Bulk Mode to click individual dates.</div>
+                            <div class="bulk-day-buttons" id="rosterBulkBtns">
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="1" onclick="toggleDayOfWeek(1,'roster')">Mon</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="2" onclick="toggleDayOfWeek(2,'roster')">Tue</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="3" onclick="toggleDayOfWeek(3,'roster')">Wed</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="4" onclick="toggleDayOfWeek(4,'roster')">Thu</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="5" onclick="toggleDayOfWeek(5,'roster')">Fri</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="6" onclick="toggleDayOfWeek(6,'roster')">Sat</button>
+                                <button class="btn btn-outline btn-sm btn-day" data-dow="0" onclick="toggleDayOfWeek(0,'roster')">Sun</button>
+                                <button class="btn btn-outline btn-sm btn-weekdays" onclick="toggleWeekdays('roster')">All Weekdays</button>
+                            </div>
                         </div>
                         <div class="calendar-grid" id="calendarGrid"></div>
                     </div>
@@ -378,7 +409,7 @@
             <div class="card">
                 <div class="card-header">
                     <h2>My Availability</h2>
-                    <div style="font-size:0.8rem;color:var(--gray-500);">Let trainers know when you can work</div>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Let trainers know when you can work. Click dates or use bulk select below.</div>
                 </div>
                 <div class="card-body">
                     <div class="calendar-controls">
@@ -389,6 +420,23 @@
                         </div>
                         <button class="btn btn-outline btn-sm" onclick="goToMyAvailToday()">Today</button>
                     </div>
+                    <div class="bulk-panel">
+                        <div class="bulk-panel-header">
+                            <h4>Bulk Selection</h4>
+                            <button class="btn btn-sm btn-bulk-toggle" id="myavailBulkToggle" onclick="toggleBulkMode('myavail')">Enter Bulk Mode</button>
+                        </div>
+                        <div class="bulk-panel-hint">Select by day of week, or enter Bulk Mode to click individual dates.</div>
+                        <div class="bulk-day-buttons" id="myavailBulkBtns">
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="1" onclick="toggleDayOfWeek(1,'myavail')">Mon</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="2" onclick="toggleDayOfWeek(2,'myavail')">Tue</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="3" onclick="toggleDayOfWeek(3,'myavail')">Wed</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="4" onclick="toggleDayOfWeek(4,'myavail')">Thu</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="5" onclick="toggleDayOfWeek(5,'myavail')">Fri</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="6" onclick="toggleDayOfWeek(6,'myavail')">Sat</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="0" onclick="toggleDayOfWeek(0,'myavail')">Sun</button>
+                            <button class="btn btn-outline btn-sm btn-weekdays" onclick="toggleWeekdays('myavail')">All Weekdays</button>
+                        </div>
+                    </div>
                     <div class="calendar-grid" id="myAvailGrid"></div>
                 </div>
             </div>
@@ -396,10 +444,10 @@
     </div>
 </div>
 
-<!-- Multi-select bar (trainers only) -->
+<!-- Multi-select bar -->
 <div class="multi-select-bar" id="multiSelectBar">
     <span class="selection-count" id="selectionCount">0 days selected</span>
-    <div class="bar-actions">
+    <div class="bar-actions" id="multiSelectActions">
         <button class="btn btn-sm" onclick="bulkSetAvailability('available')">Set Rostered</button>
         <button class="btn btn-sm" onclick="bulkSetAvailability('partial')">Set Partial</button>
         <button class="btn btn-sm" onclick="bulkSetAvailability('unavailable')">Set Unavailable</button>
@@ -564,6 +612,8 @@ var editingStaffId = null;
 var selectedDay = null;
 var myAvailSelectedDay = null;
 var multiSelectedDays = new Set();
+var multiSelectMode = 'roster'; // 'roster' or 'myavail'
+var bulkModeActive = false;
 var exportType = 'all';
 
 var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -699,6 +749,7 @@ function getAvailability(staffId, dateStr) { return (availabilityCache[staffId] 
 
 // ============ Tabs ============
 function switchTab(tab) {
+    if (multiSelectedDays.size > 0) clearMultiSelect();
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === tab); });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
     document.getElementById('tab-' + tab).style.display = 'block';
@@ -792,7 +843,10 @@ function goToToday() { var n = new Date(); currentMonth = n.getMonth(); currentY
 
 function onDayClick(dateStr, event) {
     if (!selectedStaffId) return;
-    if (event.shiftKey || multiSelectedDays.size > 0) {
+    if (event.shiftKey || (bulkModeActive && multiSelectMode === 'roster') || (multiSelectMode === 'roster' && multiSelectedDays.size > 0)) {
+        multiSelectMode = 'roster';
+        bulkModeActive = true;
+        updateBulkToggleButtons();
         if (multiSelectedDays.has(dateStr)) multiSelectedDays.delete(dateStr); else multiSelectedDays.add(dateStr);
         updateMultiSelectBar(); renderCalendar(); return;
     }
@@ -800,8 +854,107 @@ function onDayClick(dateStr, event) {
     openDayModal(dateStr);
 }
 
-function updateMultiSelectBar() { var bar = document.getElementById('multiSelectBar'); var count = multiSelectedDays.size; if (count > 0) { bar.classList.add('visible'); document.getElementById('selectionCount').textContent = count + ' day' + (count !== 1 ? 's' : '') + ' selected'; } else { bar.classList.remove('visible'); } }
-function clearMultiSelect() { multiSelectedDays.clear(); updateMultiSelectBar(); renderCalendar(); }
+function updateMultiSelectBar() {
+    var bar = document.getElementById('multiSelectBar');
+    var count = multiSelectedDays.size;
+    var actions = document.getElementById('multiSelectActions');
+    if (count > 0) {
+        bar.classList.add('visible');
+        document.getElementById('selectionCount').textContent = count + ' day' + (count !== 1 ? 's' : '') + ' selected';
+        if (multiSelectMode === 'myavail') {
+            actions.innerHTML = '<button class="btn btn-sm" onclick="bulkSetMyAvail(true)">Set Available</button>' +
+                '<button class="btn btn-sm" onclick="bulkSetMyAvail(false)">Set Not Available</button>' +
+                '<button class="btn btn-sm" onclick="bulkClearMyAvail()">Clear</button>' +
+                '<button class="btn btn-sm" onclick="clearMultiSelect()">Cancel</button>';
+        } else {
+            actions.innerHTML = '<button class="btn btn-sm" onclick="bulkSetAvailability(\'available\')">Set Rostered</button>' +
+                '<button class="btn btn-sm" onclick="bulkSetAvailability(\'partial\')">Set Partial</button>' +
+                '<button class="btn btn-sm" onclick="bulkSetAvailability(\'unavailable\')">Set Unavailable</button>' +
+                '<button class="btn btn-sm" onclick="bulkClearAvailability()">Clear</button>' +
+                '<button class="btn btn-sm" onclick="clearMultiSelect()">Cancel</button>';
+        }
+    } else { bar.classList.remove('visible'); }
+}
+function clearMultiSelect() { multiSelectedDays.clear(); bulkModeActive = false; updateBulkToggleButtons(); updateDayButtons('roster'); updateDayButtons('myavail'); updateMultiSelectBar(); if (multiSelectMode === 'myavail') renderMyAvail(); else renderCalendar(); }
+
+function toggleBulkMode(mode) {
+    if (bulkModeActive && multiSelectMode === mode) {
+        clearMultiSelect();
+        return;
+    }
+    multiSelectMode = mode;
+    bulkModeActive = true;
+    multiSelectedDays.clear();
+    updateBulkToggleButtons();
+    updateMultiSelectBar();
+    if (mode === 'roster') renderCalendar(); else renderMyAvail();
+}
+function updateBulkToggleButtons() {
+    var rosterBtn = document.getElementById('rosterBulkToggle');
+    var myavailBtn = document.getElementById('myavailBulkToggle');
+    if (rosterBtn) {
+        rosterBtn.textContent = (bulkModeActive && multiSelectMode === 'roster') ? 'Exit Bulk Mode' : 'Enter Bulk Mode';
+        rosterBtn.classList.toggle('active', bulkModeActive && multiSelectMode === 'roster');
+    }
+    if (myavailBtn) {
+        myavailBtn.textContent = (bulkModeActive && multiSelectMode === 'myavail') ? 'Exit Bulk Mode' : 'Enter Bulk Mode';
+        myavailBtn.classList.toggle('active', bulkModeActive && multiSelectMode === 'myavail');
+    }
+}
+
+function getDatesForDow(dow, mode) {
+    var month, year;
+    if (mode === 'roster') { month = currentMonth; year = currentYear; }
+    else { month = myAvailMonth; year = myAvailYear; }
+    var dates = [];
+    var lastDay = new Date(year, month+1, 0).getDate();
+    for (var day = 1; day <= lastDay; day++) {
+        if (new Date(year, month, day).getDay() === dow) {
+            dates.push(year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0'));
+        }
+    }
+    return dates;
+}
+function isDowFullySelected(dow, mode) {
+    var dates = getDatesForDow(dow, mode);
+    return dates.length > 0 && dates.every(function(d) { return multiSelectedDays.has(d); });
+}
+function toggleDayOfWeek(dow, mode) {
+    multiSelectMode = mode;
+    bulkModeActive = true;
+    var dates = getDatesForDow(dow, mode);
+    var allSelected = dates.every(function(d) { return multiSelectedDays.has(d); });
+    dates.forEach(function(d) { if (allSelected) multiSelectedDays.delete(d); else multiSelectedDays.add(d); });
+    updateBulkToggleButtons(); updateDayButtons(mode); updateMultiSelectBar();
+    if (mode === 'roster') renderCalendar(); else renderMyAvail();
+}
+function toggleWeekdays(mode) {
+    multiSelectMode = mode;
+    bulkModeActive = true;
+    var allSelected = true;
+    for (var dow = 1; dow <= 5; dow++) { if (!isDowFullySelected(dow, mode)) { allSelected = false; break; } }
+    for (var dow = 1; dow <= 5; dow++) {
+        var dates = getDatesForDow(dow, mode);
+        dates.forEach(function(d) { if (allSelected) multiSelectedDays.delete(d); else multiSelectedDays.add(d); });
+    }
+    updateBulkToggleButtons(); updateDayButtons(mode); updateMultiSelectBar();
+    if (mode === 'roster') renderCalendar(); else renderMyAvail();
+}
+function updateDayButtons(mode) {
+    var containerId = mode === 'roster' ? 'rosterBulkBtns' : 'myavailBulkBtns';
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('.btn-day').forEach(function(btn) {
+        var dow = parseInt(btn.dataset.dow);
+        btn.classList.toggle('active', isDowFullySelected(dow, mode));
+    });
+    var weekdaysBtn = container.querySelector('.btn-weekdays');
+    if (weekdaysBtn) {
+        var allWeekdays = true;
+        for (var d = 1; d <= 5; d++) { if (!isDowFullySelected(d, mode)) { allWeekdays = false; break; } }
+        weekdaysBtn.classList.toggle('active', allWeekdays);
+    }
+}
 
 async function bulkSetAvailability(status) {
     if (!selectedStaffId || multiSelectedDays.size === 0) return;
@@ -1044,17 +1197,29 @@ function renderMyAvail() {
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
         if (entry) cls += entry.is_available ? ' available' : ' unavailable';
+        if (multiSelectMode === 'myavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         var detail = '';
         if (entry) {
             detail = '<div style="font-size:0.65rem;color:var(--gray-600);text-align:center;">' + (entry.is_available ? 'Available' : 'Not available') + '</div>';
             if (entry.note) detail += '<div style="font-size:0.55rem;color:var(--gray-500);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">' + escHtml(entry.note) + '</div>';
         }
-        html += '<div class="' + cls + '" onclick="openMyAvailModal(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
+        html += '<div class="' + cls + '" onclick="onMyAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
     grid.innerHTML = html;
 }
-function changeMyAvailMonth(dir) { myAvailMonth += dir; if (myAvailMonth > 11) { myAvailMonth = 0; myAvailYear++; } if (myAvailMonth < 0) { myAvailMonth = 11; myAvailYear--; } loadMyAvailForMonth(myAvailMonth, myAvailYear).then(renderMyAvail); }
-function goToMyAvailToday() { var n = new Date(); myAvailMonth = n.getMonth(); myAvailYear = n.getFullYear(); loadMyAvailForMonth(myAvailMonth,myAvailYear).then(renderMyAvail); }
+function changeMyAvailMonth(dir) { myAvailMonth += dir; if (myAvailMonth > 11) { myAvailMonth = 0; myAvailYear++; } if (myAvailMonth < 0) { myAvailMonth = 11; myAvailYear--; } clearMultiSelect(); loadMyAvailForMonth(myAvailMonth, myAvailYear).then(renderMyAvail); }
+function goToMyAvailToday() { var n = new Date(); myAvailMonth = n.getMonth(); myAvailYear = n.getFullYear(); clearMultiSelect(); loadMyAvailForMonth(myAvailMonth,myAvailYear).then(renderMyAvail); }
+
+function onMyAvailDayClick(dateStr, event) {
+    if (event.shiftKey || (bulkModeActive && multiSelectMode === 'myavail') || (multiSelectMode === 'myavail' && multiSelectedDays.size > 0)) {
+        multiSelectMode = 'myavail';
+        bulkModeActive = true;
+        updateBulkToggleButtons();
+        if (multiSelectedDays.has(dateStr)) multiSelectedDays.delete(dateStr); else multiSelectedDays.add(dateStr);
+        updateMultiSelectBar(); renderMyAvail(); return;
+    }
+    openMyAvailModal(dateStr);
+}
 
 function openMyAvailModal(dateStr) {
     myAvailSelectedDay = dateStr;
@@ -1094,6 +1259,24 @@ async function saveMyAvailability() {
     if (!assistantAvailCache['_my']) assistantAvailCache['_my'] = {};
     assistantAvailCache['_my'][myAvailSelectedDay] = row;
     closeModal('myAvailModal'); myAvailSelectedDay = null; renderMyAvail(); showToast('Availability saved');
+}
+
+async function bulkSetMyAvail(isAvail) {
+    if (multiSelectedDays.size === 0) return;
+    var upserts = [];
+    multiSelectedDays.forEach(function(dateStr) { upserts.push({ user_id: currentUser.id, date: dateStr, is_available: isAvail, note: '' }); });
+    var result = await sb.from('cbd_assistant_availability').upsert(upserts, { onConflict: 'user_id,date' });
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    showToast(multiSelectedDays.size + ' days set to ' + (isAvail ? 'available' : 'not available'));
+    await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
+}
+async function bulkClearMyAvail() {
+    if (multiSelectedDays.size === 0) return;
+    var dates = Array.from(multiSelectedDays);
+    var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', currentUser.id).in('date', dates);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    showToast(multiSelectedDays.size + ' days cleared');
+    await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
 }
 
 // ============ Staff CRUD (Trainer) ============
