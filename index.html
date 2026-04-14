@@ -278,7 +278,10 @@
                                 <div class="month-label" id="monthLabel"></div>
                                 <button class="btn btn-outline btn-icon" onclick="changeMonth(1)">&#8250;</button>
                             </div>
-                            <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
+                                <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="clearAllRosterMonth()">Clear Month</button>
+                            </div>
                         </div>
                         <div class="bulk-panel">
                             <div class="bulk-panel-header">
@@ -418,7 +421,10 @@
                             <div class="month-label" id="myAvailMonthLabel"></div>
                             <button class="btn btn-outline btn-icon" onclick="changeMyAvailMonth(1)">&#8250;</button>
                         </div>
-                        <button class="btn btn-outline btn-sm" onclick="goToMyAvailToday()">Today</button>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-outline btn-sm" onclick="goToMyAvailToday()">Today</button>
+                            <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="clearAllMyAvailMonth()">Clear Month</button>
+                        </div>
                     </div>
                     <div class="bulk-panel">
                         <div class="bulk-panel-header">
@@ -614,6 +620,8 @@ var myAvailSelectedDay = null;
 var multiSelectedDays = new Set();
 var multiSelectMode = 'roster'; // 'roster' or 'myavail'
 var bulkModeActive = false;
+var currentTab = 'roster';
+var realtimeChannel = null;
 var exportType = 'all';
 
 var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -652,7 +660,7 @@ async function handleLogin() {
         btn.textContent = 'Sign In';
     }
 }
-async function handleLogout() { await sb.auth.signOut(); currentUser = null; currentProfile = null; myStaffMember = null; document.getElementById('appScreen').style.display = 'none'; document.getElementById('loginScreen').style.display = 'flex'; document.getElementById('loginPassword').value = ''; document.getElementById('loginBtn').disabled = false; document.getElementById('loginBtn').textContent = 'Sign In'; }
+async function handleLogout() { teardownRealtime(); await sb.auth.signOut(); currentUser = null; currentProfile = null; myStaffMember = null; document.getElementById('appScreen').style.display = 'none'; document.getElementById('loginScreen').style.display = 'flex'; document.getElementById('loginPassword').value = ''; document.getElementById('loginBtn').disabled = false; document.getElementById('loginBtn').textContent = 'Sign In'; }
 async function checkSession() {
     try {
         var result = await sb.auth.getSession();
@@ -681,6 +689,7 @@ function showApp() {
     document.getElementById('headerSub').textContent = isTrainer() ? 'Manage team schedules and rosters' : 'View your roster and submit availability';
     buildTabs();
     loadAllData();
+    setupRealtime();
 }
 
 function buildTabs() {
@@ -749,6 +758,7 @@ function getAvailability(staffId, dateStr) { return (availabilityCache[staffId] 
 
 // ============ Tabs ============
 function switchTab(tab) {
+    currentTab = tab;
     if (multiSelectedDays.size > 0) clearMultiSelect();
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === tab); });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
@@ -973,6 +983,32 @@ async function bulkClearAvailability() {
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     dates.forEach(function(d) { if (availabilityCache[selectedStaffId]) delete availabilityCache[selectedStaffId][d]; });
     showToast(dates.length + ' days cleared'); clearMultiSelect(); updateSummary();
+}
+
+async function clearAllRosterMonth() {
+    if (!selectedStaffId) { showToast('Select a staff member first'); return; }
+    var staffName = staffList.find(function(s) { return s.id === selectedStaffId; })?.name || 'this staff member';
+    if (!confirm('Clear all roster entries for ' + staffName + ' in ' + MONTH_NAMES[currentMonth] + ' ' + currentYear + '?')) return;
+    var startDate = currentYear + '-' + String(currentMonth+1).padStart(2,'0') + '-01';
+    var lastDay = new Date(currentYear, currentMonth+1, 0).getDate();
+    var endDate = currentYear + '-' + String(currentMonth+1).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+    var result = await sb.from('cbd_availability').delete().eq('staff_id', selectedStaffId).gte('date', startDate).lte('date', endDate);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    if (availabilityCache[selectedStaffId]) {
+        Object.keys(availabilityCache[selectedStaffId]).forEach(function(d) { if (d >= startDate && d <= endDate) delete availabilityCache[selectedStaffId][d]; });
+    }
+    showToast(MONTH_NAMES[currentMonth] + ' cleared'); renderCalendar(); updateSummary();
+}
+
+async function clearAllMyAvailMonth() {
+    if (!confirm('Clear all your availability for ' + MONTH_NAMES[myAvailMonth] + ' ' + myAvailYear + '?')) return;
+    var startDate = myAvailYear + '-' + String(myAvailMonth+1).padStart(2,'0') + '-01';
+    var lastDay = new Date(myAvailYear, myAvailMonth+1, 0).getDate();
+    var endDate = myAvailYear + '-' + String(myAvailMonth+1).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+    var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', currentUser.id).gte('date', startDate).lte('date', endDate);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    assistantAvailCache['_my'] = {};
+    showToast(MONTH_NAMES[myAvailMonth] + ' cleared'); renderMyAvail();
 }
 
 // ============ Day Modal (Trainer) ============
@@ -1473,6 +1509,63 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && document.getElementById('loginScreen').style.display !== 'none') handleLogin();
 });
 document.querySelectorAll('.modal-overlay').forEach(function(overlay) { overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.classList.remove('active'); }); });
+
+// ============ Realtime ============
+function setupRealtime() {
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+    realtimeChannel = sb.channel('cbd-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_availability' }, function(payload) {
+            handleRealtimeChange('availability', payload);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_assistant_availability' }, function(payload) {
+            handleRealtimeChange('assistant_availability', payload);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_staff_members' }, function(payload) {
+            handleRealtimeChange('staff', payload);
+        })
+        .subscribe();
+}
+
+var _realtimeDebounce = null;
+function handleRealtimeChange(table, payload) {
+    clearTimeout(_realtimeDebounce);
+    _realtimeDebounce = setTimeout(function() { refreshCurrentView(table); }, 300);
+}
+
+async function refreshCurrentView(table) {
+    if (table === 'staff') {
+        await loadStaff();
+        if (isTrainer()) {
+            if (currentTab === 'roster') refreshTrainerUI();
+            if (currentTab === 'overview') renderOverview();
+            if (currentTab === 'staff') renderStaffGrid();
+        } else {
+            myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
+        }
+        return;
+    }
+    if (table === 'availability') {
+        if (isTrainer()) {
+            if (currentTab === 'roster') { await loadAvailabilityForMonth(currentMonth, currentYear); refreshTrainerUI(); }
+            if (currentTab === 'overview') { await loadAvailabilityForMonth(overviewMonth, overviewYear); renderOverview(); }
+        } else {
+            if (currentTab === 'myroster' && myStaffMember) { await loadAvailabilityForMonth(myRosterMonth, myRosterYear); renderMyRoster(); }
+        }
+        return;
+    }
+    if (table === 'assistant_availability') {
+        if (isTrainer()) {
+            if (currentTab === 'assistavail') { await loadAssistantAvailForMonth(assistMonth, assistYear); renderAssistAvail(); }
+        } else {
+            if (currentTab === 'myavail') { await loadMyAvailForMonth(myAvailMonth, myAvailYear); renderMyAvail(); }
+        }
+        return;
+    }
+}
+
+function teardownRealtime() {
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+}
 
 // ============ Init ============
 checkSession();
