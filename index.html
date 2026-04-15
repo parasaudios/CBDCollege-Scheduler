@@ -707,9 +707,12 @@ async function adminAPI(action, method, body) {
 var staffList = [];
 var availabilityCache = {};
 var assistantAvailCache = {};
+var profilesCache = null;
+var usersCache = null;
 var currentUser = null;
 var currentProfile = null;
 var myStaffMember = null;
+var _navDebounce = {};
 var currentMonth = new Date().getMonth();
 var currentYear = new Date().getFullYear();
 var overviewMonth = new Date().getMonth();
@@ -744,6 +747,22 @@ function formatDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).p
 function showToast(msg) { var c = document.getElementById('toastContainer'); var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; c.appendChild(t); setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity 0.3s'; }, 2500); setTimeout(function(){ t.remove(); }, 2800); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 function isTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
+function debouncedNav(key, fn, delay) {
+    clearTimeout(_navDebounce[key]);
+    _navDebounce[key] = setTimeout(fn, delay || 150);
+}
+function setLoading(el, loading) {
+    if (typeof el === 'string') el = document.getElementById(el);
+    if (!el) return;
+    if (loading) { el.dataset.origText = el.textContent; el.disabled = true; el.style.opacity = '0.6'; }
+    else { el.disabled = false; el.style.opacity = ''; }
+}
+async function getProfiles(forceRefresh) {
+    if (profilesCache && !forceRefresh) return profilesCache;
+    var res = await sb.from('cbd_profiles').select('id, full_name, role');
+    profilesCache = res.data || [];
+    return profilesCache;
+}
 
 // ============ Auth ============
 async function handleLogin() {
@@ -770,7 +789,7 @@ async function handleLogin() {
         btn.textContent = 'Sign In';
     }
 }
-async function handleLogout() { teardownRealtime(); await sb.auth.signOut(); currentUser = null; currentProfile = null; myStaffMember = null; document.getElementById('appScreen').style.display = 'none'; document.getElementById('loginScreen').style.display = 'flex'; document.getElementById('loginPassword').value = ''; document.getElementById('loginBtn').disabled = false; document.getElementById('loginBtn').textContent = 'Sign In'; }
+async function handleLogout() { teardownRealtime(); await sb.auth.signOut(); currentUser = null; currentProfile = null; myStaffMember = null; availabilityCache = {}; assistantAvailCache = {}; profilesCache = null; usersCache = null; staffList = []; document.getElementById('appScreen').style.display = 'none'; document.getElementById('loginScreen').style.display = 'flex'; document.getElementById('loginPassword').value = ''; document.getElementById('loginBtn').disabled = false; document.getElementById('loginBtn').textContent = 'Sign In'; }
 async function checkSession() {
     try {
         var result = await sb.auth.getSession();
@@ -821,8 +840,12 @@ function buildTabs() {
 // ============ Data Loading ============
 async function loadAllData() {
     await loadStaff();
+    await getProfiles(true);
     if (isTrainer()) {
-        await loadAvailabilityForMonth(currentMonth, currentYear);
+        await Promise.all([
+            loadAvailabilityForMonth(currentMonth, currentYear),
+            loadAssistantAvailForMonth(currentMonth, currentYear)
+        ]);
         refreshTrainerUI();
         switchTab('roster');
     } else {
@@ -958,7 +981,7 @@ function renderCalendar() {
     grid.innerHTML = html;
 }
 
-function changeMonth(dir) { currentMonth += dir; if (currentMonth > 11) { currentMonth = 0; currentYear++; } if (currentMonth < 0) { currentMonth = 11; currentYear--; } clearMultiSelect(); loadAvailabilityForMonth(currentMonth, currentYear).then(renderCalendar); }
+function changeMonth(dir) { currentMonth += dir; if (currentMonth > 11) { currentMonth = 0; currentYear++; } if (currentMonth < 0) { currentMonth = 11; currentYear--; } clearMultiSelect(); document.getElementById('monthLabel').textContent = MONTH_NAMES[currentMonth] + ' ' + currentYear; debouncedNav('roster', function() { loadAvailabilityForMonth(currentMonth, currentYear).then(renderCalendar); }); }
 function goToToday() { var n = new Date(); currentMonth = n.getMonth(); currentYear = n.getFullYear(); clearMultiSelect(); loadAvailabilityForMonth(currentMonth,currentYear).then(renderCalendar); }
 
 function onDayClick(dateStr, event) {
@@ -1087,11 +1110,13 @@ function updateDayButtons(mode) {
 
 async function bulkSetAvailability(status) {
     if (!selectedStaffId || multiSelectedDays.size === 0) return;
+    var count = multiSelectedDays.size;
     var upserts = [];
     multiSelectedDays.forEach(function(dateStr) { upserts.push({ staff_id: selectedStaffId, date: dateStr, status: status, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, note: '', created_by: currentUser.id }); });
+    showToast('Saving ' + count + ' days...');
     var result = await sb.from('cbd_availability').upsert(upserts, { onConflict: 'staff_id,date' });
-    if (result.error) { showToast('Error: ' + result.error.message); return; }
-    showToast(multiSelectedDays.size + ' days updated');
+    if (result.error) { showToast('Failed to save roster: ' + result.error.message); return; }
+    showToast(count + ' days updated');
     await loadAvailabilityForMonth(currentMonth, currentYear); clearMultiSelect(); updateSummary();
 }
 
@@ -1099,14 +1124,15 @@ async function bulkClearAvailability() {
     if (!selectedStaffId || multiSelectedDays.size === 0) return;
     var dates = Array.from(multiSelectedDays);
     var result = await sb.from('cbd_availability').delete().eq('staff_id', selectedStaffId).in('date', dates);
-    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    if (result.error) { showToast('Failed to clear days: ' + result.error.message); return; }
     dates.forEach(function(d) { if (availabilityCache[selectedStaffId]) delete availabilityCache[selectedStaffId][d]; });
     showToast(dates.length + ' days cleared'); clearMultiSelect(); updateSummary();
 }
 
 async function clearAllRosterMonth() {
     if (!selectedStaffId) { showToast('Select a staff member first'); return; }
-    var staffName = staffList.find(function(s) { return s.id === selectedStaffId; })?.name || 'this staff member';
+    var found = staffList.find(function(s) { return s.id === selectedStaffId; });
+    var staffName = found ? found.name : 'this staff member';
     if (!confirm('Clear all roster entries for ' + staffName + ' in ' + MONTH_NAMES[currentMonth] + ' ' + currentYear + '?')) return;
     var startDate = currentYear + '-' + String(currentMonth+1).padStart(2,'0') + '-01';
     var lastDay = new Date(currentYear, currentMonth+1, 0).getDate();
@@ -1167,21 +1193,22 @@ async function openDayModal(dateStr) {
         document.getElementById('removeDayBtn').style.display = 'none';
     }
 
-    // Load assistant availability for this day
+    // Show assistant availability for this day from cache
     var assistEl = document.getElementById('dayAssistAvail');
     var listEl = document.getElementById('dayAssistList');
-    var res = await sb.from('cbd_assistant_availability').select('*, cbd_profiles!cbd_assistant_availability_user_id_fkey(full_name)').eq('date', dateStr);
-    var entries = res.data || [];
-    if (entries.length > 0) {
-        assistEl.style.display = 'block';
-        listEl.innerHTML = entries.map(function(a) {
-            var name = a.cbd_profiles ? a.cbd_profiles.full_name : 'Unknown';
+    assistEl.style.display = 'block';
+    var dayEntries = assistantAvailCache[dateStr] || [];
+    if (dayEntries.length > 0) {
+        var profiles = await getProfiles();
+        var profileMap = {};
+        profiles.forEach(function(p) { profileMap[p.id] = p.full_name; });
+        listEl.innerHTML = dayEntries.map(function(a) {
+            var name = profileMap[a.user_id] || 'Unknown';
             return '<div class="avail-list-item"><div><div class="name">' + escHtml(name) + '</div>' +
                 (a.note ? '<div class="note">' + escHtml(a.note) + '</div>' : '') +
                 '</div><span class="avail-badge ' + (a.is_available ? 'yes' : 'no') + '">' + (a.is_available ? 'Available' : 'Unavailable') + '</span></div>';
         }).join('');
     } else {
-        assistEl.style.display = 'block';
         listEl.innerHTML = '<div style="color:var(--gray-400);font-size:0.85rem;">No availability submitted for this day</div>';
     }
 
@@ -1210,8 +1237,11 @@ async function saveDayAvailability() {
     var cappedPM = document.getElementById('dayCappedPM').checked;
     var note = document.getElementById('dayNote').value.trim();
     var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, note: note, created_by: currentUser.id };
+    var saveBtn = document.querySelector('#dayModal .btn-success');
+    setLoading(saveBtn, true);
     var result = await sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' });
-    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    setLoading(saveBtn, false);
+    if (result.error) { showToast('Failed to save: ' + result.error.message); return; }
     if (!availabilityCache[selectedStaffId]) availabilityCache[selectedStaffId] = {};
     availabilityCache[selectedStaffId][selectedDay] = row;
     closeModal('dayModal'); selectedDay = null; renderCalendar(); updateSummary(); showToast('Roster saved');
@@ -1220,7 +1250,7 @@ async function saveDayAvailability() {
 async function removeAvailability() {
     if (!selectedStaffId || !selectedDay) return;
     var result = await sb.from('cbd_availability').delete().eq('staff_id', selectedStaffId).eq('date', selectedDay);
-    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    if (result.error) { showToast('Failed to remove entry: ' + result.error.message); return; }
     if (availabilityCache[selectedStaffId]) delete availabilityCache[selectedStaffId][selectedDay];
     closeModal('dayModal'); selectedDay = null; renderCalendar(); updateSummary(); showToast('Roster entry removed');
 }
@@ -1261,7 +1291,7 @@ function renderOverview() {
     }
     grid.innerHTML = html;
 }
-function changeOverviewMonth(dir) { overviewMonth += dir; if (overviewMonth > 11) { overviewMonth = 0; overviewYear++; } if (overviewMonth < 0) { overviewMonth = 11; overviewYear--; } loadAvailabilityForMonth(overviewMonth, overviewYear).then(renderOverview); }
+function changeOverviewMonth(dir) { overviewMonth += dir; if (overviewMonth > 11) { overviewMonth = 0; overviewYear++; } if (overviewMonth < 0) { overviewMonth = 11; overviewYear--; } document.getElementById('overviewMonthLabel').textContent = MONTH_NAMES[overviewMonth] + ' ' + overviewYear; debouncedNav('overview', function() { loadAvailabilityForMonth(overviewMonth, overviewYear).then(renderOverview); }); }
 function goToOverviewToday() { var n = new Date(); overviewMonth = n.getMonth(); overviewYear = n.getFullYear(); loadAvailabilityForMonth(overviewMonth,overviewYear).then(renderOverview); }
 
 // ============ Assistant Availability View (Trainer) ============
@@ -1271,9 +1301,9 @@ async function renderAssistAvail() {
     var container = document.getElementById('assistAvailGrid');
     var lastDay = new Date(assistYear, assistMonth+1, 0).getDate();
 
-    // Get assistant profiles
-    var profileRes = await sb.from('cbd_profiles').select('id, full_name').eq('role', 'assistant');
-    assistantProfiles = profileRes.data || [];
+    // Get assistant profiles from cache
+    var allProfiles = await getProfiles();
+    assistantProfiles = allProfiles.filter(function(p) { return p.role === 'assistant'; });
     if (assistantProfiles.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128101;</div><div>No assistants found</div></div>'; return; }
 
     // Populate bulk select dropdown
@@ -1308,7 +1338,7 @@ async function renderAssistAvail() {
     html += '</tbody></table>';
     container.innerHTML = html;
 }
-function changeAssistMonth(dir) { assistMonth += dir; if (assistMonth > 11) { assistMonth = 0; assistYear++; } if (assistMonth < 0) { assistMonth = 11; assistYear--; } clearMultiSelect(); renderAssistAvail(); }
+function changeAssistMonth(dir) { assistMonth += dir; if (assistMonth > 11) { assistMonth = 0; assistYear++; } if (assistMonth < 0) { assistMonth = 11; assistYear--; } clearMultiSelect(); document.getElementById('assistMonthLabel').textContent = MONTH_NAMES[assistMonth] + ' ' + assistYear; debouncedNav('assist', function() { renderAssistAvail(); }); }
 function goToAssistToday() { var n = new Date(); assistMonth = n.getMonth(); assistYear = n.getFullYear(); clearMultiSelect(); renderAssistAvail(); }
 function updateAssistBulkButtons() { updateDayButtons('assistavail'); }
 
@@ -1395,7 +1425,7 @@ function renderMyRoster() {
     }
     grid.innerHTML = html;
 }
-function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } loadAvailabilityForMonth(myRosterMonth, myRosterYear).then(renderMyRoster); }
+function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { loadAvailabilityForMonth(myRosterMonth, myRosterYear).then(renderMyRoster); }); }
 function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); loadAvailabilityForMonth(myRosterMonth,myRosterYear).then(renderMyRoster); }
 
 // ============ My Availability (Assistant) ============
@@ -1425,7 +1455,7 @@ function renderMyAvail() {
     }
     grid.innerHTML = html;
 }
-function changeMyAvailMonth(dir) { myAvailMonth += dir; if (myAvailMonth > 11) { myAvailMonth = 0; myAvailYear++; } if (myAvailMonth < 0) { myAvailMonth = 11; myAvailYear--; } clearMultiSelect(); loadMyAvailForMonth(myAvailMonth, myAvailYear).then(renderMyAvail); }
+function changeMyAvailMonth(dir) { myAvailMonth += dir; if (myAvailMonth > 11) { myAvailMonth = 0; myAvailYear++; } if (myAvailMonth < 0) { myAvailMonth = 11; myAvailYear--; } clearMultiSelect(); document.getElementById('myAvailMonthLabel').textContent = MONTH_NAMES[myAvailMonth] + ' ' + myAvailYear; debouncedNav('myavail', function() { loadMyAvailForMonth(myAvailMonth, myAvailYear).then(renderMyAvail); }); }
 function goToMyAvailToday() { var n = new Date(); myAvailMonth = n.getMonth(); myAvailYear = n.getFullYear(); clearMultiSelect(); loadMyAvailForMonth(myAvailMonth,myAvailYear).then(renderMyAvail); }
 
 function onMyAvailDayClick(dateStr, event) {
@@ -1520,19 +1550,19 @@ async function bulkClearAssistAvail() {
 }
 
 // ============ Staff CRUD (Trainer) ============
-function openAddStaffModal() {
+async function openAddStaffModal() {
     editingStaffId = null;
     document.getElementById('staffModalTitle').textContent = 'Add Staff Member';
     document.getElementById('staffModalSave').textContent = 'Add Staff';
     document.getElementById('staffName').value = '';
     document.getElementById('staffRole').value = '';
     document.getElementById('staffColor').value = COLORS[staffList.length % COLORS.length];
-    populateStaffUserDropdown();
+    await populateStaffUserDropdown();
     document.getElementById('staffUser').value = '';
     document.getElementById('staffModal').classList.add('active');
     document.getElementById('staffName').focus();
 }
-function openEditStaffModal(id) {
+async function openEditStaffModal(id) {
     var s = staffList.find(function(x){ return x.id === id; });
     if (!s) return;
     editingStaffId = id;
@@ -1541,14 +1571,13 @@ function openEditStaffModal(id) {
     document.getElementById('staffName').value = s.name;
     document.getElementById('staffRole').value = s.role || '';
     document.getElementById('staffColor').value = s.color;
-    populateStaffUserDropdown();
+    await populateStaffUserDropdown();
     document.getElementById('staffUser').value = s.user_id || '';
     document.getElementById('staffModal').classList.add('active');
     document.getElementById('staffName').focus();
 }
 async function populateStaffUserDropdown() {
-    var res = await sb.from('cbd_profiles').select('id, full_name, role');
-    var profiles = res.data || [];
+    var profiles = await getProfiles();
     var linkedIds = staffList.map(function(s) { return s.user_id; }).filter(Boolean);
     var sel = document.getElementById('staffUser');
     sel.innerHTML = '<option value="">-- No linked account --</option>' +
@@ -1564,13 +1593,17 @@ async function saveStaff() {
     var color = document.getElementById('staffColor').value;
     var userId = document.getElementById('staffUser').value || null;
     if (!name) { showToast('Please enter a name'); return; }
+    var saveBtn = document.getElementById('staffModalSave');
+    setLoading(saveBtn, true);
     if (editingStaffId) {
         var result = await sb.from('cbd_staff_members').update({ name: name, role: role, color: color, user_id: userId }).eq('id', editingStaffId);
-        if (result.error) { showToast('Error: ' + result.error.message); return; }
+        setLoading(saveBtn, false);
+        if (result.error) { showToast('Failed to update staff: ' + result.error.message); return; }
         showToast('Staff member updated');
     } else {
         var result = await sb.from('cbd_staff_members').insert({ name: name, role: role, color: color, user_id: userId, created_by: currentUser.id });
-        if (result.error) { showToast('Error: ' + result.error.message); return; }
+        setLoading(saveBtn, false);
+        if (result.error) { showToast('Failed to add staff: ' + result.error.message); return; }
         showToast(name + ' added to the team');
     }
     closeModal('staffModal'); editingStaffId = null; await loadStaff(); refreshTrainerUI();
@@ -1598,12 +1631,11 @@ function renderStaffGrid() {
 }
 
 // ============ Admin Panel ============
-async function loadUsers() {
+async function loadUsers(forceRefresh) {
     try {
-        var result = await sb.rpc('cbd_list_users');
-        if (result.error) throw result.error;
-        var users = result.data || [];
-    } catch (e) { showToast('Error: ' + (e.message || e)); return; }
+        if (usersCache && !forceRefresh) { var users = usersCache; }
+        else { var result = await sb.rpc('cbd_list_users'); if (result.error) throw result.error; var users = result.data || []; usersCache = users; }
+    } catch (e) { showToast('Could not load users. Check your connection and try again.'); return; }
     var tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = users.map(function(u) {
         var role = u.role || 'assistant';
@@ -1620,20 +1652,26 @@ async function createUser() {
     var role = document.getElementById('newUserRole').value;
     if (!name || !email || !password) { showToast('Please fill in all required fields'); return; }
     if (password.length < 6) { showToast('Password must be at least 6 characters'); return; }
-    try { await adminAPI('create', 'POST', { email: email, password: password, full_name: name, role: role }); } catch (e) { showToast('Error: ' + e.message); return; }
-    closeModal('createUserModal'); showToast(name + ' account created'); loadUsers();
+    var btn = document.querySelector('#createUserModal .btn-primary');
+    setLoading(btn, true);
+    try { await adminAPI('create', 'POST', { email: email, password: password, full_name: name, role: role }); } catch (e) { setLoading(btn, false); showToast('Failed to create user: ' + e.message); return; }
+    setLoading(btn, false);
+    usersCache = null; profilesCache = null;
+    closeModal('createUserModal'); showToast(name + ' account created'); loadUsers(true);
 }
 async function toggleUserRole(userId, currentRole) {
     var newRole = currentRole === 'trainer' ? 'assistant' : 'trainer';
     if (!confirm('Change this user to ' + newRole + '?')) return;
     var result = await sb.from('cbd_profiles').update({ role: newRole }).eq('id', userId);
-    if (result.error) { showToast('Error: ' + result.error.message); return; }
-    showToast('Role updated to ' + newRole); loadUsers();
+    if (result.error) { showToast('Failed to update role: ' + result.error.message); return; }
+    usersCache = null; profilesCache = null;
+    showToast('Role updated to ' + newRole); loadUsers(true);
 }
 async function deleteUser(userId) {
     if (!confirm('Permanently delete this user account?')) return;
-    try { await adminAPI('delete', 'DELETE', { user_id: userId }); } catch (e) { showToast('Error: ' + e.message); return; }
-    showToast('User deleted'); loadUsers();
+    try { await adminAPI('delete', 'DELETE', { user_id: userId }); } catch (e) { showToast('Failed to delete user: ' + e.message); return; }
+    usersCache = null; profilesCache = null;
+    showToast('User deleted'); loadUsers(true);
 }
 
 // ============ Export PDF ============
