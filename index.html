@@ -2638,8 +2638,13 @@ window.addEventListener('beforeinstallprompt', function(e) {
     showInstallBanner();
 });
 
+function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+}
+
 function showInstallBanner() {
     if (document.getElementById('installBanner')) return;
+    if (!isMobileDevice()) return;
     var banner = document.createElement('div');
     banner.id = 'installBanner';
     banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:var(--primary);color:white;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:10000;font-size:0.9rem;box-shadow:0 -2px 8px rgba(0,0,0,0.15);';
