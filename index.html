@@ -1467,6 +1467,13 @@ async function applyBulkTemplate() {
     }
 
     setLoading(btn, false);
+    // Snapshot template state before closing modal
+    var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
+    document.querySelectorAll('.tmpl-cb').forEach(function(cb) { snapshot.staff[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
+    document.querySelectorAll('.tmpl-rotate').forEach(function(cb) { snapshot.rotate[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
+    document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) { snapshot.rotateStart[sel.dataset.dow] = sel.value; });
+    document.querySelectorAll('.tmpl-capped').forEach(function(cb) { snapshot.capped[cb.dataset.dow] = cb.checked; });
+
     closeModal('bulkTemplateModal');
     await loadAvailabilityForMonth(month, year);
     renderOverview();
@@ -1475,6 +1482,9 @@ async function applyBulkTemplate() {
     var msg = upserts.length + ' roster entries';
     if (classUpserts.length > 0) msg += ', ' + classUpserts.length + ' days set to capped';
     showToast('Template applied — ' + msg);
+
+    // Fire-and-forget: backup template to DB
+    sb.from('cbd_roster_template').upsert({ id: 1, template: snapshot, updated_by: currentUser.id }, { onConflict: 'id' }).then(function(){}).catch(function(){});
 }
 
 async function clearAllMyAvailMonth() {
