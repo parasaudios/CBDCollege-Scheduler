@@ -886,8 +886,7 @@ async function loadAllData() {
         await Promise.all([
             loadAvailabilityForMonth(currentMonth, currentYear),
             loadAssistantAvailForMonth(currentMonth, currentYear),
-            loadDayClassesForMonth(currentMonth, currentYear),
-            loadTemplateFromDB()
+            loadDayClassesForMonth(currentMonth, currentYear)
         ]);
         refreshTrainerUI();
         switchTab('roster');
@@ -1211,48 +1210,75 @@ async function clearAllRosterMonth() {
 }
 
 // ============ Bulk Roster Template ============
-var _templateCache = null;
+function deriveTemplateFromCalendar() {
+    // Scan the current overview month's roster data to figure out who's on which DOW
+    var month = overviewMonth;
+    var year = overviewYear;
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    // dow -> { staffId -> { count, htCount } }
+    var dowStaff = {};
+    var dowCapped = {};
+    var dowCount = {};
 
-async function loadTemplateFromDB() {
-    try {
-        var result = await sb.from('cbd_roster_template').select('template').eq('id', 1).maybeSingle();
-        if (result.data && result.data.template && typeof result.data.template === 'object') {
-            _templateCache = result.data.template;
-        } else {
-            _templateCache = {};
+    for (var day = 1; day <= daysInMonth; day++) {
+        var d = new Date(year, month, day);
+        var dow = d.getDay();
+        if (!dowCount[dow]) dowCount[dow] = 0;
+        dowCount[dow]++;
+        var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+
+        staffList.forEach(function(s) {
+            var e = getAvailability(s.id, dateStr);
+            if (e && (e.status === 'available' || e.status === 'partial')) {
+                if (!dowStaff[dow]) dowStaff[dow] = {};
+                if (!dowStaff[dow][s.id]) dowStaff[dow][s.id] = { count: 0, htCount: 0 };
+                dowStaff[dow][s.id].count++;
+                if (e.day_role === 'head_trainer') dowStaff[dow][s.id].htCount++;
+            }
+        });
+
+        var ci = getDayClass(dateStr);
+        if (ci && ci.capped_am && ci.capped_pm) {
+            if (!dowCapped[dow]) dowCapped[dow] = 0;
+            dowCapped[dow]++;
         }
-    } catch(e) {
-        _templateCache = {};
     }
+
+    // For each DOW, a staff member is "on" if rostered on at least half the instances
+    var result = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
+    var isWeekend = {6: true, 0: true};
+
+    for (var dow in dowStaff) {
+        var threshold = Math.ceil(dowCount[dow] / 2);
+        for (var staffId in dowStaff[dow]) {
+            var info = dowStaff[dow][staffId];
+            if (isWeekend[dow]) {
+                // Weekend: if they were ever HT, mark as rotating HT
+                if (info.htCount > 0) {
+                    result.rotate[dow + '_' + staffId] = true;
+                } else if (info.count >= threshold) {
+                    result.staff[dow + '_' + staffId] = true;
+                }
+            } else {
+                if (info.count >= threshold) {
+                    result.staff[dow + '_' + staffId] = true;
+                }
+            }
+        }
+    }
+
+    // Capped if most days of that DOW are capped
+    for (var dow in dowCapped) {
+        if (dowCapped[dow] >= Math.ceil(dowCount[dow] / 2)) {
+            result.capped[dow] = true;
+        }
+    }
+
+    return result;
 }
 
-async function saveTemplateState() {
-    var state = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
-    document.querySelectorAll('.tmpl-cb').forEach(function(cb) {
-        var key = cb.dataset.dow + '_' + cb.dataset.staffId;
-        state.staff[key] = cb.checked;
-    });
-    document.querySelectorAll('.tmpl-rotate').forEach(function(cb) {
-        var key = cb.dataset.dow + '_' + cb.dataset.staffId;
-        state.rotate[key] = cb.checked;
-    });
-    document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) {
-        state.rotateStart[sel.dataset.dow] = sel.value;
-    });
-    document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
-        state.capped[cb.dataset.dow] = cb.checked;
-    });
-    _templateCache = state;
-    try {
-        await sb.from('cbd_roster_template').upsert({ id: 1, template: state, updated_by: currentUser.id }, { onConflict: 'id' });
-    } catch(e) {
-        console.log('Failed to save template to DB:', e);
-    }
-}
-
-function restoreTemplateState() {
-    var state = _templateCache;
-    if (!state) return;
+function restoreTemplateFromCalendar() {
+    var state = deriveTemplateFromCalendar();
     document.querySelectorAll('.tmpl-cb').forEach(function(cb) {
         var key = cb.dataset.dow + '_' + cb.dataset.staffId;
         if (state.staff[key]) { cb.checked = true; styleTmplCheckbox(cb); }
@@ -1261,11 +1287,8 @@ function restoreTemplateState() {
         var key = cb.dataset.dow + '_' + cb.dataset.staffId;
         if (state.rotate[key]) { cb.checked = true; styleTmplRotateCheckbox(cb); }
     });
-    document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) {
-        if (state.rotateStart[sel.dataset.dow]) sel.value = state.rotateStart[sel.dataset.dow];
-    });
     document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
-        if (state.capped[cb.dataset.dow]) cb.checked = true;
+        if (state.capped[cb.dataset.dow]) { cb.checked = true; }
     });
 }
 
@@ -1325,7 +1348,7 @@ function openBulkTemplate() {
         html += '</div></div>';
     });
     container.innerHTML = html;
-    restoreTemplateState();
+    restoreTemplateFromCalendar();
     document.getElementById('bulkTemplateModal').classList.add('active');
 }
 
@@ -1377,7 +1400,6 @@ async function applyBulkTemplate() {
         template[dow].push(staffId);
     });
 
-    await saveTemplateState();
     var month = overviewMonth;
     var year = overviewYear;
     var daysInMonth = new Date(year, month + 1, 0).getDate();
