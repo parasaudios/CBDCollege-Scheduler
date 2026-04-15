@@ -1218,18 +1218,54 @@ function openBulkTemplate() {
     var container = document.getElementById('bulkTemplateDays');
     var dayLabels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     var dayDows = [1,2,3,4,5,6,0]; // JS getDay() values
+    var isWeekend = {6: true, 0: true};
+    var trainers = staffList.filter(function(s) { return s.role === 'trainer'; });
     var html = '';
     dayLabels.forEach(function(label, i) {
         var dow = dayDows[i];
-        html += '<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;">';
-        html += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">' + label + '</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
-        staffList.forEach(function(s) {
-            html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
-                '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
-                '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
-                '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
-        });
+        html += '<div style="border:1px solid ' + (isWeekend[dow] ? 'var(--primary)' : 'var(--gray-200)') + ';border-radius:var(--radius);padding:10px 12px;">';
+        html += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">' + label + (isWeekend[dow] ? ' <span style="font-size:0.7rem;color:var(--primary);font-weight:500;">(rotating HT)</span>' : '') + '</div>';
+
+        if (isWeekend[dow]) {
+            // Weekend: rotating head trainers section
+            html += '<div style="margin-bottom:8px;">';
+            html += '<div style="font-size:0.75rem;font-weight:600;color:var(--gray-500);margin-bottom:4px;">Rotating Head Trainers (select who rotates):</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">';
+            trainers.forEach(function(s) {
+                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--primary-light);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
+                    '<input type="checkbox" class="tmpl-rotate" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplRotateCheckbox(this)">' +
+                    '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
+                    '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
+            });
+            html += '</div>';
+            html += '<div style="font-size:0.75rem;color:var(--gray-500);margin-bottom:4px;">First weekend starts with:</div>';
+            html += '<select class="form-control tmpl-rotate-start" data-dow="' + dow + '" style="font-size:0.8rem;padding:4px 8px;width:auto;">';
+            trainers.forEach(function(s) {
+                html += '<option value="' + s.id + '">' + escHtml(s.name.split(' ')[0]) + '</option>';
+            });
+            html += '</select>';
+            html += '</div>';
+
+            // Assistants (always on)
+            html += '<div style="font-size:0.75rem;font-weight:600;color:var(--gray-500);margin-bottom:4px;">Assistants (same every week):</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
+            staffList.forEach(function(s) {
+                if (s.role === 'trainer') return; // skip trainers, they go in rotate section
+                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
+                    '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
+                    '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
+                    '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
+            });
+        } else {
+            // Weekday: normal staff selection
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
+            staffList.forEach(function(s) {
+                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
+                    '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
+                    '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
+                    '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
+            });
+        }
         html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--warning);background:var(--warning-light);cursor:pointer;font-size:0.8rem;font-weight:600;">' +
             '<input type="checkbox" class="tmpl-capped" data-dow="' + dow + '" style="width:16px;height:16px;cursor:pointer;">' +
             '<span>Capped</span></label>';
@@ -1238,6 +1274,12 @@ function openBulkTemplate() {
     container.innerHTML = html;
     document.getElementById('bulkTemplateOverwrite').checked = false;
     document.getElementById('bulkTemplateModal').classList.add('active');
+}
+
+function styleTmplRotateCheckbox(cb) {
+    var label = cb.closest('label');
+    if (cb.checked) { label.style.borderColor = 'var(--primary)'; label.style.background = 'var(--primary-light)'; }
+    else { label.style.borderColor = 'var(--primary-light)'; label.style.background = 'white'; }
 }
 
 function styleTmplCheckbox(cb) {
@@ -1249,14 +1291,31 @@ function styleTmplCheckbox(cb) {
 async function applyBulkTemplate() {
     var checkboxes = document.querySelectorAll('.tmpl-cb:checked');
     var cappedBoxes = document.querySelectorAll('.tmpl-capped:checked');
+    var rotateBoxes = document.querySelectorAll('.tmpl-rotate:checked');
 
     // Build capped map: dow -> true
     var cappedDows = {};
     cappedBoxes.forEach(function(cb) { cappedDows[parseInt(cb.dataset.dow)] = true; });
 
-    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0) { showToast('Select at least one staff member or capped day'); return; }
+    // Build rotating HT map: dow -> { trainers: [id, id, ...], startWith: id }
+    var rotateDows = {};
+    rotateBoxes.forEach(function(cb) {
+        var dow = parseInt(cb.dataset.dow);
+        if (!rotateDows[dow]) rotateDows[dow] = [];
+        rotateDows[dow].push(cb.dataset.staffId);
+    });
+    // Get start-with selection for each weekend dow
+    var rotateStartWith = {};
+    document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) {
+        var dow = parseInt(sel.dataset.dow);
+        if (rotateDows[dow]) rotateStartWith[dow] = sel.value;
+    });
 
-    // Build a map: dow -> [staffId, staffId, ...]
+    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0 && Object.keys(rotateDows).length === 0) {
+        showToast('Select at least one staff member, rotation, or capped day'); return;
+    }
+
+    // Build a map: dow -> [staffId, staffId, ...] for non-weekend staff
     var template = {};
     checkboxes.forEach(function(cb) {
         var dow = parseInt(cb.dataset.dow);
@@ -1272,12 +1331,35 @@ async function applyBulkTemplate() {
     var upserts = [];
     var classUpserts = [];
 
+    // Track weekend occurrence count per dow for rotation
+    var weekendCount = {0: 0, 6: 0};
+
     for (var day = 1; day <= daysInMonth; day++) {
         var d = new Date(year, month, day);
         var dow = d.getDay();
         var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 
-        // Staff roster entries
+        // Rotating head trainers for weekends
+        if (rotateDows[dow] && rotateDows[dow].length > 0) {
+            var rotTrainers = rotateDows[dow];
+            var startId = rotateStartWith[dow];
+            // Reorder so startWith is first
+            var startIdx = rotTrainers.indexOf(startId);
+            if (startIdx > 0) {
+                rotTrainers = rotTrainers.slice(startIdx).concat(rotTrainers.slice(0, startIdx));
+            }
+            var weekNum = weekendCount[dow] || 0;
+            var htId = rotTrainers[weekNum % rotTrainers.length];
+            weekendCount[dow] = weekNum + 1;
+
+            // Roster the rotating HT
+            var existingHT = getAvailability(htId, dateStr);
+            if (!existingHT || overwrite) {
+                upserts.push({ staff_id: htId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id });
+            }
+        }
+
+        // Regular staff roster entries (assistants on weekends, all staff on weekdays)
         if (template[dow]) {
             template[dow].forEach(function(staffId) {
                 var existing = getAvailability(staffId, dateStr);
@@ -1290,7 +1372,6 @@ async function applyBulkTemplate() {
         if (cappedDows[dow]) {
             var existingClass = getDayClass(dateStr);
             if (existingClass && !overwrite) {
-                // Only update capped flags, keep existing student counts/times
                 classUpserts.push({ date: dateStr, start_time: existingClass.start_time || null, end_time: existingClass.end_time || null, students_am: existingClass.students_am || 0, students_pm: existingClass.students_pm || 0, capped_am: true, capped_pm: true, updated_by: currentUser.id });
             } else {
                 classUpserts.push({ date: dateStr, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: true, capped_pm: true, updated_by: currentUser.id });
