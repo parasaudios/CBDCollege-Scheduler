@@ -1876,7 +1876,9 @@ function generatePDF(month, year, pdfStaff) {
     doc.setTextColor(150,150,150); doc.setFontSize(5);
     doc.text('Generated '+new Date().toLocaleDateString()+' | CBD College Staff Scheduler', pageW/2, pageH-3, {align:'center'});
     var fn = isIndividual ? pdfStaff[0].name.replace(/\s+/g,'-')+'-'+MONTH_NAMES[month]+'-'+year+'.pdf' : 'CBD-Roster-'+MONTH_NAMES[month]+'-'+year+'.pdf';
-    doc.save(fn); showToast('PDF exported');
+    var blobUrl = doc.output('bloburl');
+    window.open(blobUrl, '_blank');
+    showToast('PDF opened in new tab');
 }
 
 function hexToRgb(hex) {
