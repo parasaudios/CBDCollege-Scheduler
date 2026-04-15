@@ -1,4 +1,4 @@
-var CACHE_NAME = 'cbd-scheduler-v1';
+var CACHE_NAME = 'cbd-scheduler-v2';
 var ASSETS = [
   '/',
   '/index.html'
@@ -47,18 +47,17 @@ self.addEventListener('fetch', function(e) {
     return;
   }
 
-  // Cache-first for CDN assets (supabase-js, jspdf)
-  if (url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('cdnjs.cloudflare.com')) {
-    e.respondWith(
-      caches.match(e.request).then(function(cached) {
-        if (cached) return cached;
-        return fetch(e.request).then(function(resp) {
+  // Cache-first for CDN assets and other static resources
+  e.respondWith(
+    caches.match(e.request).then(function(cached) {
+      if (cached) return cached;
+      return fetch(e.request).then(function(resp) {
+        if (resp && resp.status === 200 && resp.type === 'basic') {
           var clone = resp.clone();
           caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
-          return resp;
-        });
-      })
-    );
-    return;
-  }
+        }
+        return resp;
+      });
+    })
+  );
 });
