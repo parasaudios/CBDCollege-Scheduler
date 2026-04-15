@@ -1751,21 +1751,35 @@ function openExportModal() {
     if (staffList.length === 0) { showToast('No staff to export'); return; }
     var monthSel = document.getElementById('exportMonth');
     monthSel.innerHTML = MONTH_NAMES.map(function(m,i){ return '<option value="'+i+'">'+m+'</option>'; }).join('');
-    monthSel.value = overviewMonth;
-    document.getElementById('exportYear').value = overviewYear;
+    // Default to the currently viewed month based on active tab
+    var defMonth = currentMonth, defYear = currentYear;
+    if (currentTab === 'overview') { defMonth = overviewMonth; defYear = overviewYear; }
+    if (currentTab === 'myroster') { defMonth = myRosterMonth; defYear = myRosterYear; }
+    monthSel.value = defMonth;
+    document.getElementById('exportYear').value = defYear;
     var staffSel = document.getElementById('exportStaffDropdown');
     staffSel.innerHTML = staffList.map(function(s){ return '<option value="'+s.id+'">'+escHtml(s.name)+'</option>'; }).join('');
-    exportType = 'all';
-    document.querySelectorAll('.export-type-option').forEach(function(o){ o.classList.remove('selected'); });
-    document.querySelector('.export-type-option[data-type="all"]').classList.add('selected');
-    document.getElementById('exportStaffSelect').style.display = 'none';
+    // For assistants, default to individual export of their own staff member
+    if (!isTrainer() && myStaffMember) {
+        exportType = 'individual';
+        document.querySelectorAll('.export-type-option').forEach(function(o){ o.classList.remove('selected'); });
+        var indOpt = document.querySelector('.export-type-option[data-type="individual"]');
+        if (indOpt) indOpt.classList.add('selected');
+        staffSel.value = myStaffMember.id;
+        document.getElementById('exportStaffSelect').style.display = 'block';
+    } else {
+        exportType = 'all';
+        document.querySelectorAll('.export-type-option').forEach(function(o){ o.classList.remove('selected'); });
+        document.querySelector('.export-type-option[data-type="all"]').classList.add('selected');
+        document.getElementById('exportStaffSelect').style.display = 'none';
+    }
     document.getElementById('exportModal').classList.add('active');
 }
 function selectExportType(el) { document.querySelectorAll('.export-type-option').forEach(function(o){ o.classList.remove('selected'); }); el.classList.add('selected'); exportType = el.dataset.type; document.getElementById('exportStaffSelect').style.display = exportType === 'individual' ? 'block' : 'none'; }
 async function runExportPDF() {
     var month = parseInt(document.getElementById('exportMonth').value);
     var year = parseInt(document.getElementById('exportYear').value);
-    await loadAvailabilityForMonth(month, year);
+    await Promise.all([loadAvailabilityForMonth(month, year), loadDayClassesForMonth(month, year)]);
     var pdfStaff = exportType === 'individual' ? staffList.filter(function(s){ return s.id === document.getElementById('exportStaffDropdown').value; }) : staffList;
     closeModal('exportModal'); generatePDF(month, year, pdfStaff);
 }
@@ -1776,49 +1790,140 @@ function generatePDF(month, year, pdfStaff) {
     var isIndividual = pdfStaff.length === 1;
     var daysInMonth = new Date(year, month+1, 0).getDate();
     var startDow = new Date(year, month, 1).getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
-    doc.setFontSize(18); doc.setFont(undefined,'bold');
+
+    // Title
+    doc.setFontSize(16); doc.setFont(undefined,'bold');
     doc.text(isIndividual ? pdfStaff[0].name + ' - Roster' : 'CBD College Staff Roster', pageW/2, margin+6, {align:'center'});
-    doc.setFontSize(13); doc.setFont(undefined,'normal');
-    doc.text(MONTH_NAMES[month] + ' ' + year, pageW/2, margin+13, {align:'center'});
-    var calTop = margin+20, calW = pageW-margin*2, calH = pageH-calTop-margin, colW = calW/7;
+    doc.setFontSize(12); doc.setFont(undefined,'normal');
+    doc.text(MONTH_NAMES[month] + ' ' + year, pageW/2, margin+12, {align:'center'});
+
+    var calTop = margin+18, calW = pageW-margin*2, calH = pageH-calTop-margin-4, colW = calW/7;
     var rows = Math.ceil((startDow + daysInMonth)/7), headerH = 7, rowH = (calH-headerH)/rows;
-    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setFillColor(37,99,235);
+
+    // Day headers
+    doc.setFontSize(7); doc.setFont(undefined,'bold'); doc.setFillColor(37,99,235);
     doc.rect(margin, calTop, calW, headerH, 'F'); doc.setTextColor(255,255,255);
     for (var i=0;i<7;i++) doc.text(DAY_NAMES[i], margin+i*colW+colW/2, calTop+5, {align:'center'});
     doc.setTextColor(0,0,0);
+
     var cellIdx = 0;
     for (var r=0;r<rows;r++) for (var c=0;c<7;c++) {
         var x=margin+c*colW, y=calTop+headerH+r*rowH, dayNum=cellIdx-startDow+1;
-        doc.setDrawColor(200,200,200); doc.setLineWidth(0.3); doc.rect(x,y,colW,rowH);
+        doc.setDrawColor(200,200,200); doc.setLineWidth(0.2); doc.rect(x,y,colW,rowH);
+
         if (dayNum>=1 && dayNum<=daysInMonth) {
             var dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(dayNum).padStart(2,'0');
-            if (isIndividual) { var se = getAvailability(pdfStaff[0].id, dateStr); if (se) { if (se.status==='available') doc.setFillColor(220,252,231); else if (se.status==='partial') doc.setFillColor(254,243,199); else doc.setFillColor(254,226,226); doc.rect(x+0.3,y+0.3,colW-0.6,rowH-0.6,'F'); } }
-            doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(60,60,60); doc.text(String(dayNum), x+1.5, y+4);
-            var entries = []; pdfStaff.forEach(function(s){ var e=getAvailability(s.id,dateStr); if(e) entries.push({name:s.name,data:e}); });
-            var lineY=y+7.5, maxLines=Math.floor((rowH-8)/3.2);
-            doc.setFontSize(isIndividual?6:5.5); doc.setFont(undefined,'normal');
-            for (var e=0;e<entries.length&&e<maxLines;e++) {
-                var en=entries[e], dd=en.data;
-                if(dd.status==='available') doc.setFillColor(22,163,74); else if(dd.status==='partial') doc.setFillColor(245,158,11); else doc.setFillColor(220,38,38);
-                doc.circle(x+2.5,lineY-0.8,0.8,'F');
-                var det = isIndividual ? '' : en.name.split(' ')[0]+' ';
-                if (dd.day_role === 'head_trainer') det += '[HT] ';
-                det += dd.status==='available'?'Rostered':dd.status==='partial'?'Partial':'Unavailable';
-                if(dd.start_time&&dd.end_time) det+=' '+dd.start_time.slice(0,5)+'-'+dd.end_time.slice(0,5);
-                doc.setTextColor(50,50,50); doc.text(det, x+4.5, lineY, {maxWidth:colW-6}); lineY+=3.2;
-            }
-            var pci = getDayClass(dateStr);
-            if (pci && (pci.students_am || pci.students_pm) && lineY+3.2 < y+rowH) {
-                var cTxt = 'AM:' + (pci.students_am||0) + (pci.capped_am?' CAP':'') + ' PM:' + (pci.students_pm||0) + (pci.capped_pm?' CAP':'');
-                doc.setTextColor(100,100,100); doc.text(cTxt, x+2, lineY, {maxWidth:colW-4}); lineY+=3.2;
+            var ci = getDayClass(dateStr);
+
+            if (isIndividual) {
+                // ---- INDIVIDUAL (ASSISTANT) VIEW ----
+                var se = getAvailability(pdfStaff[0].id, dateStr);
+                if (se && (se.status==='available' || se.status==='partial')) {
+                    doc.setFillColor(220,252,231); doc.rect(x+0.2,y+0.2,colW-0.4,rowH-0.4,'F');
+                } else if (se && se.status === 'unavailable') {
+                    doc.setFillColor(254,226,226); doc.rect(x+0.2,y+0.2,colW-0.4,rowH-0.4,'F');
+                }
+
+                // Day number
+                doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(50,50,50);
+                doc.text(String(dayNum), x+1.5, y+4);
+
+                var lineY = y+8;
+
+                if (se && (se.status==='available' || se.status==='partial')) {
+                    // Role badge
+                    var role = se.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant';
+                    doc.setFontSize(5.5); doc.setFont(undefined,'bold');
+                    if (se.day_role === 'head_trainer') { doc.setTextColor(37,99,235); } else { doc.setTextColor(100,100,100); }
+                    doc.text(role, x+1.5, lineY); lineY+=3;
+
+                    // Class time
+                    if (ci && ci.start_time && ci.end_time) {
+                        doc.setFontSize(6); doc.setFont(undefined,'normal'); doc.setTextColor(50,50,50);
+                        doc.text(ci.start_time.slice(0,5) + ' - ' + ci.end_time.slice(0,5), x+1.5, lineY); lineY+=3;
+                    }
+
+                    // Students
+                    if (ci && (ci.students_am || ci.students_pm)) {
+                        doc.setFontSize(5.5); doc.setFont(undefined,'normal'); doc.setTextColor(80,80,80);
+                        var amTxt = 'AM: ' + (ci.students_am||0) + (ci.capped_am ? ' CAP' : '');
+                        var pmTxt = 'PM: ' + (ci.students_pm||0) + (ci.capped_pm ? ' CAP' : '');
+                        doc.text(amTxt, x+1.5, lineY); lineY+=2.8;
+                        doc.text(pmTxt, x+1.5, lineY); lineY+=2.8;
+                    }
+
+                    // Hours if set
+                    if (se.start_time && se.end_time) {
+                        doc.setFontSize(5); doc.setFont(undefined,'normal'); doc.setTextColor(100,100,100);
+                        doc.text('Hours: ' + se.start_time.slice(0,5) + '-' + se.end_time.slice(0,5), x+1.5, lineY); lineY+=2.8;
+                    }
+                }
+            } else {
+                // ---- TRAINER (ALL STAFF) VIEW ----
+                // Background tint if anyone is rostered
+                var hasRostered = false;
+                staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e && (e.status==='available'||e.status==='partial')) hasRostered = true; });
+                if (hasRostered) { doc.setFillColor(240,249,255); doc.rect(x+0.2,y+0.2,colW-0.4,rowH-0.4,'F'); }
+
+                // Day number
+                doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(50,50,50);
+                doc.text(String(dayNum), x+1.5, y+4);
+
+                var lineY = y+7.5;
+
+                // Class info first (time + students)
+                if (ci && ci.start_time && ci.end_time) {
+                    doc.setFontSize(5.5); doc.setFont(undefined,'bold'); doc.setTextColor(37,99,235);
+                    doc.text(ci.start_time.slice(0,5) + ' - ' + ci.end_time.slice(0,5), x+1.5, lineY); lineY+=3;
+                }
+                if (ci && (ci.students_am || ci.students_pm)) {
+                    doc.setFontSize(5); doc.setFont(undefined,'bold'); doc.setTextColor(80,80,80);
+                    var stuLine = 'AM:' + (ci.students_am||0);
+                    if (ci.capped_am) stuLine += ' CAP';
+                    stuLine += '  PM:' + (ci.students_pm||0);
+                    if (ci.capped_pm) stuLine += ' CAP';
+                    doc.text(stuLine, x+1.5, lineY); lineY+=3;
+                }
+
+                // Separator line
+                if (ci && (ci.start_time || ci.students_am || ci.students_pm)) {
+                    doc.setDrawColor(200,200,200); doc.setLineWidth(0.1);
+                    doc.line(x+1.5, lineY-1, x+colW-1.5, lineY-1); lineY+=1;
+                }
+
+                // Staff entries
+                var maxY = y+rowH-1;
+                staffList.forEach(function(s) {
+                    if (lineY+2.5 > maxY) return;
+                    var e = getAvailability(s.id, dateStr);
+                    if (!e || (e.status !== 'available' && e.status !== 'partial')) return;
+                    // Colored dot
+                    var rgb = hexToRgb(s.color);
+                    if (rgb) doc.setFillColor(rgb.r, rgb.g, rgb.b); else doc.setFillColor(37,99,235);
+                    doc.circle(x+2.5, lineY-0.6, 0.7, 'F');
+                    // Name + role
+                    doc.setFontSize(5); doc.setFont(undefined,'normal'); doc.setTextColor(50,50,50);
+                    var label = s.name.split(' ')[0];
+                    if (e.day_role === 'head_trainer') label += ' [HT]';
+                    if (e.status === 'partial') label += ' (P)';
+                    doc.text(label, x+4.5, lineY, {maxWidth:colW-6}); lineY+=2.5;
+                });
             }
         }
         cellIdx++;
     }
-    doc.setTextColor(150,150,150); doc.setFontSize(6);
-    doc.text('Generated '+new Date().toLocaleDateString()+' | CBD College Staff Scheduler', pageW/2, pageH-4, {align:'center'});
+
+    // Footer
+    doc.setTextColor(150,150,150); doc.setFontSize(5);
+    doc.text('Generated '+new Date().toLocaleDateString()+' | CBD College Staff Scheduler', pageW/2, pageH-3, {align:'center'});
     var fn = isIndividual ? pdfStaff[0].name.replace(/\s+/g,'-')+'-'+MONTH_NAMES[month]+'-'+year+'.pdf' : 'CBD-Roster-'+MONTH_NAMES[month]+'-'+year+'.pdf';
     doc.save(fn); showToast('PDF exported');
+}
+
+function hexToRgb(hex) {
+    if (!hex) return null;
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? { r: parseInt(result[1],16), g: parseInt(result[2],16), b: parseInt(result[3],16) } : null;
 }
 
 // ============ Keyboard ============
