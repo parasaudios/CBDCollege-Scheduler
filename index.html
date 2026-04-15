@@ -326,7 +326,7 @@
             <div class="summary-bar">
                 <div class="summary-item"><div class="summary-number" id="totalStaff">0</div><div class="summary-label">Total Staff</div></div>
                 <div class="summary-item"><div class="summary-number" id="availableToday">0</div><div class="summary-label">Rostered Today</div></div>
-                <div class="summary-item"><div class="summary-number" id="studentsToday">0</div><div class="summary-label">Students Today</div></div>
+                <div class="summary-item"><div class="summary-number" id="studentsToday">0/0</div><div class="summary-label">Students AM/PM</div></div>
             </div>
             <div class="card">
                 <div class="card-header">
@@ -1004,9 +1004,10 @@ function updateSummary() {
         if (e && (e.status === 'available' || e.status === 'partial')) rostered++;
     });
     var todayClass = getDayClass(todayStr);
-    var students = todayClass ? (todayClass.students_am || 0) + (todayClass.students_pm || 0) : 0;
+    var am = todayClass ? (todayClass.students_am || 0) : 0;
+    var pm = todayClass ? (todayClass.students_pm || 0) : 0;
     document.getElementById('availableToday').textContent = rostered;
-    document.getElementById('studentsToday').textContent = students;
+    document.getElementById('studentsToday').textContent = am + '/' + pm;
 }
 
 // ============ Calendar (Trainer) ============
