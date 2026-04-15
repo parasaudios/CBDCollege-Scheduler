@@ -886,7 +886,8 @@ async function loadAllData() {
         await Promise.all([
             loadAvailabilityForMonth(currentMonth, currentYear),
             loadAssistantAvailForMonth(currentMonth, currentYear),
-            loadDayClassesForMonth(currentMonth, currentYear)
+            loadDayClassesForMonth(currentMonth, currentYear),
+            loadTemplateFromDB()
         ]);
         refreshTrainerUI();
         switchTab('roster');
@@ -1215,17 +1216,14 @@ var _templateCache = null;
 async function loadTemplateFromDB() {
     try {
         var result = await sb.from('cbd_roster_template').select('template').eq('id', 1).maybeSingle();
-        if (result.error) { console.log('Template load error:', result.error.message); _templateCache = null; return null; }
-        if (result.data && result.data.template) {
+        if (result.data && result.data.template && typeof result.data.template === 'object') {
             _templateCache = result.data.template;
         } else {
-            _templateCache = null;
+            _templateCache = {};
         }
     } catch(e) {
-        console.log('Failed to load template from DB:', e);
-        _templateCache = null;
+        _templateCache = {};
     }
-    return _templateCache;
 }
 
 async function saveTemplateState() {
@@ -1271,8 +1269,7 @@ function restoreTemplateState() {
     });
 }
 
-async function openBulkTemplate() {
-    await loadTemplateFromDB();
+function openBulkTemplate() {
     var container = document.getElementById('bulkTemplateDays');
     var dayLabels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     var dayDows = [1,2,3,4,5,6,0]; // JS getDay() values
