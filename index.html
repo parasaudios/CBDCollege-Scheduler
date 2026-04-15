@@ -1007,15 +1007,31 @@ function renderCalendar() {
         if (entry) cls += ' ' + entry.status;
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         var detail = '';
+        // Show selected staff member's role badge
         if (entry) {
-            var parts = [];
-            if (entry.day_role === 'head_trainer') parts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">HT</span>');
-            else if (entry.status === 'available' || entry.status === 'partial') parts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
-            if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + '-' + entry.end_time.slice(0,5));
-            if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
+            var entryParts = [];
+            if (entry.day_role === 'head_trainer') entryParts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">HT</span>');
+            else if (entry.status === 'available' || entry.status === 'partial') entryParts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
+            if (entryParts.length > 0) detail += '<div style="font-size:0.6rem;text-align:center;margin-bottom:2px">' + entryParts.join(' ') + '</div>';
         }
+        // Show aggregate class info from all staff for this day
+        var aggAM = 0, aggPM = 0, aggCappedAM = false, aggCappedPM = false, aggTime = '', othersRostered = 0;
+        staffList.forEach(function(s) {
+            var se = getAvailability(s.id, dateStr);
+            if (se && (se.status === 'available' || se.status === 'partial')) {
+                if (s.id !== selectedStaffId) othersRostered++;
+                if (se.students_am > aggAM) aggAM = se.students_am;
+                if (se.students_pm > aggPM) aggPM = se.students_pm;
+                if (se.capped_am) aggCappedAM = true;
+                if (se.capped_pm) aggCappedPM = true;
+                if (!aggTime && se.start_time && se.end_time) aggTime = se.start_time.slice(0,5) + '-' + se.end_time.slice(0,5);
+            }
+        });
+        var aggParts = [];
+        if (aggTime) aggParts.push(aggTime);
+        if (aggAM || aggPM) aggParts.push('AM:' + aggAM + (aggCappedAM ? ' <span class="capped-badge">CAP</span>' : '') + ' PM:' + aggPM + (aggCappedPM ? ' <span class="capped-badge">CAP</span>' : ''));
+        if (othersRostered > 0) aggParts.push('<span style="color:var(--gray-400);">+' + othersRostered + ' staff</span>');
+        if (aggParts.length > 0) detail += '<div style="font-size:0.55rem;color:var(--gray-500);line-height:1.4;text-align:center">' + aggParts.join('<br>') + '</div>';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
     grid.innerHTML = html;
