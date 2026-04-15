@@ -570,15 +570,25 @@
                 <label>Hours</label>
                 <div style="display:flex;gap:8px;align-items:center;"><input type="time" class="form-control" id="startTime" style="flex:1;"><span style="color:var(--gray-400);">to</span><input type="time" class="form-control" id="endTime" style="flex:1;"></div>
             </div>
-            <div class="form-group" id="studentsField" style="display:none;">
-                <label for="dayStudents">Number of Students</label>
-                <input type="number" class="form-control" id="dayStudents" min="0" placeholder="e.g. 12">
-            </div>
-            <div class="form-group" id="cappedField" style="display:none;">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                    <input type="checkbox" id="dayCapped" style="width:18px;height:18px;cursor:pointer;">
-                    <span>Class is capped (no more students)</span>
-                </label>
+            <div id="studentsField" style="display:none;">
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1;min-width:140px;">
+                        <label for="dayStudentsAM">Morning Students</label>
+                        <input type="number" class="form-control" id="dayStudentsAM" min="0" placeholder="e.g. 12">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
+                            <input type="checkbox" id="dayCappedAM" style="width:16px;height:16px;cursor:pointer;">
+                            <span>Capped</span>
+                        </label>
+                    </div>
+                    <div class="form-group" style="flex:1;min-width:140px;">
+                        <label for="dayStudentsPM">Afternoon Students</label>
+                        <input type="number" class="form-control" id="dayStudentsPM" min="0" placeholder="e.g. 8">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
+                            <input type="checkbox" id="dayCappedPM" style="width:16px;height:16px;cursor:pointer;">
+                            <span>Capped</span>
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="form-group"><label for="dayNote">Note (optional)</label><input type="text" class="form-control" id="dayNote" placeholder="e.g. Morning only"></div>
             <div id="dayAssistAvail" style="display:none;margin-top:12px;">
@@ -911,7 +921,7 @@ function updateSummary() {
     var rostered = 0, students = 0;
     staffList.forEach(function(s) {
         var e = getAvailability(s.id, todayStr);
-        if (e && (e.status === 'available' || e.status === 'partial')) { rostered++; students += (e.students || 0); }
+        if (e && (e.status === 'available' || e.status === 'partial')) { rostered++; students += (e.students_am || 0) + (e.students_pm || 0); }
     });
     document.getElementById('availableToday').textContent = rostered;
     document.getElementById('studentsToday').textContent = students;
@@ -939,8 +949,8 @@ function renderCalendar() {
         if (entry) {
             var parts = [];
             if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + '-' + entry.end_time.slice(0,5));
-            if (entry.students) parts.push(entry.students + ' students');
-            if (entry.capped) parts.push('<span class="capped-badge">CAPPED</span>');
+            if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
+            if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
             if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
         }
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
@@ -1078,7 +1088,7 @@ function updateDayButtons(mode) {
 async function bulkSetAvailability(status) {
     if (!selectedStaffId || multiSelectedDays.size === 0) return;
     var upserts = [];
-    multiSelectedDays.forEach(function(dateStr) { upserts.push({ staff_id: selectedStaffId, date: dateStr, status: status, start_time: null, end_time: null, students: 0, capped: false, note: '', created_by: currentUser.id }); });
+    multiSelectedDays.forEach(function(dateStr) { upserts.push({ staff_id: selectedStaffId, date: dateStr, status: status, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, note: '', created_by: currentUser.id }); });
     var result = await sb.from('cbd_availability').upsert(upserts, { onConflict: 'staff_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(multiSelectedDays.size + ' days updated');
@@ -1129,12 +1139,13 @@ async function openDayModal(dateStr) {
     document.querySelectorAll('#dayModal .avail-option').forEach(function(o){ o.className = 'avail-option'; });
     document.getElementById('startTime').value = '';
     document.getElementById('endTime').value = '';
-    document.getElementById('dayStudents').value = '';
-    document.getElementById('dayCapped').checked = false;
+    document.getElementById('dayStudentsAM').value = '';
+    document.getElementById('dayStudentsPM').value = '';
+    document.getElementById('dayCappedAM').checked = false;
+    document.getElementById('dayCappedPM').checked = false;
     document.getElementById('dayNote').value = '';
     document.getElementById('timeFields').style.display = 'none';
     document.getElementById('studentsField').style.display = 'none';
-    document.getElementById('cappedField').style.display = 'none';
 
     var entry = getAvailability(selectedStaffId, dateStr);
     if (entry) {
@@ -1142,13 +1153,14 @@ async function openDayModal(dateStr) {
         if (opt) opt.classList.add('selected-' + entry.status);
         if (entry.start_time) document.getElementById('startTime').value = entry.start_time.slice(0,5);
         if (entry.end_time) document.getElementById('endTime').value = entry.end_time.slice(0,5);
-        if (entry.students) document.getElementById('dayStudents').value = entry.students;
-        if (entry.capped) document.getElementById('dayCapped').checked = true;
+        if (entry.students_am) document.getElementById('dayStudentsAM').value = entry.students_am;
+        if (entry.students_pm) document.getElementById('dayStudentsPM').value = entry.students_pm;
+        if (entry.capped_am) document.getElementById('dayCappedAM').checked = true;
+        if (entry.capped_pm) document.getElementById('dayCappedPM').checked = true;
         if (entry.note) document.getElementById('dayNote').value = entry.note;
         if (entry.status === 'available' || entry.status === 'partial') {
             document.getElementById('timeFields').style.display = 'block';
             document.getElementById('studentsField').style.display = 'block';
-            document.getElementById('cappedField').style.display = 'block';
         }
         document.getElementById('removeDayBtn').style.display = 'inline-flex';
     } else {
@@ -1183,7 +1195,6 @@ function selectAvailOption(el) {
     var show = (status === 'available' || status === 'partial');
     document.getElementById('timeFields').style.display = show ? 'block' : 'none';
     document.getElementById('studentsField').style.display = show ? 'block' : 'none';
-    document.getElementById('cappedField').style.display = show ? 'block' : 'none';
 }
 
 async function saveDayAvailability() {
@@ -1193,10 +1204,12 @@ async function saveDayAvailability() {
     var status = selected.dataset.status;
     var startTime = document.getElementById('startTime').value || null;
     var endTime = document.getElementById('endTime').value || null;
-    var students = document.getElementById('dayStudents').value ? parseInt(document.getElementById('dayStudents').value) : 0;
-    var capped = document.getElementById('dayCapped').checked;
+    var studentsAM = document.getElementById('dayStudentsAM').value ? parseInt(document.getElementById('dayStudentsAM').value) : 0;
+    var studentsPM = document.getElementById('dayStudentsPM').value ? parseInt(document.getElementById('dayStudentsPM').value) : 0;
+    var cappedAM = document.getElementById('dayCappedAM').checked;
+    var cappedPM = document.getElementById('dayCappedPM').checked;
     var note = document.getElementById('dayNote').value.trim();
-    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students: students, capped: capped, note: note, created_by: currentUser.id };
+    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, note: note, created_by: currentUser.id };
     var result = await sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     if (!availabilityCache[selectedStaffId]) availabilityCache[selectedStaffId] = {};
@@ -1225,21 +1238,23 @@ function renderOverview() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entries = [];
-        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, students: e.students, capped: e.capped }); });
+        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm }); });
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
         var detailHtml = '';
         if (entries.length > 0) {
             detailHtml = '<div class="overview-day-staff">';
-            var totalStudents = 0;
+            var totalAM = 0, totalPM = 0;
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
                 detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+'</span></div>';
-                totalStudents += (e.students || 0);
+                totalAM += (e.students_am || 0); totalPM += (e.students_pm || 0);
             });
             if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400)">+' + (entries.length-3) + ' more</div>';
-            if (totalStudents > 0) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.6rem;">' + totalStudents + ' students</div>';
-            var anyCapped = entries.some(function(e){ return e.capped; });
-            if (anyCapped) detailHtml += '<span class="capped-badge">CAPPED</span>';
+            if (totalAM > 0 || totalPM > 0) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.55rem;">AM:' + totalAM + ' PM:' + totalPM + '</div>';
+            var anyCappedAM = entries.some(function(e){ return e.capped_am; });
+            var anyCappedPM = entries.some(function(e){ return e.capped_pm; });
+            if (anyCappedAM) detailHtml += '<span class="capped-badge">AM CAP</span>';
+            if (anyCappedPM) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
         html += '<div class="' + cls + '" style="cursor:default;"><div class="day-number">' + day + '</div>' + detailHtml + '</div>';
@@ -1371,8 +1386,8 @@ function renderMyRoster() {
         if (entry && (entry.status === 'available' || entry.status === 'partial')) {
             var parts = [];
             if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + ' - ' + entry.end_time.slice(0,5));
-            if (entry.students) parts.push(entry.students + ' students');
-            if (entry.capped) parts.push('<span class="capped-badge">CAPPED</span>');
+            if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
+            if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
             if (entry.note) parts.push('<span style="color:var(--gray-500);">' + escHtml(entry.note) + '</span>');
             if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
         }
@@ -1679,9 +1694,10 @@ function generatePDF(month, year, pdfStaff) {
                 var det = isIndividual ? '' : en.name.split(' ')[0]+' ';
                 det += dd.status==='available'?'Rostered':dd.status==='partial'?'Partial':'Unavailable';
                 if(dd.start_time&&dd.end_time) det+=' '+dd.start_time.slice(0,5)+'-'+dd.end_time.slice(0,5);
-                if(dd.capped) det += ' [CAPPED]';
+                if(dd.capped_am) det += ' [AM CAP]'; if(dd.capped_pm) det += ' [PM CAP]';
                 doc.setTextColor(50,50,50); doc.text(det, x+4.5, lineY, {maxWidth:colW-6}); lineY+=3.2;
-                if(dd.students&&e+1<maxLines){doc.setTextColor(100,100,100);doc.text(dd.students+' students',x+4.5,lineY,{maxWidth:colW-6});lineY+=3.2;}
+                var stuTxt = ''; if(dd.students_am) stuTxt += 'AM:'+dd.students_am; if(dd.students_pm) stuTxt += (stuTxt?' ':'')+'PM:'+dd.students_pm;
+                if(stuTxt&&e+1<maxLines){doc.setTextColor(100,100,100);doc.text(stuTxt,x+4.5,lineY,{maxWidth:colW-6});lineY+=3.2;}
             }
         }
         cellIdx++;

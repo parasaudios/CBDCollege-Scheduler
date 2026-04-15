@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS public.cbd_availability (
     status TEXT NOT NULL CHECK (status IN ('available', 'partial', 'unavailable')),
     start_time TIME,
     end_time TIME,
-    students INTEGER DEFAULT 0,
+    students_am INTEGER DEFAULT 0,
+    students_pm INTEGER DEFAULT 0,
+    capped_am BOOLEAN DEFAULT false,
+    capped_pm BOOLEAN DEFAULT false,
     note TEXT DEFAULT '',
     created_by UUID REFERENCES auth.users(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -130,7 +133,8 @@ ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_name_length CHECK 
 ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_role_length CHECK (char_length(role) <= 100);
 ALTER TABLE public.cbd_staff_members ADD CONSTRAINT cbd_staff_color_format CHECK (color ~ '^#[0-9a-fA-F]{6}$');
 ALTER TABLE public.cbd_profiles ADD CONSTRAINT cbd_profiles_name_length CHECK (char_length(full_name) BETWEEN 1 AND 200);
-ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_students_range CHECK (students >= 0 AND students <= 999);
+ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_students_am_range CHECK (students_am >= 0 AND students_am <= 999);
+ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_students_pm_range CHECK (students_pm >= 0 AND students_pm <= 999);
 ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_note_length CHECK (char_length(note) <= 500);
 ALTER TABLE public.cbd_availability ADD CONSTRAINT cbd_avail_time_order CHECK (start_time IS NULL OR end_time IS NULL OR start_time < end_time);
 
