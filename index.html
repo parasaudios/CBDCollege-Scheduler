@@ -393,7 +393,7 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Assistant Availability</h2>
-                    <div style="font-size:0.8rem;color:var(--gray-500);">See when assistants are available to work</div>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Click cells to edit. Use bulk controls below to set multiple days.</div>
                 </div>
                 <div class="card-body">
                     <div class="calendar-controls">
@@ -403,6 +403,25 @@
                             <button class="btn btn-outline btn-icon" onclick="changeAssistMonth(1)">&#8250;</button>
                         </div>
                         <button class="btn btn-outline btn-sm" onclick="goToAssistToday()">Today</button>
+                    </div>
+                    <div class="bulk-panel">
+                        <div class="bulk-panel-header">
+                            <h4>Bulk Set Availability</h4>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
+                            <label style="font-size:0.8rem;font-weight:500;">Assistant:</label>
+                            <select class="form-control" id="assistBulkSelect" style="width:auto;min-width:150px;padding:4px 8px;font-size:0.8rem;" onchange="updateAssistBulkButtons()"><option value="">-- Select --</option></select>
+                        </div>
+                        <div class="bulk-day-buttons" id="assistBulkBtns">
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="1" onclick="toggleDayOfWeek(1,'assistavail')">Mon</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="2" onclick="toggleDayOfWeek(2,'assistavail')">Tue</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="3" onclick="toggleDayOfWeek(3,'assistavail')">Wed</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="4" onclick="toggleDayOfWeek(4,'assistavail')">Thu</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="5" onclick="toggleDayOfWeek(5,'assistavail')">Fri</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="6" onclick="toggleDayOfWeek(6,'assistavail')">Sat</button>
+                            <button class="btn btn-outline btn-sm btn-day" data-dow="0" onclick="toggleDayOfWeek(0,'assistavail')">Sun</button>
+                            <button class="btn btn-outline btn-sm btn-weekdays" onclick="toggleWeekdays('assistavail')">All Weekdays</button>
+                        </div>
                     </div>
                     <div id="assistAvailGrid"></div>
                 </div>
@@ -596,6 +615,28 @@
     </div>
 </div>
 
+<!-- Trainer: Edit Assistant Availability Modal -->
+<div class="modal-overlay" id="trainerAssistAvailModal">
+    <div class="modal">
+        <div class="modal-header"><h3 id="trainerAssistAvailTitle">Set Availability</h3><button class="btn btn-icon btn-outline" onclick="closeModal('trainerAssistAvailModal')">&times;</button></div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Set availability:</label>
+                <div class="avail-options" style="margin-top:8px;">
+                    <div class="avail-option" id="trainerAssistYes" data-val="true" onclick="selectTrainerAssistAvail(this)"><div style="font-size:1.2rem;">&#9989;</div>Available</div>
+                    <div class="avail-option" id="trainerAssistNo" data-val="false" onclick="selectTrainerAssistAvail(this)"><div style="font-size:1.2rem;">&#10060;</div>Not Available</div>
+                </div>
+            </div>
+            <div class="form-group"><label for="trainerAssistNote">Note (optional)</label><input type="text" class="form-control" id="trainerAssistNote" placeholder="e.g. Only mornings"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('trainerAssistAvailModal')">Cancel</button>
+            <button class="btn btn-outline" style="color:var(--danger)" onclick="clearTrainerAssistAvail()">Clear Day</button>
+            <button class="btn btn-success" onclick="saveTrainerAssistAvail()">Save</button>
+        </div>
+    </div>
+</div>
+
 <!-- Export Modal -->
 <div class="modal-overlay" id="exportModal">
     <div class="modal">
@@ -674,7 +715,10 @@ var editingStaffId = null;
 var selectedDay = null;
 var myAvailSelectedDay = null;
 var multiSelectedDays = new Set();
-var multiSelectMode = 'roster'; // 'roster' or 'myavail'
+var multiSelectMode = 'roster'; // 'roster', 'myavail', or 'assistavail'
+var trainerAssistEditUserId = null;
+var trainerAssistEditDate = null;
+var assistantProfiles = [];
 var bulkModeActive = false;
 var currentTab = 'roster';
 var realtimeChannel = null;
@@ -932,6 +976,14 @@ function updateMultiSelectBar() {
                 '<button class="btn btn-sm" onclick="bulkSetMyAvail(false)">Set Not Available</button>' +
                 '<button class="btn btn-sm" onclick="bulkClearMyAvail()">Clear</button>' +
                 '<button class="btn btn-sm" onclick="clearMultiSelect()">Cancel</button>';
+        } else if (multiSelectMode === 'assistavail') {
+            var selAssist = document.getElementById('assistBulkSelect');
+            var name = selAssist && selAssist.selectedOptions[0] ? selAssist.selectedOptions[0].textContent : '';
+            actions.innerHTML = (name ? '<span style="font-size:0.8rem;opacity:0.9;">' + name + ':</span> ' : '') +
+                '<button class="btn btn-sm" onclick="bulkSetAssistAvail(true)">Set Available</button>' +
+                '<button class="btn btn-sm" onclick="bulkSetAssistAvail(false)">Set Not Available</button>' +
+                '<button class="btn btn-sm" onclick="bulkClearAssistAvail()">Clear</button>' +
+                '<button class="btn btn-sm" onclick="clearMultiSelect()">Cancel</button>';
         } else {
             actions.innerHTML = '<button class="btn btn-sm" onclick="bulkSetAvailability(\'available\')">Set Rostered</button>' +
                 '<button class="btn btn-sm" onclick="bulkSetAvailability(\'partial\')">Set Partial</button>' +
@@ -941,7 +993,7 @@ function updateMultiSelectBar() {
         }
     } else { bar.classList.remove('visible'); }
 }
-function clearMultiSelect() { multiSelectedDays.clear(); bulkModeActive = false; updateBulkToggleButtons(); updateDayButtons('roster'); updateDayButtons('myavail'); updateMultiSelectBar(); if (multiSelectMode === 'myavail') renderMyAvail(); else renderCalendar(); }
+function clearMultiSelect() { multiSelectedDays.clear(); bulkModeActive = false; updateBulkToggleButtons(); updateDayButtons('roster'); updateDayButtons('myavail'); updateDayButtons('assistavail'); updateMultiSelectBar(); if (multiSelectMode === 'myavail') renderMyAvail(); else if (multiSelectMode === 'assistavail') { /* table doesn't need re-render for selection */ } else renderCalendar(); }
 
 function toggleBulkMode(mode) {
     if (bulkModeActive && multiSelectMode === mode) {
@@ -971,6 +1023,7 @@ function updateBulkToggleButtons() {
 function getDatesForDow(dow, mode) {
     var month, year;
     if (mode === 'roster') { month = currentMonth; year = currentYear; }
+    else if (mode === 'assistavail') { month = assistMonth; year = assistYear; }
     else { month = myAvailMonth; year = myAvailYear; }
     var dates = [];
     var lastDay = new Date(year, month+1, 0).getDate();
@@ -1007,7 +1060,7 @@ function toggleWeekdays(mode) {
     if (mode === 'roster') renderCalendar(); else renderMyAvail();
 }
 function updateDayButtons(mode) {
-    var containerId = mode === 'roster' ? 'rosterBulkBtns' : 'myavailBulkBtns';
+    var containerId = mode === 'roster' ? 'rosterBulkBtns' : mode === 'assistavail' ? 'assistBulkBtns' : 'myavailBulkBtns';
     var container = document.getElementById(containerId);
     if (!container) return;
     container.querySelectorAll('.btn-day').forEach(function(btn) {
@@ -1205,11 +1258,17 @@ async function renderAssistAvail() {
 
     // Get assistant profiles
     var profileRes = await sb.from('cbd_profiles').select('id, full_name').eq('role', 'assistant');
-    var assistants = profileRes.data || [];
-    if (assistants.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128101;</div><div>No assistants found</div></div>'; return; }
+    assistantProfiles = profileRes.data || [];
+    if (assistantProfiles.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128101;</div><div>No assistants found</div></div>'; return; }
+
+    // Populate bulk select dropdown
+    var bulkSel = document.getElementById('assistBulkSelect');
+    var curVal = bulkSel.value;
+    bulkSel.innerHTML = '<option value="">-- Select --</option>' + assistantProfiles.map(function(a) { return '<option value="' + a.id + '">' + escHtml(a.full_name) + '</option>'; }).join('');
+    if (curVal) bulkSel.value = curVal;
 
     var html = '<table class="admin-table"><thead><tr><th>Date</th>';
-    assistants.forEach(function(a) { html += '<th>' + escHtml(a.full_name) + '</th>'; });
+    assistantProfiles.forEach(function(a) { html += '<th>' + escHtml(a.full_name) + '</th>'; });
     html += '</tr></thead><tbody>';
 
     for (var day = 1; day <= lastDay; day++) {
@@ -1218,14 +1277,15 @@ async function renderAssistAvail() {
         var dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
         var isWeekend = d.getDay() === 0 || d.getDay() === 6;
         html += '<tr style="' + (isWeekend ? 'background:var(--gray-50);' : '') + '"><td style="font-weight:500;">' + dayName + ' ' + day + '</td>';
-        assistants.forEach(function(a) {
+        assistantProfiles.forEach(function(a) {
             var dayEntries = assistantAvailCache[dateStr] || [];
             var entry = dayEntries.find(function(e) { return e.user_id === a.id; });
+            var cellStyle = 'cursor:pointer;';
             if (entry) {
                 var badge = entry.is_available ? '<span class="avail-badge yes">Available</span>' : '<span class="avail-badge no">Unavailable</span>';
-                html += '<td>' + badge + (entry.note ? '<div style="font-size:0.75rem;color:var(--gray-500);">' + escHtml(entry.note) + '</div>' : '') + '</td>';
+                html += '<td style="' + cellStyle + '" onclick="openTrainerAssistAvailModal(\'' + a.id + '\',\'' + dateStr + '\')">' + badge + (entry.note ? '<div style="font-size:0.75rem;color:var(--gray-500);">' + escHtml(entry.note) + '</div>' : '') + '</td>';
             } else {
-                html += '<td style="color:var(--gray-300);font-size:0.8rem;">-</td>';
+                html += '<td style="' + cellStyle + 'color:var(--gray-300);font-size:0.8rem;" onclick="openTrainerAssistAvailModal(\'' + a.id + '\',\'' + dateStr + '\')">-</td>';
             }
         });
         html += '</tr>';
@@ -1233,8 +1293,59 @@ async function renderAssistAvail() {
     html += '</tbody></table>';
     container.innerHTML = html;
 }
-function changeAssistMonth(dir) { assistMonth += dir; if (assistMonth > 11) { assistMonth = 0; assistYear++; } if (assistMonth < 0) { assistMonth = 11; assistYear--; } renderAssistAvail(); }
-function goToAssistToday() { var n = new Date(); assistMonth = n.getMonth(); assistYear = n.getFullYear(); renderAssistAvail(); }
+function changeAssistMonth(dir) { assistMonth += dir; if (assistMonth > 11) { assistMonth = 0; assistYear++; } if (assistMonth < 0) { assistMonth = 11; assistYear--; } clearMultiSelect(); renderAssistAvail(); }
+function goToAssistToday() { var n = new Date(); assistMonth = n.getMonth(); assistYear = n.getFullYear(); clearMultiSelect(); renderAssistAvail(); }
+function updateAssistBulkButtons() { updateDayButtons('assistavail'); }
+
+function openTrainerAssistAvailModal(userId, dateStr) {
+    trainerAssistEditUserId = userId;
+    trainerAssistEditDate = dateStr;
+    var p = dateStr.split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+    var assistant = assistantProfiles.find(function(a) { return a.id === userId; });
+    document.getElementById('trainerAssistAvailTitle').textContent = (assistant ? assistant.full_name + ' — ' : '') + dayName + ', ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1];
+    document.getElementById('trainerAssistYes').className = 'avail-option';
+    document.getElementById('trainerAssistNo').className = 'avail-option';
+    document.getElementById('trainerAssistNote').value = '';
+    var dayEntries = assistantAvailCache[dateStr] || [];
+    var entry = dayEntries.find(function(e) { return e.user_id === userId; });
+    if (entry) {
+        if (entry.is_available) document.getElementById('trainerAssistYes').classList.add('selected-available');
+        else document.getElementById('trainerAssistNo').classList.add('selected-unavailable');
+        if (entry.note) document.getElementById('trainerAssistNote').value = entry.note;
+    }
+    document.getElementById('trainerAssistAvailModal').classList.add('active');
+}
+function selectTrainerAssistAvail(el) {
+    document.getElementById('trainerAssistYes').className = 'avail-option';
+    document.getElementById('trainerAssistNo').className = 'avail-option';
+    if (el.dataset.val === 'true') el.classList.add('selected-available');
+    else el.classList.add('selected-unavailable');
+}
+async function saveTrainerAssistAvail() {
+    if (!trainerAssistEditUserId || !trainerAssistEditDate) return;
+    var isAvail = document.getElementById('trainerAssistYes').className.includes('selected');
+    var isNotAvail = document.getElementById('trainerAssistNo').className.includes('selected');
+    if (!isAvail && !isNotAvail) { showToast('Please select Available or Not Available'); return; }
+    var note = document.getElementById('trainerAssistNote').value.trim();
+    var row = { user_id: trainerAssistEditUserId, date: trainerAssistEditDate, is_available: isAvail, note: note };
+    var result = await sb.from('cbd_assistant_availability').upsert(row, { onConflict: 'user_id,date' });
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    closeModal('trainerAssistAvailModal');
+    showToast('Availability saved');
+    await loadAssistantAvailForMonth(assistMonth, assistYear);
+    renderAssistAvail();
+}
+async function clearTrainerAssistAvail() {
+    if (!trainerAssistEditUserId || !trainerAssistEditDate) return;
+    var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', trainerAssistEditUserId).eq('date', trainerAssistEditDate);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    closeModal('trainerAssistAvailModal');
+    showToast('Availability cleared');
+    await loadAssistantAvailForMonth(assistMonth, assistYear);
+    renderAssistAvail();
+}
 
 // ============ My Roster (Assistant - read only) ============
 function renderMyRoster() {
@@ -1369,6 +1480,28 @@ async function bulkClearMyAvail() {
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(multiSelectedDays.size + ' days cleared');
     await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
+}
+
+async function bulkSetAssistAvail(isAvail) {
+    var userId = document.getElementById('assistBulkSelect').value;
+    if (!userId) { showToast('Select an assistant first'); return; }
+    if (multiSelectedDays.size === 0) return;
+    var upserts = [];
+    multiSelectedDays.forEach(function(dateStr) { upserts.push({ user_id: userId, date: dateStr, is_available: isAvail, note: '' }); });
+    var result = await sb.from('cbd_assistant_availability').upsert(upserts, { onConflict: 'user_id,date' });
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    showToast(multiSelectedDays.size + ' days set for ' + (isAvail ? 'available' : 'not available'));
+    await loadAssistantAvailForMonth(assistMonth, assistYear); clearMultiSelect(); renderAssistAvail();
+}
+async function bulkClearAssistAvail() {
+    var userId = document.getElementById('assistBulkSelect').value;
+    if (!userId) { showToast('Select an assistant first'); return; }
+    if (multiSelectedDays.size === 0) return;
+    var dates = Array.from(multiSelectedDays);
+    var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', userId).in('date', dates);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    showToast(multiSelectedDays.size + ' days cleared');
+    await loadAssistantAvailForMonth(assistMonth, assistYear); clearMultiSelect(); renderAssistAvail();
 }
 
 // ============ Staff CRUD (Trainer) ============
