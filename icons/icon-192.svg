@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#2563eb"/>
+  <text x="96" y="78" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="42" fill="white">CBD</text>
+  <rect x="40" y="95" width="112" height="3" rx="1.5" fill="rgba(255,255,255,0.3)"/>
+  <rect x="46" y="110" width="20" height="20" rx="3" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="72" y="110" width="20" height="20" rx="3" fill="#16a34a" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="98" y="110" width="20" height="20" rx="3" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="124" y="110" width="20" height="20" rx="3" fill="#f59e0b" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="46" y="136" width="20" height="20" rx="3" fill="#16a34a" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="72" y="136" width="20" height="20" rx="3" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="98" y="136" width="20" height="20" rx="3" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+  <rect x="124" y="136" width="20" height="20" rx="3" fill="#16a34a" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+</svg>

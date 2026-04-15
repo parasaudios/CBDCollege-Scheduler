@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.cbd_availability (
     students_pm INTEGER DEFAULT 0,
     capped_am BOOLEAN DEFAULT false,
     capped_pm BOOLEAN DEFAULT false,
+    day_role TEXT DEFAULT 'assistant' CHECK (day_role IN ('head_trainer', 'assistant')),
     note TEXT DEFAULT '',
     created_by UUID REFERENCES auth.users(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

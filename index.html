@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>CBD College - Staff Scheduler</title>
+    <meta name="description" content="CBD College Staff Scheduling App">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CBD Scheduler">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
     <style>
@@ -32,7 +39,7 @@
             --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-50); color: var(--gray-800); min-height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-50); color: var(--gray-800); min-height: 100vh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 
         .login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, var(--primary) 50%, #3b82f6 100%); }
         .login-card { background: white; border-radius: 16px; box-shadow: var(--shadow-lg); padding: 40px; width: 100%; max-width: 420px; margin: 20px; }
@@ -184,6 +191,7 @@
         .role-badge.assistant { background: var(--primary-light); color: var(--primary); }
 
         .capped-badge { display: inline-block; background: var(--danger-light); color: var(--danger); font-size: 0.55rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; line-height: 1.2; }
+        .day-role-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
         .detail-section { margin-bottom: 16px; }
         .detail-section h4 { font-size: 0.8rem; text-transform: uppercase; color: var(--gray-500); letter-spacing: 0.05em; margin-bottom: 8px; }
         .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius); margin-bottom: 4px; }
@@ -574,6 +582,13 @@
                     <div class="avail-option" data-status="available" onclick="selectAvailOption(this)"><div style="font-size:1.2rem;">&#9989;</div>Rostered</div>
                     <div class="avail-option" data-status="partial" onclick="selectAvailOption(this)"><div style="font-size:1.2rem;">&#9200;</div>Partial</div>
                     <div class="avail-option" data-status="unavailable" onclick="selectAvailOption(this)"><div style="font-size:1.2rem;">&#10060;</div>Unavailable</div>
+                </div>
+            </div>
+            <div class="form-group" id="dayRoleField" style="display:none;">
+                <label>Role for this day</label>
+                <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button type="button" class="btn btn-outline btn-sm day-role-btn" data-role="head_trainer" onclick="selectDayRole(this)">Head Trainer</button>
+                    <button type="button" class="btn btn-outline btn-sm day-role-btn" data-role="assistant" onclick="selectDayRole(this)">Assistant</button>
                 </div>
             </div>
             <div class="form-group" id="timeFields" style="display:none;">
@@ -994,6 +1009,8 @@ function renderCalendar() {
         var detail = '';
         if (entry) {
             var parts = [];
+            if (entry.day_role === 'head_trainer') parts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">HT</span>');
+            else if (entry.status === 'available' || entry.status === 'partial') parts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
             if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + '-' + entry.end_time.slice(0,5));
             if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
             if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
@@ -1135,7 +1152,7 @@ async function bulkSetAvailability(status) {
     if (!selectedStaffId || multiSelectedDays.size === 0) return;
     var count = multiSelectedDays.size;
     var upserts = [];
-    multiSelectedDays.forEach(function(dateStr) { upserts.push({ staff_id: selectedStaffId, date: dateStr, status: status, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, note: '', created_by: currentUser.id }); });
+    multiSelectedDays.forEach(function(dateStr) { upserts.push({ staff_id: selectedStaffId, date: dateStr, status: status, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, note: '', day_role: 'assistant', created_by: currentUser.id }); });
     showToast('Saving ' + count + ' days...');
     var result = await sb.from('cbd_availability').upsert(upserts, { onConflict: 'staff_id,date' });
     if (result.error) { showToast('Failed to save roster: ' + result.error.message); return; }
@@ -1195,6 +1212,8 @@ async function openDayModal(dateStr) {
     document.getElementById('dayNote').value = '';
     document.getElementById('timeFields').style.display = 'none';
     document.getElementById('studentsField').style.display = 'none';
+    document.getElementById('dayRoleField').style.display = 'none';
+    document.querySelectorAll('.day-role-btn').forEach(function(b) { b.classList.remove('active'); });
 
     var entry = getAvailability(selectedStaffId, dateStr);
     if (entry) {
@@ -1207,9 +1226,13 @@ async function openDayModal(dateStr) {
         if (entry.capped_am) document.getElementById('dayCappedAM').checked = true;
         if (entry.capped_pm) document.getElementById('dayCappedPM').checked = true;
         if (entry.note) document.getElementById('dayNote').value = entry.note;
+        var dayRole = entry.day_role || 'assistant';
+        var roleBtn = document.querySelector('.day-role-btn[data-role="' + dayRole + '"]');
+        if (roleBtn) roleBtn.classList.add('active');
         if (entry.status === 'available' || entry.status === 'partial') {
             document.getElementById('timeFields').style.display = 'block';
             document.getElementById('studentsField').style.display = 'block';
+            document.getElementById('dayRoleField').style.display = 'block';
         }
         document.getElementById('removeDayBtn').style.display = 'inline-flex';
     } else {
@@ -1238,6 +1261,11 @@ async function openDayModal(dateStr) {
     document.getElementById('dayModal').classList.add('active');
 }
 
+function selectDayRole(el) {
+    document.querySelectorAll('.day-role-btn').forEach(function(b) { b.classList.remove('active'); });
+    el.classList.add('active');
+}
+
 function selectAvailOption(el) {
     document.querySelectorAll('#dayModal .avail-option').forEach(function(o){ o.className = 'avail-option'; });
     var status = el.dataset.status;
@@ -1245,6 +1273,11 @@ function selectAvailOption(el) {
     var show = (status === 'available' || status === 'partial');
     document.getElementById('timeFields').style.display = show ? 'block' : 'none';
     document.getElementById('studentsField').style.display = show ? 'block' : 'none';
+    document.getElementById('dayRoleField').style.display = show ? 'block' : 'none';
+    if (show && !document.querySelector('.day-role-btn.active')) {
+        var defBtn = document.querySelector('.day-role-btn[data-role="assistant"]');
+        if (defBtn) defBtn.classList.add('active');
+    }
 }
 
 async function saveDayAvailability() {
@@ -1259,7 +1292,9 @@ async function saveDayAvailability() {
     var cappedAM = document.getElementById('dayCappedAM').checked;
     var cappedPM = document.getElementById('dayCappedPM').checked;
     var note = document.getElementById('dayNote').value.trim();
-    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, note: note, created_by: currentUser.id };
+    var dayRoleBtn = document.querySelector('.day-role-btn.active');
+    var dayRole = dayRoleBtn ? dayRoleBtn.dataset.role : 'assistant';
+    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, note: note, day_role: dayRole, created_by: currentUser.id };
     var saveBtn = document.querySelector('#dayModal .btn-success');
     setLoading(saveBtn, true);
     var result = await sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' });
@@ -1291,7 +1326,7 @@ function renderOverview() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entries = [];
-        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm }); });
+        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, day_role: e.day_role || 'assistant', students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm }); });
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
         var detailHtml = '';
         if (entries.length > 0) {
@@ -1299,7 +1334,8 @@ function renderOverview() {
             var totalAM = 0, totalPM = 0;
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
-                detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+'</span></div>';
+                var roleTag = e.day_role === 'head_trainer' ? ' <span style="background:var(--primary);color:white;padding:0 3px;border-radius:2px;font-size:0.45rem;font-weight:700;">HT</span>' : '';
+                detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+roleTag+'</span></div>';
                 totalAM += (e.students_am || 0); totalPM += (e.students_pm || 0);
             });
             if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400)">+' + (entries.length-3) + ' more</div>';
@@ -1438,6 +1474,8 @@ function renderMyRoster() {
         var detail = '';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) {
             var parts = [];
+            if (entry.day_role === 'head_trainer') parts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Head Trainer</span>');
+            else parts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Assistant</span>');
             if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + ' - ' + entry.end_time.slice(0,5));
             if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
             if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
@@ -1752,6 +1790,7 @@ function generatePDF(month, year, pdfStaff) {
                 if(dd.status==='available') doc.setFillColor(22,163,74); else if(dd.status==='partial') doc.setFillColor(245,158,11); else doc.setFillColor(220,38,38);
                 doc.circle(x+2.5,lineY-0.8,0.8,'F');
                 var det = isIndividual ? '' : en.name.split(' ')[0]+' ';
+                if (dd.day_role === 'head_trainer') det += '[HT] ';
                 det += dd.status==='available'?'Rostered':dd.status==='partial'?'Partial':'Unavailable';
                 if(dd.start_time&&dd.end_time) det+=' '+dd.start_time.slice(0,5)+'-'+dd.end_time.slice(0,5);
                 if(dd.capped_am) det += ' [AM CAP]'; if(dd.capped_pm) det += ' [PM CAP]';
@@ -1844,13 +1883,13 @@ async function openDayDetail(dateStr) {
     staffList.forEach(function(s) {
         var e = getAvailability(s.id, dateStr);
         if (e && (e.status === 'available' || e.status === 'partial')) {
-            rostered.push({ name: s.name, role: s.role, color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm, note: e.note });
+            rostered.push({ name: s.name, day_role: e.day_role || 'assistant', color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm, note: e.note });
         }
     });
 
-    // Find trainers and assistants from rostered staff
-    var trainers = rostered.filter(function(r) { return r.role && r.role.toLowerCase() === 'trainer'; });
-    var assistants = rostered.filter(function(r) { return !r.role || r.role.toLowerCase() !== 'trainer'; });
+    // Find head trainers and assistants based on day_role from availability
+    var trainers = rostered.filter(function(r) { return r.day_role === 'head_trainer'; });
+    var assistants = rostered.filter(function(r) { return r.day_role !== 'head_trainer'; });
 
     // Aggregate student counts (take max across rostered staff since it's per-class not per-person)
     var amStudents = 0, pmStudents = 0, amCapped = false, pmCapped = false, classTime = '';
@@ -1928,6 +1967,11 @@ async function openDayDetail(dateStr) {
 
     document.getElementById('dayDetailBody').innerHTML = html;
     document.getElementById('dayDetailModal').classList.add('active');
+}
+
+// ============ PWA ============
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function() {});
 }
 
 // ============ Init ============
