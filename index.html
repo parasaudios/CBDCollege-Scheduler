@@ -94,12 +94,12 @@
         .month-nav { display: flex; align-items: center; gap: 12px; }
         .month-label { font-size: 1.2rem; font-weight: 700; min-width: 200px; text-align: center; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-        .calendar-day-header { padding: 8px 4px; text-align: center; font-size: 0.75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; }
+        .calendar-day-header { padding: 8px 4px; text-align: center; font-size: 0.85rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; }
         .calendar-day { aspect-ratio: 1; border: 1px solid var(--gray-200); border-radius: 6px; padding: 4px; display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: all 0.1s; position: relative; min-height: 60px; }
         .calendar-day:hover { border-color: var(--primary); }
         .calendar-day.empty { border: none; cursor: default; }
         .calendar-day.empty:hover { border: none; }
-        .calendar-day .day-number { font-size: 0.8rem; font-weight: 600; color: var(--gray-700); margin-bottom: 2px; }
+        .calendar-day .day-number { font-size: 0.95rem; font-weight: 600; color: var(--gray-700); margin-bottom: 2px; }
         .calendar-day.today { border-color: var(--primary); border-width: 2px; }
         .calendar-day.today .day-number { color: var(--primary); }
         .calendar-day.available { background: var(--success-light); border-color: #86efac; }
@@ -114,9 +114,9 @@
         .avail-dot.partial { background: var(--warning); }
         .avail-dot.unavailable { background: var(--danger); }
 
-        .overview-day-staff { font-size: 0.65rem; line-height: 1.3; width: 100%; overflow: hidden; }
+        .overview-day-staff { font-size: 0.8rem; line-height: 1.4; width: 100%; overflow: hidden; }
         .overview-staff-entry { display: flex; align-items: center; gap: 3px; padding: 1px 0; }
-        .overview-staff-entry .mini-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .overview-staff-entry .mini-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .overview-staff-entry .mini-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 0.8rem; color: var(--gray-600); }
@@ -189,7 +189,7 @@
         .role-badge.trainer { background: #fef3c7; color: #92400e; }
         .role-badge.assistant { background: var(--primary-light); color: var(--primary); }
 
-        .capped-badge { display: inline-block; background: var(--danger-light); color: var(--danger); font-size: 0.55rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; line-height: 1.2; }
+        .capped-badge { display: inline-block; background: var(--danger-light); color: var(--danger); font-size: 0.7rem; font-weight: 700; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; line-height: 1.2; }
         .day-role-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
         .detail-section { margin-bottom: 16px; }
         .detail-section h4 { font-size: 0.8rem; text-transform: uppercase; color: var(--gray-500); letter-spacing: 0.05em; margin-bottom: 8px; }
@@ -249,9 +249,9 @@
             .month-label { font-size: 0.95rem; min-width: 130px; }
             .btn-icon { width: 32px; height: 32px; }
             .calendar-grid { gap: 1px; }
-            .calendar-day-header { padding: 4px 2px; font-size: 0.6rem; }
+            .calendar-day-header { padding: 4px 2px; font-size: 0.7rem; }
             .calendar-day { aspect-ratio: auto; min-height: 48px; padding: 2px; border-radius: 4px; }
-            .calendar-day .day-number { font-size: 0.7rem; }
+            .calendar-day .day-number { font-size: 0.8rem; }
 
             .bulk-panel { padding: 8px 10px; margin-bottom: 10px; }
             .bulk-panel-header h4 { font-size: 0.8rem; }
@@ -260,7 +260,7 @@
             .bulk-day-buttons .btn { font-size: 0.68rem; padding: 4px 8px; }
 
             .staff-grid { grid-template-columns: 1fr; }
-            .overview-day-staff { font-size: 0.55rem; }
+            .overview-day-staff { font-size: 0.7rem; }
 
             .modal { max-width: 95vw; margin: 10px; }
             .modal-header { padding: 14px 16px 12px; }
@@ -1775,11 +1775,11 @@ function renderOverview() {
             detailHtml = '<div class="overview-day-staff">';
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
-                var roleTag = e.day_role === 'head_trainer' ? ' <span style="background:var(--primary);color:white;padding:0 3px;border-radius:2px;font-size:0.45rem;font-weight:700;">HT</span>' : '';
+                var roleTag = e.day_role === 'head_trainer' ? ' <span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.6rem;font-weight:700;">HT</span>' : '';
                 detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+roleTag+'</span></div>';
             });
-            if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400)">+' + (entries.length-3) + ' more</div>';
-            if (ci && (ci.students_am || ci.students_pm)) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.55rem;">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
+            if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400);font-size:0.75rem;">+' + (entries.length-3) + ' more</div>';
+            if (ci && (ci.students_am || ci.students_pm)) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.75rem;">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
             if (ci && ci.capped_am) detailHtml += '<span class="capped-badge">AM CAP</span>';
             if (ci && ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
