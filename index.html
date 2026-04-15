@@ -353,6 +353,7 @@
                             </div>
                             <div style="display:flex;gap:8px;">
                                 <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
+                                <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
                                 <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="clearAllRosterMonth()">Clear Month</button>
                             </div>
                         </div>
@@ -720,6 +721,25 @@
     </div>
 </div>
 
+<!-- Bulk Roster Template Modal -->
+<div class="modal-overlay" id="bulkTemplateModal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-header"><h3>Weekly Roster Template</h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkTemplateModal')">&times;</button></div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:16px;">Select which staff to roster on each day. This will apply to every matching day in the current month. Existing roster entries will be kept unless you check "Overwrite existing".</p>
+            <div id="bulkTemplateDays" style="display:flex;flex-direction:column;gap:14px;"></div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:16px;padding:10px 12px;background:var(--warning-light);border-radius:var(--radius);font-size:0.85rem;">
+                <input type="checkbox" id="bulkTemplateOverwrite" style="width:18px;height:18px;cursor:pointer;">
+                <span><strong>Overwrite existing</strong> — Replace any existing roster entries for those days</span>
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('bulkTemplateModal')">Cancel</button>
+            <button class="btn btn-success" id="applyTemplateBtn" onclick="applyBulkTemplate()">Apply to Month</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
@@ -1027,7 +1047,12 @@ function renderCalendar() {
         var entry = getAvailability(selectedStaffId, dateStr);
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
-        if (entry) cls += ' ' + entry.status;
+        // Check if staff submitted unavailable assistant availability but is rostered
+        var selStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
+        var rosterDayAssist = assistantAvailCache[dateStr] || [];
+        var selAssistEntry = (selStaff && selStaff.user_id) ? rosterDayAssist.find(function(a) { return a.user_id === selStaff.user_id; }) : null;
+        var rosterConflict = selAssistEntry && !selAssistEntry.is_available && entry && (entry.status === 'available' || entry.status === 'partial');
+        if (entry) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         var detail = '';
         // Show selected staff member's role badge
@@ -1215,6 +1240,90 @@ async function clearAllRosterMonth() {
     showToast(MONTH_NAMES[currentMonth] + ' cleared'); renderCalendar(); updateSummary();
 }
 
+// ============ Bulk Roster Template ============
+function openBulkTemplate() {
+    var container = document.getElementById('bulkTemplateDays');
+    var dayLabels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    var dayDows = [1,2,3,4,5,6,0]; // JS getDay() values
+    var html = '';
+    dayLabels.forEach(function(label, i) {
+        var dow = dayDows[i];
+        html += '<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;">';
+        html += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">' + label + '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        staffList.forEach(function(s) {
+            html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
+                '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
+                '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
+                '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
+        });
+        html += '</div></div>';
+    });
+    container.innerHTML = html;
+    document.getElementById('bulkTemplateOverwrite').checked = false;
+    document.getElementById('bulkTemplateModal').classList.add('active');
+}
+
+function styleTmplCheckbox(cb) {
+    var label = cb.closest('label');
+    if (cb.checked) { label.style.borderColor = 'var(--success)'; label.style.background = 'var(--success-light)'; }
+    else { label.style.borderColor = 'var(--gray-200)'; label.style.background = 'white'; }
+}
+
+async function applyBulkTemplate() {
+    var checkboxes = document.querySelectorAll('.tmpl-cb:checked');
+    if (checkboxes.length === 0) { showToast('Select at least one staff member on a day'); return; }
+
+    // Build a map: dow -> [staffId, staffId, ...]
+    var template = {};
+    checkboxes.forEach(function(cb) {
+        var dow = parseInt(cb.dataset.dow);
+        var staffId = cb.dataset.staffId;
+        if (!template[dow]) template[dow] = [];
+        template[dow].push(staffId);
+    });
+
+    var overwrite = document.getElementById('bulkTemplateOverwrite').checked;
+    var month = currentMonth;
+    var year = currentYear;
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var upserts = [];
+
+    for (var day = 1; day <= daysInMonth; day++) {
+        var d = new Date(year, month, day);
+        var dow = d.getDay();
+        if (!template[dow]) continue;
+        var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+
+        template[dow].forEach(function(staffId) {
+            var existing = getAvailability(staffId, dateStr);
+            if (existing && !overwrite) return; // skip if already rostered and not overwriting
+            upserts.push({ staff_id: staffId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
+        });
+    }
+
+    if (upserts.length === 0) { showToast('No changes needed — all selected days already rostered'); closeModal('bulkTemplateModal'); return; }
+
+    var btn = document.getElementById('applyTemplateBtn');
+    setLoading(btn, true);
+    showToast('Applying template (' + upserts.length + ' entries)...');
+
+    // Batch in groups of 50 to avoid payload limits
+    for (var i = 0; i < upserts.length; i += 50) {
+        var batch = upserts.slice(i, i + 50);
+        var result = await sb.from('cbd_availability').upsert(batch, { onConflict: 'staff_id,date' });
+        if (result.error) { setLoading(btn, false); showToast('Error: ' + result.error.message); return; }
+    }
+
+    setLoading(btn, false);
+    closeModal('bulkTemplateModal');
+    await loadAvailabilityForMonth(month, year);
+    renderCalendar();
+    if (currentTab === 'overview') renderOverview();
+    updateSummary();
+    showToast('Template applied — ' + upserts.length + ' roster entries created');
+}
+
 async function clearAllMyAvailMonth() {
     if (!confirm('Clear all your availability for ' + MONTH_NAMES[myAvailMonth] + ' ' + myAvailYear + '?')) return;
     var startDate = myAvailYear + '-' + String(myAvailMonth+1).padStart(2,'0') + '-01';
@@ -1341,7 +1450,15 @@ function renderOverview() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entries = [];
-        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, day_role: e.day_role || 'assistant' }); });
+        var dayAssist = assistantAvailCache[dateStr] || [];
+        staffList.forEach(function(s) {
+            var e = getAvailability(s.id, dateStr);
+            if (e) {
+                var assistEntry = s.user_id ? dayAssist.find(function(a) { return a.user_id === s.user_id; }) : null;
+                var showUnavail = assistEntry && !assistEntry.is_available && (e.status === 'available' || e.status === 'partial');
+                entries.push({ name: s.name, color: s.color, status: showUnavail ? 'unavailable' : e.status, day_role: e.day_role || 'assistant' });
+            }
+        });
         var ci = getDayClass(dateStr);
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
         var detailHtml = '';
@@ -1845,14 +1962,14 @@ function generatePrintPage(month, year, pdfStaff, printWin) {
         'h2 { font-size:14px; text-align:center; font-weight:400; color:#666; margin-bottom:12px; }' +
         'table { width:100%; border-collapse:collapse; table-layout:fixed; }' +
         'th { background:#2563eb; color:white; padding:6px 4px; font-size:11px; text-align:center; }' +
-        'td { border:1px solid #ddd; vertical-align:top; padding:4px 5px; height:80px; font-size:10px; }' +
+        'td { border:1px solid #ddd; vertical-align:top; padding:4px 5px; height:90px; font-size:12px; }' +
         'td.empty { background:#fafafa; }' +
         'td.rostered { background:#f0fdf4; }' +
         'td.has-staff { background:#f0f7ff; }' +
-        '.day-num { font-weight:700; font-size:12px; margin-bottom:3px; color:#333; }' +
-        '.time { font-weight:600; font-size:10px; color:#333; margin-bottom:2px; }' +
-        '.students { font-weight:700; font-size:11px; color:#2563eb; margin-bottom:2px; }' +
-        '.names { font-size:9px; color:#555; line-height:1.4; }' +
+        '.day-num { font-weight:700; font-size:13px; margin-bottom:3px; color:#333; }' +
+        '.time { font-weight:600; font-size:12px; color:#333; margin-bottom:2px; }' +
+        '.students { font-weight:700; font-size:13px; color:#2563eb; margin-bottom:2px; }' +
+        '.names { font-size:12px; color:#555; line-height:1.5; }' +
         '.footer { text-align:center; font-size:9px; color:#aaa; margin-top:8px; }' +
         '.no-print { text-align:center; margin-bottom:12px; }' +
         '.no-print button { padding:8px 24px; font-size:14px; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer; margin:0 4px; }' +
