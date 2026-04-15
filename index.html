@@ -331,8 +331,8 @@
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h2>Roster Management</h2>
-                        <div style="font-size:0.8rem;color:var(--gray-500);margin-top:2px;">Select a staff member, click dates to set roster. Shift+click for multi-select, or use bulk buttons below.</div>
+                        <h2>Staff Roster</h2>
+                        <div style="font-size:0.8rem;color:var(--gray-500);margin-top:2px;">Select a staff member to view their roster calendar.</div>
                     </div>
                     <div class="legend">
                         <div class="legend-item"><div class="legend-color available"></div> Rostered</div>
@@ -351,32 +351,11 @@
                                 <div class="month-label" id="monthLabel"></div>
                                 <button class="btn btn-outline btn-icon" onclick="changeMonth(1)">&#8250;</button>
                             </div>
-                            <div style="display:flex;gap:8px;">
-                                <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
-                                <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
-                                <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="clearAllRosterMonth()">Clear Month</button>
-                            </div>
-                        </div>
-                        <div class="bulk-panel">
-                            <div class="bulk-panel-header">
-                                <h4>Bulk Selection</h4>
-                                <button class="btn btn-sm btn-bulk-toggle" id="rosterBulkToggle" onclick="toggleBulkMode('roster')">Enter Bulk Mode</button>
-                            </div>
-                            <div class="bulk-panel-hint">Select by day of week, or enter Bulk Mode to click individual dates.</div>
-                            <div class="bulk-day-buttons" id="rosterBulkBtns">
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="1" onclick="toggleDayOfWeek(1,'roster')">Mon</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="2" onclick="toggleDayOfWeek(2,'roster')">Tue</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="3" onclick="toggleDayOfWeek(3,'roster')">Wed</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="4" onclick="toggleDayOfWeek(4,'roster')">Thu</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="5" onclick="toggleDayOfWeek(5,'roster')">Fri</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="6" onclick="toggleDayOfWeek(6,'roster')">Sat</button>
-                                <button class="btn btn-outline btn-sm btn-day" data-dow="0" onclick="toggleDayOfWeek(0,'roster')">Sun</button>
-                                <button class="btn btn-outline btn-sm btn-weekdays" onclick="toggleWeekdays('roster')">All Weekdays</button>
-                            </div>
+                            <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
                         </div>
                         <div class="calendar-grid" id="calendarGrid"></div>
                     </div>
-                    <div id="noStaffSelected" class="empty-state"><div class="empty-state-icon">&#128197;</div><div>Select a staff member to manage their roster</div></div>
+                    <div id="noStaffSelected" class="empty-state"><div class="empty-state-icon">&#128197;</div><div>Select a staff member to view their roster</div></div>
                 </div>
             </div>
         </div>
@@ -399,7 +378,10 @@
                             <div class="month-label" id="overviewMonthLabel"></div>
                             <button class="btn btn-outline btn-icon" onclick="changeOverviewMonth(1)">&#8250;</button>
                         </div>
-                        <button class="btn btn-outline btn-sm" onclick="goToOverviewToday()">Today</button>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-outline btn-sm" onclick="goToOverviewToday()">Today</button>
+                            <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
+                        </div>
                     </div>
                     <div class="calendar-grid" id="overviewGrid"></div>
                 </div>
@@ -1080,16 +1062,7 @@ function changeMonth(dir) { currentMonth += dir; if (currentMonth > 11) { curren
 function goToToday() { var n = new Date(); currentMonth = n.getMonth(); currentYear = n.getFullYear(); clearMultiSelect(); Promise.all([loadAvailabilityForMonth(currentMonth,currentYear), loadDayClassesForMonth(currentMonth,currentYear)]).then(renderCalendar); }
 
 function onDayClick(dateStr, event) {
-    if (!selectedStaffId) return;
-    if (event.shiftKey || (bulkModeActive && multiSelectMode === 'roster') || (multiSelectMode === 'roster' && multiSelectedDays.size > 0)) {
-        multiSelectMode = 'roster';
-        bulkModeActive = true;
-        updateBulkToggleButtons();
-        if (multiSelectedDays.has(dateStr)) multiSelectedDays.delete(dateStr); else multiSelectedDays.add(dateStr);
-        updateMultiSelectBar(); renderCalendar(); return;
-    }
-    selectedDay = dateStr;
-    openDayModal(dateStr);
+    openDayDetail(dateStr);
 }
 
 function updateMultiSelectBar() {
@@ -1284,8 +1257,8 @@ async function applyBulkTemplate() {
     });
 
     var overwrite = document.getElementById('bulkTemplateOverwrite').checked;
-    var month = currentMonth;
-    var year = currentYear;
+    var month = overviewMonth;
+    var year = overviewYear;
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var upserts = [];
 
@@ -1318,8 +1291,8 @@ async function applyBulkTemplate() {
     setLoading(btn, false);
     closeModal('bulkTemplateModal');
     await loadAvailabilityForMonth(month, year);
-    renderCalendar();
-    if (currentTab === 'overview') renderOverview();
+    renderOverview();
+    if (currentTab === 'roster') renderCalendar();
     updateSummary();
     showToast('Template applied — ' + upserts.length + ' roster entries created');
 }
