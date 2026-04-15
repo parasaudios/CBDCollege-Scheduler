@@ -299,7 +299,7 @@
         <h1>CBD College</h1>
         <div class="subtitle">Staff Scheduler Login</div>
         <div class="login-error" id="loginError"></div>
-        <div class="form-group"><label for="loginEmail">Email</label><input type="email" class="form-control" id="loginEmail" placeholder="you@cbdcollege.edu.au"></div>
+        <div class="form-group"><label for="loginEmail">Name</label><input type="text" class="form-control" id="loginEmail" placeholder="e.g. Cameron"></div>
         <div class="form-group"><label for="loginPassword">Password</label><input type="password" class="form-control" id="loginPassword" placeholder="Enter your password"></div>
         <button class="btn btn-blue" id="loginBtn" onclick="handleLogin()" style="width:100%;justify-content:center;padding:12px;font-size:1rem;margin-top:8px;">Sign In</button>
     </div>
@@ -808,12 +808,13 @@ async function getProfiles(forceRefresh) {
 
 // ============ Auth ============
 async function handleLogin() {
-    var email = document.getElementById('loginEmail').value.trim();
+    var nameOrEmail = document.getElementById('loginEmail').value.trim().toLowerCase();
     var password = document.getElementById('loginPassword').value;
     var errEl = document.getElementById('loginError');
     var btn = document.getElementById('loginBtn');
     errEl.style.display = 'none';
-    if (!email || !password) { errEl.textContent = 'Please enter email and password'; errEl.style.display = 'block'; return; }
+    if (!nameOrEmail || !password) { errEl.textContent = 'Please enter your name and password'; errEl.style.display = 'block'; return; }
+    var email = nameOrEmail.indexOf('@') === -1 ? nameOrEmail + '@cbdcollege.edu.au' : nameOrEmail;
     btn.disabled = true;
     btn.textContent = 'Signing in...';
     try {
