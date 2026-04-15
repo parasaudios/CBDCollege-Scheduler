@@ -708,7 +708,14 @@
     <div class="modal" style="max-width:600px;">
         <div class="modal-header"><h3>Weekly Roster Template</h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkTemplateModal')">&times;</button></div>
         <div class="modal-body" style="padding:16px 20px;">
-            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:16px;">Select which staff to roster on each day. This will apply to every matching day in the current month, replacing any existing entries.</p>
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Select which staff to roster on each day. This will apply to every matching day in the current month, replacing any existing entries.</p>
+            <div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;background:var(--gray-50);">
+                <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">Class Times (applied to all days)</div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;">Start <input type="time" id="tmplClassStart" class="form-control" style="width:120px;padding:4px 6px;font-size:0.85rem;"></label>
+                    <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;">End <input type="time" id="tmplClassEnd" class="form-control" style="width:120px;padding:4px 6px;font-size:0.85rem;"></label>
+                </div>
+            </div>
             <div id="bulkTemplateDays" style="display:flex;flex-direction:column;gap:14px;"></div>
         </div>
         <div class="modal-footer">
@@ -1040,14 +1047,24 @@ function renderCalendar() {
             else if (entry.status === 'available' || entry.status === 'partial') entryParts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
             if (entryParts.length > 0) detail += '<div style="font-size:0.6rem;text-align:center;margin-bottom:2px">' + entryParts.join(' ') + '</div>';
         }
-        // Show class info from cbd_day_classes and staff count
+        // Show class info, start time, and other rostered staff
         var ci = getDayClass(dateStr);
-        var othersRostered = 0;
-        staffList.forEach(function(s) { var se = getAvailability(s.id, dateStr); if (se && (se.status === 'available' || se.status === 'partial') && s.id !== selectedStaffId) othersRostered++; });
         var aggParts = [];
         if (ci && ci.start_time && ci.end_time) aggParts.push(ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5));
-        if (ci && (ci.students_am || ci.students_pm)) aggParts.push('AM:' + (ci.students_am||0) + (ci.capped_am ? ' <span class="capped-badge">CAP</span>' : '') + ' PM:' + (ci.students_pm||0) + (ci.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
-        if (othersRostered > 0) aggParts.push('<span style="color:var(--gray-400);">+' + othersRostered + ' staff</span>');
+        if (ci && (ci.students_am || ci.students_pm)) aggParts.push((ci.students_am||0) + '/' + (ci.students_pm||0));
+        // Show selected staff's start time
+        if (entry && entry.start_time) aggParts.push('<span style="color:var(--primary);font-weight:600;">Start: ' + entry.start_time.slice(0,5) + '</span>');
+        // Show other rostered staff names
+        var otherNames = [];
+        staffList.forEach(function(s) {
+            if (s.id === selectedStaffId) return;
+            var se = getAvailability(s.id, dateStr);
+            if (se && (se.status === 'available' || se.status === 'partial')) {
+                var roleBadge = se.day_role === 'head_trainer' ? '<span style="color:var(--primary);font-weight:700;">HT</span> ' : '';
+                otherNames.push(roleBadge + escHtml(s.name.split(' ')[0]));
+            }
+        });
+        if (otherNames.length > 0) aggParts.push(otherNames.join('<br>'));
         if (aggParts.length > 0) detail += '<div style="font-size:0.55rem;color:var(--gray-500);line-height:1.4;text-align:center">' + aggParts.join('<br>') + '</div>';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
@@ -1274,6 +1291,22 @@ function deriveTemplateFromCalendar() {
         }
     }
 
+    // Detect most common class start/end times
+    var startTimes = {};
+    var endTimes = {};
+    for (var day = 1; day <= daysInMonth; day++) {
+        var dateStr2 = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        var ci = getDayClass(dateStr2);
+        if (ci && ci.start_time) { startTimes[ci.start_time] = (startTimes[ci.start_time] || 0) + 1; }
+        if (ci && ci.end_time) { endTimes[ci.end_time] = (endTimes[ci.end_time] || 0) + 1; }
+    }
+    var bestStart = null, bestStartCount = 0;
+    for (var t in startTimes) { if (startTimes[t] > bestStartCount) { bestStart = t; bestStartCount = startTimes[t]; } }
+    var bestEnd = null, bestEndCount = 0;
+    for (var t in endTimes) { if (endTimes[t] > bestEndCount) { bestEnd = t; bestEndCount = endTimes[t]; } }
+    result.classStart = bestStart;
+    result.classEnd = bestEnd;
+
     return result;
 }
 
@@ -1290,6 +1323,11 @@ function restoreTemplateFromCalendar() {
     document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
         if (state.capped[cb.dataset.dow]) { cb.checked = true; }
     });
+    // Populate class time fields from calendar data
+    var startEl = document.getElementById('tmplClassStart');
+    var endEl = document.getElementById('tmplClassEnd');
+    if (startEl && state.classStart) startEl.value = state.classStart.slice(0, 5);
+    if (endEl && state.classEnd) endEl.value = state.classEnd.slice(0, 5);
 }
 
 function openBulkTemplate() {
@@ -1387,7 +1425,11 @@ async function applyBulkTemplate() {
         if (rotateDows[dow]) rotateStartWith[dow] = sel.value;
     });
 
-    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0 && Object.keys(rotateDows).length === 0) {
+    // Read class time fields
+    var tmplClassStart = document.getElementById('tmplClassStart').value || null;
+    var tmplClassEnd = document.getElementById('tmplClassEnd').value || null;
+
+    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0 && Object.keys(rotateDows).length === 0 && !tmplClassStart && !tmplClassEnd) {
         showToast('Select at least one staff member, rotation, or capped day'); return;
     }
 
@@ -1438,10 +1480,21 @@ async function applyBulkTemplate() {
             });
         }
 
-        // Capped class entries
-        if (cappedDows[dow]) {
+        // Class info entries: apply class times and/or capped status
+        var needsClassUpsert = cappedDows[dow] || tmplClassStart || tmplClassEnd;
+        var hasRoster = (template[dow] && template[dow].length > 0) || (rotateDows[dow] && rotateDows[dow].length > 0);
+        if (needsClassUpsert && (hasRoster || cappedDows[dow])) {
             var existingClass = getDayClass(dateStr);
-            classUpserts.push({ date: dateStr, start_time: (existingClass && existingClass.start_time) || null, end_time: (existingClass && existingClass.end_time) || null, students_am: (existingClass && existingClass.students_am) || 0, students_pm: (existingClass && existingClass.students_pm) || 0, capped_am: true, capped_pm: true, updated_by: currentUser.id });
+            classUpserts.push({
+                date: dateStr,
+                start_time: tmplClassStart || (existingClass && existingClass.start_time) || null,
+                end_time: tmplClassEnd || (existingClass && existingClass.end_time) || null,
+                students_am: (existingClass && existingClass.students_am) || 0,
+                students_pm: (existingClass && existingClass.students_pm) || 0,
+                capped_am: cappedDows[dow] ? true : (existingClass ? existingClass.capped_am : false),
+                capped_pm: cappedDows[dow] ? true : (existingClass ? existingClass.capped_pm : false),
+                updated_by: currentUser.id
+            });
         }
     }
 
@@ -1468,7 +1521,7 @@ async function applyBulkTemplate() {
 
     setLoading(btn, false);
     // Snapshot template state before closing modal
-    var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
+    var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {}, classStart: tmplClassStart, classEnd: tmplClassEnd };
     document.querySelectorAll('.tmpl-cb').forEach(function(cb) { snapshot.staff[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
     document.querySelectorAll('.tmpl-rotate').forEach(function(cb) { snapshot.rotate[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
     document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) { snapshot.rotateStart[sel.dataset.dow] = sel.value; });
@@ -1480,7 +1533,7 @@ async function applyBulkTemplate() {
     if (currentTab === 'roster') renderCalendar();
     updateSummary();
     var msg = upserts.length + ' roster entries';
-    if (classUpserts.length > 0) msg += ', ' + classUpserts.length + ' days set to capped';
+    if (classUpserts.length > 0) msg += ', ' + classUpserts.length + ' class days updated';
     showToast('Template applied — ' + msg);
 
     // Fire-and-forget: backup template to DB
@@ -2095,8 +2148,20 @@ function generatePrintPage(month, year, pdfStaff, printWin) {
             html += '<td class="' + (rostered ? 'rostered' : '') + '">';
             html += '<div class="day-num">' + day + '</div>';
             if (rostered) {
-                if (se.start_time && se.end_time) html += '<div class="time">' + se.start_time.slice(0,5) + ' - ' + se.end_time.slice(0,5) + '</div>';
+                if (ci && ci.start_time && ci.end_time) html += '<div class="time">' + ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5) + '</div>';
+                if (se.start_time) html += '<div style="font-weight:600;font-size:11px;color:#2563eb;">Start: ' + se.start_time.slice(0,5) + '</div>';
                 if (ci && (ci.students_am || ci.students_pm)) html += '<div class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</div>';
+                // Other rostered staff
+                var pdfOthers = [];
+                staffList.forEach(function(s) {
+                    if (s.id === pdfStaff[0].id) return;
+                    var oe = getAvailability(s.id, dateStr);
+                    if (oe && (oe.status === 'available' || oe.status === 'partial')) {
+                        var htTag = oe.day_role === 'head_trainer' ? '(HT) ' : '';
+                        pdfOthers.push(htTag + escHtml(s.name.split(' ')[0]));
+                    }
+                });
+                if (pdfOthers.length > 0) html += '<div class="names">' + pdfOthers.join('<br>') + '</div>';
             }
             html += '</td>';
         } else {
@@ -2292,11 +2357,15 @@ async function openDayDetail(dateStr) {
             var isOn = !!rosteredIds[s.id];
             var entry = rosteredIds[s.id];
             var roleLabel = (entry && entry.day_role === 'head_trainer') ? ' (HT)' : '';
-            html += '<label class="staff-toggle-item' + (isOn ? ' active' : '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);border:1px solid ' + (isOn ? 'var(--success)' : 'var(--gray-200)') + ';background:' + (isOn ? 'var(--success-light)' : 'white') + ';cursor:pointer;transition:all 0.15s;">' +
+            var staffStartTime = (entry && entry.start_time) ? entry.start_time.slice(0,5) : '';
+            html += '<div class="staff-toggle-item' + (isOn ? ' active' : '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);border:1px solid ' + (isOn ? 'var(--success)' : 'var(--gray-200)') + ';background:' + (isOn ? 'var(--success-light)' : 'white') + ';transition:all 0.15s;">' +
+                '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">' +
                 '<input type="checkbox" data-staff-id="' + s.id + '" ' + (isOn ? 'checked' : '') + ' style="width:18px;height:18px;cursor:pointer;" onchange="toggleStaffRosterStyle(this)">' +
                 '<div class="detail-staff-dot" style="background:' + s.color + '"></div>' +
                 '<span style="font-weight:500;font-size:0.9rem;">' + escHtml(s.name) + roleLabel + '</span>' +
-                '</label>';
+                '</label>' +
+                '<input type="time" class="staff-start-time" data-staff-id="' + s.id + '" value="' + staffStartTime + '" style="width:100px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:0.8rem;" placeholder="Start">' +
+                '</div>';
         });
         html += '</div>';
         html += '</div>';
@@ -2407,10 +2476,14 @@ async function saveDayClassAndRoster() {
             var staffId = cb.dataset.staffId;
             var wasRostered = !!(availabilityCache[staffId] && availabilityCache[staffId][dateStr] && (availabilityCache[staffId][dateStr].status === 'available' || availabilityCache[staffId][dateStr].status === 'partial'));
             var nowChecked = cb.checked;
+            var staffTimeInput = toggleContainer.querySelector('.staff-start-time[data-staff-id="' + staffId + '"]');
+            var staffStart = staffTimeInput ? (staffTimeInput.value || null) : null;
 
             if (nowChecked && !wasRostered) {
                 // Roster this staff member
-                var row = { staff_id: staffId, date: dateStr, status: 'available', start_time: startTime, end_time: endTime, note: '', day_role: 'assistant', created_by: currentUser.id };
+                var existingEntry = availabilityCache[staffId] && availabilityCache[staffId][dateStr];
+                var dayRole = (existingEntry && existingEntry.day_role) || 'assistant';
+                var row = { staff_id: staffId, date: dateStr, status: 'available', start_time: staffStart, end_time: endTime, note: '', day_role: dayRole, created_by: currentUser.id };
                 promises.push(sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' }).then(function(res) {
                     if (!res.error) {
                         if (!availabilityCache[staffId]) availabilityCache[staffId] = {};
@@ -2418,6 +2491,17 @@ async function saveDayClassAndRoster() {
                     }
                     return res;
                 }));
+            } else if (nowChecked && wasRostered && staffStart !== null) {
+                // Update start time for already-rostered staff
+                var existing = availabilityCache[staffId][dateStr];
+                var existingStart = existing.start_time ? existing.start_time.slice(0,5) : '';
+                if (staffStart !== existingStart) {
+                    var row = Object.assign({}, existing, { start_time: staffStart });
+                    promises.push(sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' }).then(function(res) {
+                        if (!res.error) { availabilityCache[staffId][dateStr] = row; }
+                        return res;
+                    }));
+                }
             } else if (!nowChecked && wasRostered) {
                 // Un-roster this staff member
                 promises.push(sb.from('cbd_availability').delete().eq('staff_id', staffId).eq('date', dateStr).then(function(res) {
