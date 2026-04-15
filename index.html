@@ -184,6 +184,16 @@
         .role-badge.assistant { background: var(--primary-light); color: var(--primary); }
 
         .capped-badge { display: inline-block; background: var(--danger-light); color: var(--danger); font-size: 0.55rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; line-height: 1.2; }
+        .detail-section { margin-bottom: 16px; }
+        .detail-section h4 { font-size: 0.8rem; text-transform: uppercase; color: var(--gray-500); letter-spacing: 0.05em; margin-bottom: 8px; }
+        .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius); margin-bottom: 4px; }
+        .detail-row .label { font-size: 0.85rem; color: var(--gray-600); }
+        .detail-row .value { font-size: 0.85rem; font-weight: 600; color: var(--gray-800); }
+        .detail-staff-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--gray-50); border-radius: var(--radius); margin-bottom: 4px; }
+        .detail-staff-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .detail-staff-name { font-size: 0.85rem; font-weight: 500; }
+        .detail-staff-role { font-size: 0.75rem; color: var(--gray-500); }
+        .detail-no-data { color: var(--gray-400); font-size: 0.85rem; font-style: italic; padding: 8px 0; }
 
         .avail-list { margin-top: 12px; }
         .avail-list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); margin-bottom: 6px; }
@@ -647,6 +657,16 @@
     </div>
 </div>
 
+<!-- Day Detail Modal (read-only, for viewing full day info) -->
+<div class="modal-overlay" id="dayDetailModal">
+    <div class="modal">
+        <div class="modal-header"><h3 id="dayDetailTitle">Day Details</h3><button class="btn btn-icon btn-outline" onclick="closeModal('dayDetailModal')">&times;</button></div>
+        <div class="modal-body" id="dayDetailBody" style="padding:16px 20px;">
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('dayDetailModal')">Close</button></div>
+    </div>
+</div>
+
 <!-- Export Modal -->
 <div class="modal-overlay" id="exportModal">
     <div class="modal">
@@ -850,8 +870,11 @@ async function loadAllData() {
         switchTab('roster');
     } else {
         myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
-        if (myStaffMember) await loadAvailabilityForMonth(myRosterMonth, myRosterYear);
-        await loadMyAvailForMonth(myAvailMonth, myAvailYear);
+        await Promise.all([
+            loadAvailabilityForMonth(myRosterMonth, myRosterYear),
+            loadMyAvailForMonth(myAvailMonth, myAvailYear),
+            loadAssistantAvailForMonth(myRosterMonth, myRosterYear)
+        ]);
         switchTab('myroster');
     }
 }
@@ -1287,7 +1310,7 @@ function renderOverview() {
             if (anyCappedPM) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
-        html += '<div class="' + cls + '" style="cursor:default;"><div class="day-number">' + day + '</div>' + detailHtml + '</div>';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -1409,7 +1432,7 @@ function renderMyRoster() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = myRosterYear + '-' + String(myRosterMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entry = getAvailability(myStaffMember.id, dateStr);
-        var cls = 'calendar-day readonly';
+        var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) cls += ' ' + entry.status;
         var detail = '';
@@ -1418,15 +1441,14 @@ function renderMyRoster() {
             if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + ' - ' + entry.end_time.slice(0,5));
             if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
             if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (entry.note) parts.push('<span style="color:var(--gray-500);">' + escHtml(entry.note) + '</span>');
             if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
         }
-        html += '<div class="' + cls + '"><div class="day-number">' + day + '</div>' + detail + '</div>';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
     grid.innerHTML = html;
 }
-function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { loadAvailabilityForMonth(myRosterMonth, myRosterYear).then(renderMyRoster); }); }
-function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); loadAvailabilityForMonth(myRosterMonth,myRosterYear).then(renderMyRoster); }
+function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { Promise.all([loadAvailabilityForMonth(myRosterMonth, myRosterYear), loadAssistantAvailForMonth(myRosterMonth, myRosterYear)]).then(renderMyRoster); }); }
+function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(myRosterMonth,myRosterYear), loadAssistantAvailForMonth(myRosterMonth,myRosterYear)]).then(renderMyRoster); }
 
 // ============ My Availability (Assistant) ============
 function renderMyAvail() {
@@ -1808,6 +1830,104 @@ async function refreshCurrentView(table) {
 
 function teardownRealtime() {
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+}
+
+// ============ Day Detail Modal ============
+async function openDayDetail(dateStr) {
+    var p = dateStr.split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+    document.getElementById('dayDetailTitle').textContent = dayName + ', ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1] + ' ' + p[0];
+
+    // Gather all roster entries for this date
+    var rostered = [];
+    staffList.forEach(function(s) {
+        var e = getAvailability(s.id, dateStr);
+        if (e && (e.status === 'available' || e.status === 'partial')) {
+            rostered.push({ name: s.name, role: s.role, color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm, note: e.note });
+        }
+    });
+
+    // Find trainers and assistants from rostered staff
+    var trainers = rostered.filter(function(r) { return r.role && r.role.toLowerCase() === 'trainer'; });
+    var assistants = rostered.filter(function(r) { return !r.role || r.role.toLowerCase() !== 'trainer'; });
+
+    // Aggregate student counts (take max across rostered staff since it's per-class not per-person)
+    var amStudents = 0, pmStudents = 0, amCapped = false, pmCapped = false, classTime = '';
+    rostered.forEach(function(r) {
+        if (r.students_am > amStudents) amStudents = r.students_am;
+        if (r.students_pm > pmStudents) pmStudents = r.students_pm;
+        if (r.capped_am) amCapped = true;
+        if (r.capped_pm) pmCapped = true;
+        if (!classTime && r.start_time && r.end_time) classTime = r.start_time.slice(0,5) + ' - ' + r.end_time.slice(0,5);
+    });
+
+    // Get assistant availability for this day
+    var dayAssistAvail = assistantAvailCache[dateStr] || [];
+    var profiles = await getProfiles();
+    var profileMap = {};
+    profiles.forEach(function(pr) { profileMap[pr.id] = pr; });
+
+    var html = '';
+
+    if (rostered.length === 0) {
+        html += '<div class="detail-no-data">No one is rostered for this day.</div>';
+    } else {
+        // Class info
+        html += '<div class="detail-section">';
+        html += '<h4>Class Schedule</h4>';
+        if (classTime) html += '<div class="detail-row"><span class="label">Class Time</span><span class="value">' + classTime + '</span></div>';
+        if (amStudents > 0 || pmStudents > 0) {
+            html += '<div class="detail-row"><span class="label">Morning Students</span><span class="value">' + amStudents + (amCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
+            html += '<div class="detail-row"><span class="label">Afternoon Students</span><span class="value">' + pmStudents + (pmCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
+        }
+        html += '</div>';
+
+        // Head trainer(s)
+        html += '<div class="detail-section">';
+        html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
+        if (trainers.length > 0) {
+            trainers.forEach(function(t) {
+                html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + t.color + '"></div><div><div class="detail-staff-name">' + escHtml(t.name) + '</div></div></div>';
+            });
+        } else {
+            html += '<div class="detail-no-data">No trainer rostered</div>';
+        }
+        html += '</div>';
+
+        // Assistants rostered
+        html += '<div class="detail-section">';
+        html += '<h4>Assistants Rostered</h4>';
+        if (assistants.length > 0) {
+            assistants.forEach(function(a) {
+                var statusBadge = a.status === 'available' ? '<span class="avail-badge yes" style="margin-left:auto;">Rostered</span>' : '<span class="avail-badge" style="margin-left:auto;background:var(--warning-light);color:#92400e;">Partial</span>';
+                html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + a.color + '"></div><div><div class="detail-staff-name">' + escHtml(a.name) + '</div>' +
+                    (a.note ? '<div class="detail-staff-role">' + escHtml(a.note) + '</div>' : '') +
+                    '</div>' + statusBadge + '</div>';
+            });
+        } else {
+            html += '<div class="detail-no-data">No assistants rostered</div>';
+        }
+        html += '</div>';
+    }
+
+    // Assistant availability submitted
+    if (dayAssistAvail.length > 0) {
+        html += '<div class="detail-section">';
+        html += '<h4>Assistant Availability Submitted</h4>';
+        dayAssistAvail.forEach(function(a) {
+            var pr = profileMap[a.user_id];
+            var name = pr ? pr.full_name : 'Unknown';
+            var badge = a.is_available ? '<span class="avail-badge yes" style="margin-left:auto;">Available</span>' : '<span class="avail-badge no" style="margin-left:auto;">Unavailable</span>';
+            html += '<div class="detail-staff-item"><div><div class="detail-staff-name">' + escHtml(name) + '</div>' +
+                (a.note ? '<div class="detail-staff-role">' + escHtml(a.note) + '</div>' : '') +
+                '</div>' + badge + '</div>';
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('dayDetailBody').innerHTML = html;
+    document.getElementById('dayDetailModal').classList.add('active');
 }
 
 // ============ Init ============
