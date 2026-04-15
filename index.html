@@ -1254,6 +1254,22 @@ function deriveTemplateFromCalendar() {
         }
     }
 
+    // Detect who was HT on the first occurrence of each weekend DOW
+    var firstHT = {}; // dow -> staffId
+    for (var day = 1; day <= daysInMonth; day++) {
+        var df = new Date(year, month, day);
+        var dowf = df.getDay();
+        if (dowf !== 0 && dowf !== 6) continue;
+        if (firstHT[dowf]) continue; // already found first
+        var dateStrF = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        staffList.forEach(function(s) {
+            var e = getAvailability(s.id, dateStrF);
+            if (e && e.day_role === 'head_trainer' && !firstHT[dowf]) {
+                firstHT[dowf] = s.id;
+            }
+        });
+    }
+
     // For each DOW, a staff member is "on" if rostered on at least half the instances
     var result = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
     var isWeekend = {6: true, 0: true};
@@ -1283,6 +1299,9 @@ function deriveTemplateFromCalendar() {
             result.capped[dow] = true;
         }
     }
+
+    // Set rotateStart from first HT detected
+    for (var dowrs in firstHT) { result.rotateStart[dowrs] = firstHT[dowrs]; }
 
     // Detect most common class start/end times per DOW
     var dowStartTimes = {};  // dow -> { time -> count }
@@ -1325,7 +1344,12 @@ function restoreTemplateFromCalendar() {
     });
     document.querySelectorAll('.tmpl-rotate').forEach(function(cb) {
         var key = cb.dataset.dow + '_' + cb.dataset.staffId;
-        if (state.rotate[key]) { cb.checked = true; styleTmplRotateCheckbox(cb); }
+        if (state.rotate[key]) { cb.checked = true; styleTmplRotateCheckbox(cb); toggleAssistantForHT(cb); }
+    });
+    // Set rotate-start dropdowns
+    document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) {
+        var dow = sel.dataset.dow;
+        if (state.rotateStart[dow]) sel.value = state.rotateStart[dow];
     });
     document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
         if (state.capped[cb.dataset.dow]) { cb.checked = true; }
@@ -1359,7 +1383,7 @@ function openBulkTemplate() {
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">';
             staffList.forEach(function(s) {
                 html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--primary-light);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
-                    '<input type="checkbox" class="tmpl-rotate" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplRotateCheckbox(this)">' +
+                    '<input type="checkbox" class="tmpl-rotate" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplRotateCheckbox(this);toggleAssistantForHT(this)">' +
                     '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
                     '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
             });
@@ -1376,7 +1400,7 @@ function openBulkTemplate() {
             html += '<div style="font-size:0.75rem;font-weight:600;color:var(--gray-500);margin-bottom:4px;">Assistants (same every week):</div>';
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
             staffList.forEach(function(s) {
-                html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
+                html += '<label class="tmpl-assist-label" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
                     '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
                     '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
                     '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
@@ -1420,6 +1444,20 @@ function styleTmplRotateCheckbox(cb) {
     var label = cb.closest('label');
     if (cb.checked) { label.style.borderColor = 'var(--primary)'; label.style.background = 'var(--primary-light)'; }
     else { label.style.borderColor = 'var(--primary-light)'; label.style.background = 'white'; }
+}
+
+function toggleAssistantForHT(cb) {
+    var dow = cb.dataset.dow;
+    var staffId = cb.dataset.staffId;
+    var assistLabel = document.querySelector('.tmpl-assist-label[data-dow="' + dow + '"][data-staff-id="' + staffId + '"]');
+    if (!assistLabel) return;
+    if (cb.checked) {
+        assistLabel.style.display = 'none';
+        var assistCb = assistLabel.querySelector('.tmpl-cb');
+        if (assistCb) { assistCb.checked = false; styleTmplCheckbox(assistCb); }
+    } else {
+        assistLabel.style.display = 'flex';
+    }
 }
 
 function styleTmplCheckbox(cb) {
@@ -1538,6 +1576,12 @@ async function applyBulkTemplate() {
     var btn = document.getElementById('applyTemplateBtn');
     setLoading(btn, true);
     showToast('Applying template...');
+
+    // Clear all existing roster entries for the month first (template is a full replacement)
+    var startDate = year + '-' + String(month + 1).padStart(2, '0') + '-01';
+    var endDate = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(daysInMonth).padStart(2, '0');
+    var delResult = await sb.from('cbd_availability').delete().gte('date', startDate).lte('date', endDate);
+    if (delResult.error) { setLoading(btn, false); showToast('Error clearing old roster: ' + delResult.error.message); return; }
 
     // Batch roster entries in groups of 50
     for (var i = 0; i < upserts.length; i += 50) {
