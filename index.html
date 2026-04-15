@@ -1223,13 +1223,16 @@ function openBulkTemplate() {
         var dow = dayDows[i];
         html += '<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;">';
         html += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">' + label + '</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
         staffList.forEach(function(s) {
             html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--gray-200);background:white;cursor:pointer;font-size:0.8rem;transition:all 0.15s;">' +
                 '<input type="checkbox" class="tmpl-cb" data-dow="' + dow + '" data-staff-id="' + s.id + '" style="width:16px;height:16px;cursor:pointer;" onchange="styleTmplCheckbox(this)">' +
                 '<span class="detail-staff-dot" style="background:' + s.color + ';width:8px;height:8px;min-width:8px;"></span>' +
                 '<span>' + escHtml(s.name.split(' ')[0]) + '</span></label>';
         });
+        html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--warning);background:var(--warning-light);cursor:pointer;font-size:0.8rem;font-weight:600;">' +
+            '<input type="checkbox" class="tmpl-capped" data-dow="' + dow + '" style="width:16px;height:16px;cursor:pointer;">' +
+            '<span>Capped</span></label>';
         html += '</div></div>';
     });
     container.innerHTML = html;
@@ -1245,7 +1248,13 @@ function styleTmplCheckbox(cb) {
 
 async function applyBulkTemplate() {
     var checkboxes = document.querySelectorAll('.tmpl-cb:checked');
-    if (checkboxes.length === 0) { showToast('Select at least one staff member on a day'); return; }
+    var cappedBoxes = document.querySelectorAll('.tmpl-capped:checked');
+
+    // Build capped map: dow -> true
+    var cappedDows = {};
+    cappedBoxes.forEach(function(cb) { cappedDows[parseInt(cb.dataset.dow)] = true; });
+
+    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0) { showToast('Select at least one staff member or capped day'); return; }
 
     // Build a map: dow -> [staffId, staffId, ...]
     var template = {};
@@ -1261,31 +1270,53 @@ async function applyBulkTemplate() {
     var year = overviewYear;
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var upserts = [];
+    var classUpserts = [];
 
     for (var day = 1; day <= daysInMonth; day++) {
         var d = new Date(year, month, day);
         var dow = d.getDay();
-        if (!template[dow]) continue;
         var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 
-        template[dow].forEach(function(staffId) {
-            var existing = getAvailability(staffId, dateStr);
-            if (existing && !overwrite) return; // skip if already rostered and not overwriting
-            upserts.push({ staff_id: staffId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
-        });
+        // Staff roster entries
+        if (template[dow]) {
+            template[dow].forEach(function(staffId) {
+                var existing = getAvailability(staffId, dateStr);
+                if (existing && !overwrite) return;
+                upserts.push({ staff_id: staffId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
+            });
+        }
+
+        // Capped class entries
+        if (cappedDows[dow]) {
+            var existingClass = getDayClass(dateStr);
+            if (existingClass && !overwrite) {
+                // Only update capped flags, keep existing student counts/times
+                classUpserts.push({ date: dateStr, start_time: existingClass.start_time || null, end_time: existingClass.end_time || null, students_am: existingClass.students_am || 0, students_pm: existingClass.students_pm || 0, capped_am: true, capped_pm: true, updated_by: currentUser.id });
+            } else {
+                classUpserts.push({ date: dateStr, start_time: null, end_time: null, students_am: 0, students_pm: 0, capped_am: true, capped_pm: true, updated_by: currentUser.id });
+            }
+        }
     }
 
-    if (upserts.length === 0) { showToast('No changes needed — all selected days already rostered'); closeModal('bulkTemplateModal'); return; }
+    if (upserts.length === 0 && classUpserts.length === 0) { showToast('No changes needed'); closeModal('bulkTemplateModal'); return; }
 
     var btn = document.getElementById('applyTemplateBtn');
     setLoading(btn, true);
-    showToast('Applying template (' + upserts.length + ' entries)...');
+    showToast('Applying template...');
 
-    // Batch in groups of 50 to avoid payload limits
+    // Batch roster entries in groups of 50
     for (var i = 0; i < upserts.length; i += 50) {
         var batch = upserts.slice(i, i + 50);
         var result = await sb.from('cbd_availability').upsert(batch, { onConflict: 'staff_id,date' });
         if (result.error) { setLoading(btn, false); showToast('Error: ' + result.error.message); return; }
+    }
+
+    // Batch class entries in groups of 50
+    for (var i = 0; i < classUpserts.length; i += 50) {
+        var batch = classUpserts.slice(i, i + 50);
+        var result = await sb.from('cbd_day_classes').upsert(batch, { onConflict: 'date' });
+        if (result.error) { setLoading(btn, false); showToast('Error saving class info: ' + result.error.message); return; }
+        batch.forEach(function(row) { dayClassesCache[row.date] = row; });
     }
 
     setLoading(btn, false);
@@ -1294,7 +1325,9 @@ async function applyBulkTemplate() {
     renderOverview();
     if (currentTab === 'roster') renderCalendar();
     updateSummary();
-    showToast('Template applied — ' + upserts.length + ' roster entries created');
+    var msg = upserts.length + ' roster entries';
+    if (classUpserts.length > 0) msg += ', ' + classUpserts.length + ' days set to capped';
+    showToast('Template applied — ' + msg);
 }
 
 async function clearAllMyAvailMonth() {
