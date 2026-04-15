@@ -1476,6 +1476,14 @@ async function applyBulkTemplate() {
     var cappedBoxes = document.querySelectorAll('.tmpl-capped:checked');
     var rotateBoxes = document.querySelectorAll('.tmpl-rotate:checked');
 
+    // Identify known HTs from availability data
+    var knownHTs = {};
+    for (var sid in availabilityCache) {
+        for (var d in availabilityCache[sid]) {
+            if (availabilityCache[sid][d].day_role === 'head_trainer') { knownHTs[sid] = true; break; }
+        }
+    }
+
     // Build capped map: dow -> true
     var cappedDows = {};
     cappedBoxes.forEach(function(cb) { cappedDows[parseInt(cb.dataset.dow)] = true; });
@@ -1552,7 +1560,8 @@ async function applyBulkTemplate() {
         // Regular staff roster entries (assistants on weekends, all staff on weekdays)
         if (template[dow]) {
             template[dow].forEach(function(staffId) {
-                upserts.push({ staff_id: staffId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
+                var role = knownHTs[staffId] ? 'head_trainer' : 'assistant';
+                upserts.push({ staff_id: staffId, date: dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: role, created_by: currentUser.id });
             });
         }
 
