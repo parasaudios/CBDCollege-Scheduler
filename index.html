@@ -595,26 +595,6 @@
                 <label>Hours</label>
                 <div style="display:flex;gap:8px;align-items:center;"><input type="time" class="form-control" id="startTime" style="flex:1;"><span style="color:var(--gray-400);">to</span><input type="time" class="form-control" id="endTime" style="flex:1;"></div>
             </div>
-            <div id="studentsField" style="display:none;">
-                <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                    <div class="form-group" style="flex:1;min-width:140px;">
-                        <label for="dayStudentsAM">Morning Students</label>
-                        <input type="number" class="form-control" id="dayStudentsAM" min="0" placeholder="e.g. 12">
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
-                            <input type="checkbox" id="dayCappedAM" style="width:16px;height:16px;cursor:pointer;">
-                            <span>Capped</span>
-                        </label>
-                    </div>
-                    <div class="form-group" style="flex:1;min-width:140px;">
-                        <label for="dayStudentsPM">Afternoon Students</label>
-                        <input type="number" class="form-control" id="dayStudentsPM" min="0" placeholder="e.g. 8">
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
-                            <input type="checkbox" id="dayCappedPM" style="width:16px;height:16px;cursor:pointer;">
-                            <span>Capped</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
             <div class="form-group"><label for="dayNote">Note (optional)</label><input type="text" class="form-control" id="dayNote" placeholder="e.g. Morning only"></div>
             <div id="dayAssistAvail" style="display:none;margin-top:12px;">
                 <label style="font-size:0.85rem;font-weight:500;color:var(--gray-700);">Assistants available this day:</label>
@@ -676,9 +656,36 @@
 <div class="modal-overlay" id="dayDetailModal">
     <div class="modal">
         <div class="modal-header"><h3 id="dayDetailTitle">Day Details</h3><button class="btn btn-icon btn-outline" onclick="closeModal('dayDetailModal')">&times;</button></div>
-        <div class="modal-body" id="dayDetailBody" style="padding:16px 20px;">
+        <div class="modal-body" id="dayDetailBody" style="padding:16px 20px;"></div>
+        <div id="dayClassFields" style="display:none;padding:0 20px 16px;">
+            <h4 style="font-size:0.9rem;font-weight:600;margin-bottom:10px;color:var(--gray-700);border-top:1px solid var(--gray-200);padding-top:14px;">Class Settings</h4>
+            <div class="form-group">
+                <label>Class Time</label>
+                <div style="display:flex;gap:8px;align-items:center;"><input type="time" class="form-control" id="classStartTime" style="flex:1;"><span style="color:var(--gray-400);">to</span><input type="time" class="form-control" id="classEndTime" style="flex:1;"></div>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <div class="form-group" style="flex:1;min-width:140px;">
+                    <label for="classStudentsAM">Morning Students</label>
+                    <input type="number" class="form-control" id="classStudentsAM" min="0" placeholder="e.g. 12">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
+                        <input type="checkbox" id="classCappedAM" style="width:16px;height:16px;cursor:pointer;">
+                        <span>Capped</span>
+                    </label>
+                </div>
+                <div class="form-group" style="flex:1;min-width:140px;">
+                    <label for="classStudentsPM">Afternoon Students</label>
+                    <input type="number" class="form-control" id="classStudentsPM" min="0" placeholder="e.g. 8">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;font-size:0.8rem;">
+                        <input type="checkbox" id="classCappedPM" style="width:16px;height:16px;cursor:pointer;">
+                        <span>Capped</span>
+                    </label>
+                </div>
+            </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('dayDetailModal')">Close</button></div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('dayDetailModal')">Close</button>
+            <button class="btn btn-success" id="saveClassBtn" style="display:none;" onclick="saveDayClass()">Save Class Info</button>
+        </div>
     </div>
 </div>
 
@@ -742,6 +749,7 @@ async function adminAPI(action, method, body) {
 var staffList = [];
 var availabilityCache = {};
 var assistantAvailCache = {};
+var dayClassesCache = {};
 var profilesCache = null;
 var usersCache = null;
 var currentUser = null;
@@ -879,7 +887,8 @@ async function loadAllData() {
     if (isTrainer()) {
         await Promise.all([
             loadAvailabilityForMonth(currentMonth, currentYear),
-            loadAssistantAvailForMonth(currentMonth, currentYear)
+            loadAssistantAvailForMonth(currentMonth, currentYear),
+            loadDayClassesForMonth(currentMonth, currentYear)
         ]);
         refreshTrainerUI();
         switchTab('roster');
@@ -888,7 +897,8 @@ async function loadAllData() {
         await Promise.all([
             loadAvailabilityForMonth(myRosterMonth, myRosterYear),
             loadMyAvailForMonth(myAvailMonth, myAvailYear),
-            loadAssistantAvailForMonth(myRosterMonth, myRosterYear)
+            loadAssistantAvailForMonth(myRosterMonth, myRosterYear),
+            loadDayClassesForMonth(myRosterMonth, myRosterYear)
         ]);
         switchTab('myroster');
     }
@@ -906,6 +916,16 @@ async function loadAvailabilityForMonth(month, year) {
     var result = await sb.from('cbd_availability').select('*').gte('date', startDate).lte('date', endDate);
     (result.data || []).forEach(function(e) { if (!availabilityCache[e.staff_id]) availabilityCache[e.staff_id] = {}; availabilityCache[e.staff_id][e.date] = e; });
 }
+
+async function loadDayClassesForMonth(month, year) {
+    var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
+    var lastDay = new Date(year, month+1, 0).getDate();
+    var endDate = year + '-' + String(month+1).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+    var result = await sb.from('cbd_day_classes').select('*').gte('date', startDate).lte('date', endDate);
+    (result.data || []).forEach(function(e) { dayClassesCache[e.date] = e; });
+}
+
+function getDayClass(dateStr) { return dayClassesCache[dateStr] || null; }
 
 async function loadAssistantAvailForMonth(month, year) {
     var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
@@ -935,7 +955,7 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
     document.getElementById('tab-' + tab).style.display = 'block';
     if (tab === 'roster') { refreshTrainerUI(); }
-    if (tab === 'overview') { loadAvailabilityForMonth(overviewMonth, overviewYear).then(renderOverview); }
+    if (tab === 'overview') { Promise.all([loadAvailabilityForMonth(overviewMonth, overviewYear), loadDayClassesForMonth(overviewMonth, overviewYear)]).then(renderOverview); }
     if (tab === 'assistavail') { loadAssistantAvailForMonth(assistMonth, assistYear).then(renderAssistAvail); }
     if (tab === 'staff') renderStaffGrid();
     if (tab === 'admin') loadUsers();
@@ -979,11 +999,13 @@ function onStaffSelected() {
 function updateSummary() {
     document.getElementById('totalStaff').textContent = staffList.length;
     var todayStr = formatDate(new Date());
-    var rostered = 0, students = 0;
+    var rostered = 0;
     staffList.forEach(function(s) {
         var e = getAvailability(s.id, todayStr);
-        if (e && (e.status === 'available' || e.status === 'partial')) { rostered++; students += (e.students_am || 0) + (e.students_pm || 0); }
+        if (e && (e.status === 'available' || e.status === 'partial')) rostered++;
     });
+    var todayClass = getDayClass(todayStr);
+    var students = todayClass ? (todayClass.students_am || 0) + (todayClass.students_pm || 0) : 0;
     document.getElementById('availableToday').textContent = rostered;
     document.getElementById('studentsToday').textContent = students;
 }
@@ -1014,22 +1036,13 @@ function renderCalendar() {
             else if (entry.status === 'available' || entry.status === 'partial') entryParts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
             if (entryParts.length > 0) detail += '<div style="font-size:0.6rem;text-align:center;margin-bottom:2px">' + entryParts.join(' ') + '</div>';
         }
-        // Show aggregate class info from all staff for this day
-        var aggAM = 0, aggPM = 0, aggCappedAM = false, aggCappedPM = false, aggTime = '', othersRostered = 0;
-        staffList.forEach(function(s) {
-            var se = getAvailability(s.id, dateStr);
-            if (se && (se.status === 'available' || se.status === 'partial')) {
-                if (s.id !== selectedStaffId) othersRostered++;
-                if (se.students_am > aggAM) aggAM = se.students_am;
-                if (se.students_pm > aggPM) aggPM = se.students_pm;
-                if (se.capped_am) aggCappedAM = true;
-                if (se.capped_pm) aggCappedPM = true;
-                if (!aggTime && se.start_time && se.end_time) aggTime = se.start_time.slice(0,5) + '-' + se.end_time.slice(0,5);
-            }
-        });
+        // Show class info from cbd_day_classes and staff count
+        var ci = getDayClass(dateStr);
+        var othersRostered = 0;
+        staffList.forEach(function(s) { var se = getAvailability(s.id, dateStr); if (se && (se.status === 'available' || se.status === 'partial') && s.id !== selectedStaffId) othersRostered++; });
         var aggParts = [];
-        if (aggTime) aggParts.push(aggTime);
-        if (aggAM || aggPM) aggParts.push('AM:' + aggAM + (aggCappedAM ? ' <span class="capped-badge">CAP</span>' : '') + ' PM:' + aggPM + (aggCappedPM ? ' <span class="capped-badge">CAP</span>' : ''));
+        if (ci && ci.start_time && ci.end_time) aggParts.push(ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5));
+        if (ci && (ci.students_am || ci.students_pm)) aggParts.push('AM:' + (ci.students_am||0) + (ci.capped_am ? ' <span class="capped-badge">CAP</span>' : '') + ' PM:' + (ci.students_pm||0) + (ci.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
         if (othersRostered > 0) aggParts.push('<span style="color:var(--gray-400);">+' + othersRostered + ' staff</span>');
         if (aggParts.length > 0) detail += '<div style="font-size:0.55rem;color:var(--gray-500);line-height:1.4;text-align:center">' + aggParts.join('<br>') + '</div>';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
@@ -1037,8 +1050,8 @@ function renderCalendar() {
     grid.innerHTML = html;
 }
 
-function changeMonth(dir) { currentMonth += dir; if (currentMonth > 11) { currentMonth = 0; currentYear++; } if (currentMonth < 0) { currentMonth = 11; currentYear--; } clearMultiSelect(); document.getElementById('monthLabel').textContent = MONTH_NAMES[currentMonth] + ' ' + currentYear; debouncedNav('roster', function() { loadAvailabilityForMonth(currentMonth, currentYear).then(renderCalendar); }); }
-function goToToday() { var n = new Date(); currentMonth = n.getMonth(); currentYear = n.getFullYear(); clearMultiSelect(); loadAvailabilityForMonth(currentMonth,currentYear).then(renderCalendar); }
+function changeMonth(dir) { currentMonth += dir; if (currentMonth > 11) { currentMonth = 0; currentYear++; } if (currentMonth < 0) { currentMonth = 11; currentYear--; } clearMultiSelect(); document.getElementById('monthLabel').textContent = MONTH_NAMES[currentMonth] + ' ' + currentYear; debouncedNav('roster', function() { Promise.all([loadAvailabilityForMonth(currentMonth, currentYear), loadDayClassesForMonth(currentMonth, currentYear)]).then(renderCalendar); }); }
+function goToToday() { var n = new Date(); currentMonth = n.getMonth(); currentYear = n.getFullYear(); clearMultiSelect(); Promise.all([loadAvailabilityForMonth(currentMonth,currentYear), loadDayClassesForMonth(currentMonth,currentYear)]).then(renderCalendar); }
 
 function onDayClick(dateStr, event) {
     if (!selectedStaffId) return;
@@ -1221,13 +1234,8 @@ async function openDayModal(dateStr) {
     document.querySelectorAll('#dayModal .avail-option').forEach(function(o){ o.className = 'avail-option'; });
     document.getElementById('startTime').value = '';
     document.getElementById('endTime').value = '';
-    document.getElementById('dayStudentsAM').value = '';
-    document.getElementById('dayStudentsPM').value = '';
-    document.getElementById('dayCappedAM').checked = false;
-    document.getElementById('dayCappedPM').checked = false;
     document.getElementById('dayNote').value = '';
     document.getElementById('timeFields').style.display = 'none';
-    document.getElementById('studentsField').style.display = 'none';
     document.getElementById('dayRoleField').style.display = 'none';
     document.querySelectorAll('.day-role-btn').forEach(function(b) { b.classList.remove('active'); });
 
@@ -1237,17 +1245,12 @@ async function openDayModal(dateStr) {
         if (opt) opt.classList.add('selected-' + entry.status);
         if (entry.start_time) document.getElementById('startTime').value = entry.start_time.slice(0,5);
         if (entry.end_time) document.getElementById('endTime').value = entry.end_time.slice(0,5);
-        if (entry.students_am) document.getElementById('dayStudentsAM').value = entry.students_am;
-        if (entry.students_pm) document.getElementById('dayStudentsPM').value = entry.students_pm;
-        if (entry.capped_am) document.getElementById('dayCappedAM').checked = true;
-        if (entry.capped_pm) document.getElementById('dayCappedPM').checked = true;
         if (entry.note) document.getElementById('dayNote').value = entry.note;
         var dayRole = entry.day_role || 'assistant';
         var roleBtn = document.querySelector('.day-role-btn[data-role="' + dayRole + '"]');
         if (roleBtn) roleBtn.classList.add('active');
         if (entry.status === 'available' || entry.status === 'partial') {
             document.getElementById('timeFields').style.display = 'block';
-            document.getElementById('studentsField').style.display = 'block';
             document.getElementById('dayRoleField').style.display = 'block';
         }
         document.getElementById('removeDayBtn').style.display = 'inline-flex';
@@ -1288,7 +1291,6 @@ function selectAvailOption(el) {
     el.classList.add('selected-' + status);
     var show = (status === 'available' || status === 'partial');
     document.getElementById('timeFields').style.display = show ? 'block' : 'none';
-    document.getElementById('studentsField').style.display = show ? 'block' : 'none';
     document.getElementById('dayRoleField').style.display = show ? 'block' : 'none';
     if (show && !document.querySelector('.day-role-btn.active')) {
         var defBtn = document.querySelector('.day-role-btn[data-role="assistant"]');
@@ -1303,14 +1305,10 @@ async function saveDayAvailability() {
     var status = selected.dataset.status;
     var startTime = document.getElementById('startTime').value || null;
     var endTime = document.getElementById('endTime').value || null;
-    var studentsAM = document.getElementById('dayStudentsAM').value ? parseInt(document.getElementById('dayStudentsAM').value) : 0;
-    var studentsPM = document.getElementById('dayStudentsPM').value ? parseInt(document.getElementById('dayStudentsPM').value) : 0;
-    var cappedAM = document.getElementById('dayCappedAM').checked;
-    var cappedPM = document.getElementById('dayCappedPM').checked;
     var note = document.getElementById('dayNote').value.trim();
     var dayRoleBtn = document.querySelector('.day-role-btn.active');
     var dayRole = dayRoleBtn ? dayRoleBtn.dataset.role : 'assistant';
-    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, note: note, day_role: dayRole, created_by: currentUser.id };
+    var row = { staff_id: selectedStaffId, date: selectedDay, status: status, start_time: startTime, end_time: endTime, note: note, day_role: dayRole, created_by: currentUser.id };
     var saveBtn = document.querySelector('#dayModal .btn-success');
     setLoading(saveBtn, true);
     var result = await sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' });
@@ -1342,32 +1340,29 @@ function renderOverview() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entries = [];
-        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, day_role: e.day_role || 'assistant', students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm }); });
+        staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e) entries.push({ name: s.name, color: s.color, status: e.status, day_role: e.day_role || 'assistant' }); });
+        var ci = getDayClass(dateStr);
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
         var detailHtml = '';
-        if (entries.length > 0) {
+        if (entries.length > 0 || ci) {
             detailHtml = '<div class="overview-day-staff">';
-            var totalAM = 0, totalPM = 0;
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
                 var roleTag = e.day_role === 'head_trainer' ? ' <span style="background:var(--primary);color:white;padding:0 3px;border-radius:2px;font-size:0.45rem;font-weight:700;">HT</span>' : '';
                 detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+roleTag+'</span></div>';
-                totalAM += (e.students_am || 0); totalPM += (e.students_pm || 0);
             });
             if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400)">+' + (entries.length-3) + ' more</div>';
-            if (totalAM > 0 || totalPM > 0) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.55rem;">AM:' + totalAM + ' PM:' + totalPM + '</div>';
-            var anyCappedAM = entries.some(function(e){ return e.capped_am; });
-            var anyCappedPM = entries.some(function(e){ return e.capped_pm; });
-            if (anyCappedAM) detailHtml += '<span class="capped-badge">AM CAP</span>';
-            if (anyCappedPM) detailHtml += '<span class="capped-badge">PM CAP</span>';
+            if (ci && (ci.students_am || ci.students_pm)) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.55rem;">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
+            if (ci && ci.capped_am) detailHtml += '<span class="capped-badge">AM CAP</span>';
+            if (ci && ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + '</div>';
     }
     grid.innerHTML = html;
 }
-function changeOverviewMonth(dir) { overviewMonth += dir; if (overviewMonth > 11) { overviewMonth = 0; overviewYear++; } if (overviewMonth < 0) { overviewMonth = 11; overviewYear--; } document.getElementById('overviewMonthLabel').textContent = MONTH_NAMES[overviewMonth] + ' ' + overviewYear; debouncedNav('overview', function() { loadAvailabilityForMonth(overviewMonth, overviewYear).then(renderOverview); }); }
-function goToOverviewToday() { var n = new Date(); overviewMonth = n.getMonth(); overviewYear = n.getFullYear(); loadAvailabilityForMonth(overviewMonth,overviewYear).then(renderOverview); }
+function changeOverviewMonth(dir) { overviewMonth += dir; if (overviewMonth > 11) { overviewMonth = 0; overviewYear++; } if (overviewMonth < 0) { overviewMonth = 11; overviewYear--; } document.getElementById('overviewMonthLabel').textContent = MONTH_NAMES[overviewMonth] + ' ' + overviewYear; debouncedNav('overview', function() { Promise.all([loadAvailabilityForMonth(overviewMonth, overviewYear), loadDayClassesForMonth(overviewMonth, overviewYear)]).then(renderOverview); }); }
+function goToOverviewToday() { var n = new Date(); overviewMonth = n.getMonth(); overviewYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(overviewMonth,overviewYear), loadDayClassesForMonth(overviewMonth,overviewYear)]).then(renderOverview); }
 
 // ============ Assistant Availability View (Trainer) ============
 async function renderAssistAvail() {
@@ -1492,17 +1487,18 @@ function renderMyRoster() {
             var parts = [];
             if (entry.day_role === 'head_trainer') parts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Head Trainer</span>');
             else parts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Assistant</span>');
-            if (entry.start_time && entry.end_time) parts.push(entry.start_time.slice(0,5) + ' - ' + entry.end_time.slice(0,5));
-            if (entry.students_am) parts.push('AM: ' + entry.students_am + (entry.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (entry.students_pm) parts.push('PM: ' + entry.students_pm + (entry.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
+            var mci = getDayClass(dateStr);
+            if (mci && mci.start_time && mci.end_time) parts.push(mci.start_time.slice(0,5) + ' - ' + mci.end_time.slice(0,5));
+            if (mci && mci.students_am) parts.push('AM: ' + mci.students_am + (mci.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
+            if (mci && mci.students_pm) parts.push('PM: ' + mci.students_pm + (mci.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
             if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
         }
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
     grid.innerHTML = html;
 }
-function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { Promise.all([loadAvailabilityForMonth(myRosterMonth, myRosterYear), loadAssistantAvailForMonth(myRosterMonth, myRosterYear)]).then(renderMyRoster); }); }
-function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(myRosterMonth,myRosterYear), loadAssistantAvailForMonth(myRosterMonth,myRosterYear)]).then(renderMyRoster); }
+function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { Promise.all([loadAvailabilityForMonth(myRosterMonth, myRosterYear), loadAssistantAvailForMonth(myRosterMonth, myRosterYear), loadDayClassesForMonth(myRosterMonth, myRosterYear)]).then(renderMyRoster); }); }
+function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(myRosterMonth,myRosterYear), loadAssistantAvailForMonth(myRosterMonth,myRosterYear), loadDayClassesForMonth(myRosterMonth,myRosterYear)]).then(renderMyRoster); }
 
 // ============ My Availability (Assistant) ============
 function renderMyAvail() {
@@ -1809,10 +1805,12 @@ function generatePDF(month, year, pdfStaff) {
                 if (dd.day_role === 'head_trainer') det += '[HT] ';
                 det += dd.status==='available'?'Rostered':dd.status==='partial'?'Partial':'Unavailable';
                 if(dd.start_time&&dd.end_time) det+=' '+dd.start_time.slice(0,5)+'-'+dd.end_time.slice(0,5);
-                if(dd.capped_am) det += ' [AM CAP]'; if(dd.capped_pm) det += ' [PM CAP]';
                 doc.setTextColor(50,50,50); doc.text(det, x+4.5, lineY, {maxWidth:colW-6}); lineY+=3.2;
-                var stuTxt = ''; if(dd.students_am) stuTxt += 'AM:'+dd.students_am; if(dd.students_pm) stuTxt += (stuTxt?' ':'')+'PM:'+dd.students_pm;
-                if(stuTxt&&e+1<maxLines){doc.setTextColor(100,100,100);doc.text(stuTxt,x+4.5,lineY,{maxWidth:colW-6});lineY+=3.2;}
+            }
+            var pci = getDayClass(dateStr);
+            if (pci && (pci.students_am || pci.students_pm) && lineY+3.2 < y+rowH) {
+                var cTxt = 'AM:' + (pci.students_am||0) + (pci.capped_am?' CAP':'') + ' PM:' + (pci.students_pm||0) + (pci.capped_pm?' CAP':'');
+                doc.setTextColor(100,100,100); doc.text(cTxt, x+2, lineY, {maxWidth:colW-4}); lineY+=3.2;
             }
         }
         cellIdx++;
@@ -1842,6 +1840,9 @@ function setupRealtime() {
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_staff_members' }, function(payload) {
             handleRealtimeChange('staff', payload);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_day_classes' }, function(payload) {
+            handleRealtimeChange('day_classes', payload);
         })
         .subscribe();
 }
@@ -1881,6 +1882,15 @@ async function refreshCurrentView(table) {
         }
         return;
     }
+    if (table === 'day_classes') {
+        if (isTrainer()) {
+            if (currentTab === 'roster') { await loadDayClassesForMonth(currentMonth, currentYear); renderCalendar(); }
+            if (currentTab === 'overview') { await loadDayClassesForMonth(overviewMonth, overviewYear); renderOverview(); }
+        } else {
+            if (currentTab === 'myroster') { await loadDayClassesForMonth(myRosterMonth, myRosterYear); renderMyRoster(); }
+        }
+        return;
+    }
 }
 
 function teardownRealtime() {
@@ -1899,7 +1909,7 @@ async function openDayDetail(dateStr) {
     staffList.forEach(function(s) {
         var e = getAvailability(s.id, dateStr);
         if (e && (e.status === 'available' || e.status === 'partial')) {
-            rostered.push({ name: s.name, day_role: e.day_role || 'assistant', color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, students_am: e.students_am, students_pm: e.students_pm, capped_am: e.capped_am, capped_pm: e.capped_pm, note: e.note });
+            rostered.push({ name: s.name, day_role: e.day_role || 'assistant', color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, note: e.note });
         }
     });
 
@@ -1907,15 +1917,13 @@ async function openDayDetail(dateStr) {
     var trainers = rostered.filter(function(r) { return r.day_role === 'head_trainer'; });
     var assistants = rostered.filter(function(r) { return r.day_role !== 'head_trainer'; });
 
-    // Aggregate student counts (take max across rostered staff since it's per-class not per-person)
-    var amStudents = 0, pmStudents = 0, amCapped = false, pmCapped = false, classTime = '';
-    rostered.forEach(function(r) {
-        if (r.students_am > amStudents) amStudents = r.students_am;
-        if (r.students_pm > pmStudents) pmStudents = r.students_pm;
-        if (r.capped_am) amCapped = true;
-        if (r.capped_pm) pmCapped = true;
-        if (!classTime && r.start_time && r.end_time) classTime = r.start_time.slice(0,5) + ' - ' + r.end_time.slice(0,5);
-    });
+    // Get class info from day_classes table
+    var classInfo = getDayClass(dateStr);
+    var amStudents = classInfo ? classInfo.students_am : 0;
+    var pmStudents = classInfo ? classInfo.students_pm : 0;
+    var amCapped = classInfo ? classInfo.capped_am : false;
+    var pmCapped = classInfo ? classInfo.capped_pm : false;
+    var classTime = (classInfo && classInfo.start_time && classInfo.end_time) ? classInfo.start_time.slice(0,5) + ' - ' + classInfo.end_time.slice(0,5) : '';
 
     // Get assistant availability for this day
     var dayAssistAvail = assistantAvailCache[dateStr] || [];
@@ -1925,19 +1933,20 @@ async function openDayDetail(dateStr) {
 
     var html = '';
 
-    if (rostered.length === 0) {
-        html += '<div class="detail-no-data">No one is rostered for this day.</div>';
-    } else {
-        // Class info
-        html += '<div class="detail-section">';
-        html += '<h4>Class Schedule</h4>';
-        if (classTime) html += '<div class="detail-row"><span class="label">Class Time</span><span class="value">' + classTime + '</span></div>';
-        if (amStudents > 0 || pmStudents > 0) {
-            html += '<div class="detail-row"><span class="label">Morning Students</span><span class="value">' + amStudents + (amCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
-            html += '<div class="detail-row"><span class="label">Afternoon Students</span><span class="value">' + pmStudents + (pmCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
-        }
-        html += '</div>';
+    // Class info section (always show, even if no one rostered)
+    html += '<div class="detail-section">';
+    html += '<h4>Class Schedule</h4>';
+    if (classTime) html += '<div class="detail-row"><span class="label">Class Time</span><span class="value">' + classTime + '</span></div>';
+    if (amStudents > 0 || pmStudents > 0) {
+        html += '<div class="detail-row"><span class="label">Morning Students</span><span class="value">' + amStudents + (amCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
+        html += '<div class="detail-row"><span class="label">Afternoon Students</span><span class="value">' + pmStudents + (pmCapped ? ' <span class="capped-badge">CAPPED</span>' : '') + '</span></div>';
+    }
+    if (!classTime && amStudents === 0 && pmStudents === 0) {
+        html += '<div class="detail-no-data">No class info set for this day</div>';
+    }
+    html += '</div>';
 
+    if (rostered.length > 0) {
         // Head trainer(s)
         html += '<div class="detail-section">';
         html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
@@ -1946,7 +1955,7 @@ async function openDayDetail(dateStr) {
                 html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + t.color + '"></div><div><div class="detail-staff-name">' + escHtml(t.name) + '</div></div></div>';
             });
         } else {
-            html += '<div class="detail-no-data">No trainer rostered</div>';
+            html += '<div class="detail-no-data">No head trainer rostered</div>';
         }
         html += '</div>';
 
@@ -1964,6 +1973,8 @@ async function openDayDetail(dateStr) {
             html += '<div class="detail-no-data">No assistants rostered</div>';
         }
         html += '</div>';
+    } else {
+        html += '<div class="detail-section"><div class="detail-no-data">No one is rostered for this day.</div></div>';
     }
 
     // Assistant availability submitted
@@ -1982,7 +1993,49 @@ async function openDayDetail(dateStr) {
     }
 
     document.getElementById('dayDetailBody').innerHTML = html;
+
+    // Show editable class fields for trainers
+    var classFields = document.getElementById('dayClassFields');
+    var saveClassBtn = document.getElementById('saveClassBtn');
+    if (isTrainer()) {
+        classFields.style.display = 'block';
+        saveClassBtn.style.display = 'inline-flex';
+        classFields.dataset.date = dateStr;
+        document.getElementById('classStartTime').value = (classInfo && classInfo.start_time) ? classInfo.start_time.slice(0,5) : '';
+        document.getElementById('classEndTime').value = (classInfo && classInfo.end_time) ? classInfo.end_time.slice(0,5) : '';
+        document.getElementById('classStudentsAM').value = amStudents || '';
+        document.getElementById('classStudentsPM').value = pmStudents || '';
+        document.getElementById('classCappedAM').checked = amCapped;
+        document.getElementById('classCappedPM').checked = pmCapped;
+    } else {
+        classFields.style.display = 'none';
+        saveClassBtn.style.display = 'none';
+    }
+
     document.getElementById('dayDetailModal').classList.add('active');
+}
+
+async function saveDayClass() {
+    var dateStr = document.getElementById('dayClassFields').dataset.date;
+    if (!dateStr) return;
+    var startTime = document.getElementById('classStartTime').value || null;
+    var endTime = document.getElementById('classEndTime').value || null;
+    var studentsAM = document.getElementById('classStudentsAM').value ? parseInt(document.getElementById('classStudentsAM').value) : 0;
+    var studentsPM = document.getElementById('classStudentsPM').value ? parseInt(document.getElementById('classStudentsPM').value) : 0;
+    var cappedAM = document.getElementById('classCappedAM').checked;
+    var cappedPM = document.getElementById('classCappedPM').checked;
+    var row = { date: dateStr, start_time: startTime, end_time: endTime, students_am: studentsAM, students_pm: studentsPM, capped_am: cappedAM, capped_pm: cappedPM, updated_by: currentUser.id };
+    var saveBtn = document.getElementById('saveClassBtn');
+    setLoading(saveBtn, true);
+    var result = await sb.from('cbd_day_classes').upsert(row, { onConflict: 'date' });
+    setLoading(saveBtn, false);
+    if (result.error) { showToast('Failed to save class info: ' + result.error.message); return; }
+    dayClassesCache[dateStr] = row;
+    closeModal('dayDetailModal');
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
+    if (currentTab === 'myroster') renderMyRoster();
+    showToast('Class info saved');
 }
 
 // ============ PWA ============

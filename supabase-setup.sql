@@ -43,7 +43,19 @@ CREATE TABLE IF NOT EXISTS public.cbd_availability (
     UNIQUE(staff_id, date)
 );
 
--- 4. Indexes for performance
+-- 4. Day class info (per-day, not per-staff)
+CREATE TABLE IF NOT EXISTS public.cbd_day_classes (
+    date DATE PRIMARY KEY,
+    start_time TIME,
+    end_time TIME,
+    students_am INTEGER DEFAULT 0,
+    students_pm INTEGER DEFAULT 0,
+    capped_am BOOLEAN DEFAULT false,
+    capped_pm BOOLEAN DEFAULT false,
+    updated_by UUID REFERENCES auth.users(id)
+);
+
+-- 5. Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_cbd_availability_staff_date ON public.cbd_availability(staff_id, date);
 CREATE INDEX IF NOT EXISTS idx_cbd_availability_date ON public.cbd_availability(date);
 CREATE INDEX IF NOT EXISTS idx_cbd_profiles_role ON public.cbd_profiles(role);
@@ -108,6 +120,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 ALTER TABLE public.cbd_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cbd_staff_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cbd_availability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cbd_day_classes ENABLE ROW LEVEL SECURITY;
 
 -- PROFILES policies
 CREATE POLICY "cbd_profiles_select" ON public.cbd_profiles FOR SELECT TO authenticated USING (true);
@@ -119,6 +132,12 @@ CREATE POLICY "cbd_staff_select" ON public.cbd_staff_members FOR SELECT TO authe
 CREATE POLICY "cbd_staff_insert" ON public.cbd_staff_members FOR INSERT TO authenticated WITH CHECK (public.cbd_is_admin());
 CREATE POLICY "cbd_staff_update" ON public.cbd_staff_members FOR UPDATE TO authenticated USING (public.cbd_is_admin());
 CREATE POLICY "cbd_staff_delete" ON public.cbd_staff_members FOR DELETE TO authenticated USING (public.cbd_is_admin());
+
+-- DAY_CLASSES policies
+CREATE POLICY "cbd_day_classes_select" ON public.cbd_day_classes FOR SELECT TO authenticated USING (true);
+CREATE POLICY "cbd_day_classes_insert" ON public.cbd_day_classes FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "cbd_day_classes_update" ON public.cbd_day_classes FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "cbd_day_classes_delete" ON public.cbd_day_classes FOR DELETE TO authenticated USING (true);
 
 -- AVAILABILITY policies
 CREATE POLICY "cbd_avail_select" ON public.cbd_availability FOR SELECT TO authenticated USING (true);
