@@ -1210,10 +1210,19 @@ async function clearAllRosterMonth() {
 }
 
 // ============ Bulk Roster Template ============
-function getTemplateState() {
-    try { return JSON.parse(localStorage.getItem('cbd_roster_template') || 'null'); } catch(e) { return null; }
+var _templateCache = null;
+
+async function loadTemplateFromDB() {
+    var result = await sb.from('cbd_roster_template').select('template').eq('id', 1).single();
+    if (result.data && result.data.template) {
+        _templateCache = result.data.template;
+    } else {
+        _templateCache = null;
+    }
+    return _templateCache;
 }
-function saveTemplateState() {
+
+async function saveTemplateState() {
     var state = { staff: {}, rotate: {}, rotateStart: {}, capped: {} };
     document.querySelectorAll('.tmpl-cb').forEach(function(cb) {
         var key = cb.dataset.dow + '_' + cb.dataset.staffId;
@@ -1229,10 +1238,12 @@ function saveTemplateState() {
     document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
         state.capped[cb.dataset.dow] = cb.checked;
     });
-    localStorage.setItem('cbd_roster_template', JSON.stringify(state));
+    _templateCache = state;
+    await sb.from('cbd_roster_template').update({ template: state, updated_by: currentUser.id }).eq('id', 1);
 }
+
 function restoreTemplateState() {
-    var state = getTemplateState();
+    var state = _templateCache;
     if (!state) return;
     document.querySelectorAll('.tmpl-cb').forEach(function(cb) {
         var key = cb.dataset.dow + '_' + cb.dataset.staffId;
@@ -1250,7 +1261,8 @@ function restoreTemplateState() {
     });
 }
 
-function openBulkTemplate() {
+async function openBulkTemplate() {
+    await loadTemplateFromDB();
     var container = document.getElementById('bulkTemplateDays');
     var dayLabels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     var dayDows = [1,2,3,4,5,6,0]; // JS getDay() values
@@ -1358,7 +1370,7 @@ async function applyBulkTemplate() {
         template[dow].push(staffId);
     });
 
-    saveTemplateState();
+    await saveTemplateState();
     var month = overviewMonth;
     var year = overviewYear;
     var daysInMonth = new Date(year, month + 1, 0).getDate();

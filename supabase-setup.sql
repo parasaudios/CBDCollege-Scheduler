@@ -210,6 +210,25 @@ CREATE TRIGGER cbd_audit_profiles
     AFTER INSERT OR UPDATE OR DELETE ON public.cbd_profiles
     FOR EACH ROW EXECUTE FUNCTION public.cbd_audit_trigger();
 
+-- 8. Roster template (single-row, shared JSON config)
+CREATE TABLE IF NOT EXISTS public.cbd_roster_template (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    template JSONB NOT NULL DEFAULT '{}',
+    updated_by UUID REFERENCES auth.users(id),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO public.cbd_roster_template (id, template) VALUES (1, '{}') ON CONFLICT DO NOTHING;
+
+ALTER TABLE public.cbd_roster_template ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "cbd_template_select" ON public.cbd_roster_template FOR SELECT TO authenticated USING (true);
+CREATE POLICY "cbd_template_update" ON public.cbd_roster_template FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "cbd_template_insert" ON public.cbd_roster_template FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE TRIGGER cbd_roster_template_updated_at
+    BEFORE UPDATE ON public.cbd_roster_template
+    FOR EACH ROW EXECUTE FUNCTION public.cbd_handle_updated_at();
+
 -- ============================================================
 -- DONE! Now create your first admin user via the app's signup.
 -- ============================================================
