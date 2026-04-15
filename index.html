@@ -709,13 +709,6 @@
         <div class="modal-header"><h3>Weekly Roster Template</h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkTemplateModal')">&times;</button></div>
         <div class="modal-body" style="padding:16px 20px;">
             <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Select which staff to roster on each day. This will apply to every matching day in the current month, replacing any existing entries.</p>
-            <div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;background:var(--gray-50);">
-                <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">Class Times (applied to all days)</div>
-                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-                    <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;">Start <input type="time" id="tmplClassStart" class="form-control" style="width:120px;padding:4px 6px;font-size:0.85rem;"></label>
-                    <label style="font-size:0.8rem;display:flex;align-items:center;gap:6px;">End <input type="time" id="tmplClassEnd" class="form-control" style="width:120px;padding:4px 6px;font-size:0.85rem;"></label>
-                </div>
-            </div>
             <div id="bulkTemplateDays" style="display:flex;flex-direction:column;gap:14px;"></div>
         </div>
         <div class="modal-footer">
@@ -1291,21 +1284,35 @@ function deriveTemplateFromCalendar() {
         }
     }
 
-    // Detect most common class start/end times
-    var startTimes = {};
-    var endTimes = {};
+    // Detect most common class start/end times per DOW
+    var dowStartTimes = {};  // dow -> { time -> count }
+    var dowEndTimes = {};
     for (var day = 1; day <= daysInMonth; day++) {
+        var d2 = new Date(year, month, day);
+        var dow2 = d2.getDay();
         var dateStr2 = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
         var ci = getDayClass(dateStr2);
-        if (ci && ci.start_time) { startTimes[ci.start_time] = (startTimes[ci.start_time] || 0) + 1; }
-        if (ci && ci.end_time) { endTimes[ci.end_time] = (endTimes[ci.end_time] || 0) + 1; }
+        if (ci && ci.start_time) {
+            if (!dowStartTimes[dow2]) dowStartTimes[dow2] = {};
+            dowStartTimes[dow2][ci.start_time] = (dowStartTimes[dow2][ci.start_time] || 0) + 1;
+        }
+        if (ci && ci.end_time) {
+            if (!dowEndTimes[dow2]) dowEndTimes[dow2] = {};
+            dowEndTimes[dow2][ci.end_time] = (dowEndTimes[dow2][ci.end_time] || 0) + 1;
+        }
     }
-    var bestStart = null, bestStartCount = 0;
-    for (var t in startTimes) { if (startTimes[t] > bestStartCount) { bestStart = t; bestStartCount = startTimes[t]; } }
-    var bestEnd = null, bestEndCount = 0;
-    for (var t in endTimes) { if (endTimes[t] > bestEndCount) { bestEnd = t; bestEndCount = endTimes[t]; } }
-    result.classStart = bestStart;
-    result.classEnd = bestEnd;
+    result.classStart = {};  // dow -> time
+    result.classEnd = {};
+    for (var dow3 in dowStartTimes) {
+        var best = null, bestC = 0;
+        for (var t in dowStartTimes[dow3]) { if (dowStartTimes[dow3][t] > bestC) { best = t; bestC = dowStartTimes[dow3][t]; } }
+        if (best) result.classStart[dow3] = best;
+    }
+    for (var dow3 in dowEndTimes) {
+        var best = null, bestC = 0;
+        for (var t in dowEndTimes[dow3]) { if (dowEndTimes[dow3][t] > bestC) { best = t; bestC = dowEndTimes[dow3][t]; } }
+        if (best) result.classEnd[dow3] = best;
+    }
 
     return result;
 }
@@ -1323,11 +1330,15 @@ function restoreTemplateFromCalendar() {
     document.querySelectorAll('.tmpl-capped').forEach(function(cb) {
         if (state.capped[cb.dataset.dow]) { cb.checked = true; }
     });
-    // Populate class time fields from calendar data
-    var startEl = document.getElementById('tmplClassStart');
-    var endEl = document.getElementById('tmplClassEnd');
-    if (startEl && state.classStart) startEl.value = state.classStart.slice(0, 5);
-    if (endEl && state.classEnd) endEl.value = state.classEnd.slice(0, 5);
+    // Populate per-day class time fields from calendar data
+    document.querySelectorAll('.tmpl-class-start').forEach(function(el) {
+        var dow = el.dataset.dow;
+        if (state.classStart[dow]) el.value = state.classStart[dow].slice(0, 5);
+    });
+    document.querySelectorAll('.tmpl-class-end').forEach(function(el) {
+        var dow = el.dataset.dow;
+        if (state.classEnd[dow]) el.value = state.classEnd[dow].slice(0, 5);
+    });
 }
 
 function openBulkTemplate() {
@@ -1383,7 +1394,22 @@ function openBulkTemplate() {
         html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--warning);background:var(--warning-light);cursor:pointer;font-size:0.8rem;font-weight:600;">' +
             '<input type="checkbox" class="tmpl-capped" data-dow="' + dow + '" style="width:16px;height:16px;cursor:pointer;">' +
             '<span>Capped</span></label>';
-        html += '</div></div>';
+        html += '</div>';
+        // Per-day class time dropdowns
+        var timeOpts = '<option value="">--</option>';
+        for (var h = 6; h <= 21; h++) {
+            var lbl = (h <= 12 ? h : h - 12) + (h < 12 ? 'AM' : 'PM');
+            if (h === 12) lbl = '12PM';
+            var val = String(h).padStart(2, '0') + ':00';
+            timeOpts += '<option value="' + val + '">' + lbl + '</option>';
+        }
+        html += '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">';
+        html += '<span style="font-size:0.78rem;color:var(--gray-500);">Class</span>';
+        html += '<select class="form-control tmpl-class-start" data-dow="' + dow + '" style="width:auto;padding:3px 6px;font-size:0.82rem;">' + timeOpts + '</select>';
+        html += '<span style="font-size:0.78rem;color:var(--gray-500);">to</span>';
+        html += '<select class="form-control tmpl-class-end" data-dow="' + dow + '" style="width:auto;padding:3px 6px;font-size:0.82rem;">' + timeOpts + '</select>';
+        html += '</div>';
+        html += '</div>';
     });
     container.innerHTML = html;
     restoreTemplateFromCalendar();
@@ -1425,11 +1451,18 @@ async function applyBulkTemplate() {
         if (rotateDows[dow]) rotateStartWith[dow] = sel.value;
     });
 
-    // Read class time fields
-    var tmplClassStart = document.getElementById('tmplClassStart').value || null;
-    var tmplClassEnd = document.getElementById('tmplClassEnd').value || null;
+    // Read per-day class time fields
+    var tmplClassStartByDow = {};
+    var tmplClassEndByDow = {};
+    var hasAnyClassTime = false;
+    document.querySelectorAll('.tmpl-class-start').forEach(function(el) {
+        if (el.value) { tmplClassStartByDow[parseInt(el.dataset.dow)] = el.value; hasAnyClassTime = true; }
+    });
+    document.querySelectorAll('.tmpl-class-end').forEach(function(el) {
+        if (el.value) { tmplClassEndByDow[parseInt(el.dataset.dow)] = el.value; hasAnyClassTime = true; }
+    });
 
-    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0 && Object.keys(rotateDows).length === 0 && !tmplClassStart && !tmplClassEnd) {
+    if (checkboxes.length === 0 && Object.keys(cappedDows).length === 0 && Object.keys(rotateDows).length === 0 && !hasAnyClassTime) {
         showToast('Select at least one staff member, rotation, or capped day'); return;
     }
 
@@ -1481,14 +1514,16 @@ async function applyBulkTemplate() {
         }
 
         // Class info entries: apply class times and/or capped status
-        var needsClassUpsert = cappedDows[dow] || tmplClassStart || tmplClassEnd;
+        var dowClassStart = tmplClassStartByDow[dow] || null;
+        var dowClassEnd = tmplClassEndByDow[dow] || null;
+        var needsClassUpsert = cappedDows[dow] || dowClassStart || dowClassEnd;
         var hasRoster = (template[dow] && template[dow].length > 0) || (rotateDows[dow] && rotateDows[dow].length > 0);
         if (needsClassUpsert && (hasRoster || cappedDows[dow])) {
             var existingClass = getDayClass(dateStr);
             classUpserts.push({
                 date: dateStr,
-                start_time: tmplClassStart || (existingClass && existingClass.start_time) || null,
-                end_time: tmplClassEnd || (existingClass && existingClass.end_time) || null,
+                start_time: dowClassStart || (existingClass && existingClass.start_time) || null,
+                end_time: dowClassEnd || (existingClass && existingClass.end_time) || null,
                 students_am: (existingClass && existingClass.students_am) || 0,
                 students_pm: (existingClass && existingClass.students_pm) || 0,
                 capped_am: cappedDows[dow] ? true : (existingClass ? existingClass.capped_am : false),
@@ -1521,7 +1556,7 @@ async function applyBulkTemplate() {
 
     setLoading(btn, false);
     // Snapshot template state before closing modal
-    var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {}, classStart: tmplClassStart, classEnd: tmplClassEnd };
+    var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {}, classStart: tmplClassStartByDow, classEnd: tmplClassEndByDow };
     document.querySelectorAll('.tmpl-cb').forEach(function(cb) { snapshot.staff[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
     document.querySelectorAll('.tmpl-rotate').forEach(function(cb) { snapshot.rotate[cb.dataset.dow + '_' + cb.dataset.staffId] = cb.checked; });
     document.querySelectorAll('.tmpl-rotate-start').forEach(function(sel) { snapshot.rotateStart[sel.dataset.dow] = sel.value; });
