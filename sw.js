@@ -1,4 +1,4 @@
-var CACHE_NAME = 'cbd-scheduler-v2';
+var CACHE_NAME = 'cbd-scheduler-v3';
 var ASSETS = [
   '/',
   '/index.html'
@@ -23,6 +23,34 @@ self.addEventListener('activate', function(e) {
     })
   );
   self.clients.claim();
+});
+
+// Web Push handler (Phase 2: requires VAPID keys + subscription endpoint)
+self.addEventListener('push', function(e) {
+    var data = {};
+    try { data = e.data ? e.data.json() : {}; } catch (err) { data = { title: 'Notification', body: e.data ? e.data.text() : '' }; }
+    var title = data.title || 'CBD Scheduler';
+    var options = {
+        body: data.body || data.message || '',
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-192.png',
+        tag: data.tag || 'cbd-notif',
+        data: data.data || {}
+    };
+    e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', function(e) {
+    e.notification.close();
+    e.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            for (var i = 0; i < clientList.length; i++) {
+                var c = clientList[i];
+                if ('focus' in c) return c.focus();
+            }
+            if (clients.openWindow) return clients.openWindow('/');
+        })
+    );
 });
 
 self.addEventListener('fetch', function(e) {

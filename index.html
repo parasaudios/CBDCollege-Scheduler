@@ -313,6 +313,10 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <div class="user-info"><span id="userName"></span><span class="user-badge" id="userRole"></span></div>
                 <button class="btn btn-ghost btn-sm" id="viewAsBtn" style="display:none;" onclick="toggleViewAsAssistant()">View as Assistant</button>
+                <button id="notifBellBtn" class="btn btn-ghost btn-sm" style="display:none;position:relative;" onclick="openNotifPanel()" title="Notifications">
+                    <span style="font-size:1.1rem;line-height:1;">&#128276;</span>
+                    <span id="notifBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--danger);color:white;border-radius:999px;font-size:0.6rem;font-weight:700;min-width:16px;height:16px;padding:0 4px;align-items:center;justify-content:center;">0</span>
+                </button>
                 <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="openExportModal()">Export PDF</button>
                 <button class="btn btn-ghost btn-sm" onclick="handleLogout()">Sign Out</button>
             </div>
@@ -709,6 +713,22 @@
     </div>
 </div>
 
+<!-- Notifications Modal -->
+<div class="modal-overlay" id="notifModal">
+    <div class="modal" style="max-width:540px;">
+        <div class="modal-header">
+            <h3>Notifications</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button id="markAllReadBtn" class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
+                <button class="btn btn-icon btn-outline" onclick="closeModal('notifModal')">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding:0;max-height:70vh;overflow-y:auto;">
+            <div id="notifList"></div>
+        </div>
+    </div>
+</div>
+
 <!-- Bulk Roster Template Modal -->
 <div class="modal-overlay" id="bulkTemplateModal">
     <div class="modal" style="max-width:600px;">
@@ -828,6 +848,7 @@ async function toggleViewAsAssistant() {
         roleEl.className = 'user-badge assistant';
         document.getElementById('headerSub').textContent = 'Previewing: ' + myStaffMember.name.split(' ')[0];
         document.getElementById('exportBtn').style.display = 'none';
+        document.getElementById('notifBellBtn').style.display = 'none';
     } else {
         previewBar.style.display = 'none';
         btn.textContent = 'View as Assistant';
@@ -837,6 +858,7 @@ async function toggleViewAsAssistant() {
         roleEl.className = 'user-badge ' + currentProfile.role;
         document.getElementById('headerSub').textContent = 'Manage team schedules and rosters';
         document.getElementById('exportBtn').style.display = '';
+        document.getElementById('notifBellBtn').style.display = '';
     }
     buildTabs();
     await loadAllData();
@@ -922,9 +944,14 @@ function showApp() {
     document.getElementById('userRole').className = 'user-badge ' + currentProfile.role;
     document.getElementById('headerSub').textContent = isTrainer() ? 'Manage team schedules and rosters' : 'View your roster and submit availability';
     document.getElementById('viewAsBtn').style.display = isActualTrainer() ? '' : 'none';
+    document.getElementById('notifBellBtn').style.display = isActualTrainer() ? '' : 'none';
     buildTabs();
     loadAllData();
     setupRealtime();
+    if (isActualTrainer()) {
+        loadNotifications();
+        setTimeout(requestNotificationPermission, 2000);
+    }
 }
 
 function buildTabs() {
@@ -2410,6 +2437,12 @@ function setupRealtime() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_day_classes' }, function(payload) {
             handleRealtimeChange('day_classes', payload);
         })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cbd_notifications' }, function(payload) {
+            handleNewNotification(payload.new);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_notification_reads' }, function() {
+            if (isActualTrainer()) loadNotifications();
+        })
         .subscribe();
 }
 
@@ -2464,6 +2497,136 @@ async function refreshCurrentView(table) {
 
 function teardownRealtime() {
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+}
+
+// ============ Notifications ============
+var notifications = []; // array of notification rows
+var notifReads = {}; // notification_id -> true if read
+
+async function loadNotifications() {
+    if (!isActualTrainer()) return;
+    // Load last 50 notifications
+    var result = await sb.from('cbd_notifications').select('*').order('created_at', { ascending: false }).limit(50);
+    notifications = result.data || [];
+    // Load read receipts for current user
+    var readsResult = await sb.from('cbd_notification_reads').select('notification_id').eq('user_id', currentUser.id);
+    notifReads = {};
+    (readsResult.data || []).forEach(function(r) { notifReads[r.notification_id] = true; });
+    renderNotifBadge();
+    if (document.getElementById('notifModal').classList.contains('active')) renderNotifList();
+}
+
+function renderNotifBadge() {
+    var badge = document.getElementById('notifBadge');
+    var bell = document.getElementById('notifBellBtn');
+    if (!isActualTrainer()) { bell.style.display = 'none'; return; }
+    bell.style.display = '';
+    var unread = notifications.filter(function(n) { return !notifReads[n.id]; }).length;
+    if (unread > 0) {
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function formatNotifTime(iso) {
+    var d = new Date(iso);
+    var now = new Date();
+    var diffMs = now - d;
+    var diffMin = Math.round(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    var diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return diffHr + 'h ago';
+    var diffDay = Math.round(diffHr / 24);
+    if (diffDay < 7) return diffDay + 'd ago';
+    return d.toLocaleDateString();
+}
+
+function renderNotifList() {
+    var list = document.getElementById('notifList');
+    if (notifications.length === 0) {
+        list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--gray-500);">No notifications yet</div>';
+        return;
+    }
+    list.innerHTML = notifications.map(function(n) {
+        var isRead = !!notifReads[n.id];
+        var data = n.data || {};
+        var dateStr = data.date ? new Date(data.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+        var statusColor = data.is_available ? 'var(--success)' : 'var(--danger)';
+        var statusText = data.is_available ? 'Available' : 'Not available';
+        return '<div class="notif-item" data-id="' + n.id + '" style="padding:12px 16px;border-bottom:1px solid var(--gray-200);' + (isRead ? 'background:white;' : 'background:var(--primary-light);') + 'cursor:pointer;display:flex;gap:10px;align-items:flex-start;" onclick="markNotificationRead(\'' + n.id + '\')">' +
+            (isRead ? '' : '<span style="width:8px;height:8px;border-radius:50%;background:var(--primary);margin-top:6px;flex-shrink:0;"></span>') +
+            '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:600;font-size:0.9rem;margin-bottom:2px;">' + escHtml(n.title) + '</div>' +
+                '<div style="font-size:0.85rem;color:var(--gray-600);margin-bottom:4px;">' +
+                    (dateStr ? '<span style="color:' + statusColor + ';font-weight:600;">' + statusText + '</span> on ' + escHtml(dateStr) : escHtml(n.message)) +
+                '</div>' +
+                (data.note ? '<div style="font-size:0.82rem;color:var(--gray-700);font-style:italic;background:white;padding:4px 8px;border-radius:4px;margin-top:4px;border-left:3px solid var(--primary);">"' + escHtml(data.note) + '"</div>' : '') +
+                '<div style="font-size:0.72rem;color:var(--gray-400);margin-top:4px;">' + formatNotifTime(n.created_at) + '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function openNotifPanel() {
+    document.getElementById('notifModal').classList.add('active');
+    renderNotifList();
+}
+
+async function markNotificationRead(notifId) {
+    if (notifReads[notifId]) return;
+    notifReads[notifId] = true;
+    renderNotifBadge();
+    renderNotifList();
+    await sb.from('cbd_notification_reads').upsert({ notification_id: notifId, user_id: currentUser.id }, { onConflict: 'notification_id,user_id' });
+}
+
+async function markAllNotificationsRead() {
+    var unread = notifications.filter(function(n) { return !notifReads[n.id]; });
+    if (unread.length === 0) return;
+    var rows = unread.map(function(n) { return { notification_id: n.id, user_id: currentUser.id }; });
+    unread.forEach(function(n) { notifReads[n.id] = true; });
+    renderNotifBadge();
+    renderNotifList();
+    await sb.from('cbd_notification_reads').upsert(rows, { onConflict: 'notification_id,user_id' });
+}
+
+function handleNewNotification(row) {
+    if (!isActualTrainer()) return;
+    notifications.unshift(row);
+    if (notifications.length > 50) notifications.length = 50;
+    renderNotifBadge();
+    if (document.getElementById('notifModal').classList.contains('active')) renderNotifList();
+    // Browser notification
+    showBrowserNotification(row);
+    // Subtle toast for in-app awareness
+    showToast(row.title);
+}
+
+function showBrowserNotification(row) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    try {
+        var n = new Notification(row.title, {
+            body: row.message,
+            icon: 'icons/icon-192.png',
+            badge: 'icons/icon-192.png',
+            tag: 'cbd-' + row.id,
+            data: row.data
+        });
+        n.onclick = function() { window.focus(); openNotifPanel(); n.close(); };
+    } catch (e) {}
+}
+
+function requestNotificationPermission() {
+    if (!isActualTrainer()) return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+        // Ask only once per session, subtly
+        Notification.requestPermission();
+    }
 }
 
 // ============ Day Detail Modal ============
