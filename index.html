@@ -160,10 +160,17 @@
         .multi-select-bar .btn { background: rgba(255,255,255,0.2); color: white; }
         .multi-select-bar .btn:hover { background: rgba(255,255,255,0.3); }
         .bulk-panel { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; }
-        .bulk-class-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .bulk-class-row label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; min-width: 140px; cursor: pointer; }
-        .bulk-class-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-        .bulk-class-row .form-control { flex: 1; padding: 5px 8px; font-size: 0.9rem; }
+        .bc-grid { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .bc-grid thead th { position: sticky; top: 0; background: var(--gray-50); border-bottom: 1px solid var(--gray-200); padding: 8px 6px; text-align: left; font-size: 0.78rem; font-weight: 600; color: var(--gray-600); white-space: nowrap; }
+        .bc-grid tbody td { padding: 4px 6px; border-bottom: 1px solid var(--gray-100); }
+        .bc-grid tbody tr.bc-weekend { background: var(--primary-light); }
+        .bc-grid tbody tr.bc-hidden { display: none; }
+        .bc-grid input[type="time"], .bc-grid input[type="number"] { width: 100%; padding: 3px 6px; font-size: 0.85rem; border: 1px solid var(--gray-200); border-radius: 4px; background: white; }
+        .bc-grid input[type="number"] { width: 70px; }
+        .bc-grid td.bc-cap { text-align: center; }
+        .bc-grid td.bc-cap input { width: 16px; height: 16px; cursor: pointer; }
+        .bc-grid .bc-date-cell { white-space: nowrap; font-weight: 600; color: var(--gray-700); }
+        .bc-grid .bc-dow-cell { color: var(--gray-500); font-size: 0.78rem; text-transform: uppercase; }
         .bulk-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .bulk-panel-header h4 { font-size: 0.85rem; font-weight: 600; color: var(--gray-700); margin: 0; }
         .bulk-panel-hint { font-size: 0.75rem; color: var(--gray-500); margin-bottom: 10px; }
@@ -767,36 +774,23 @@
 
 <!-- Bulk Class Edit Modal -->
 <div class="modal-overlay" id="bulkClassModal">
-    <div class="modal" style="max-width:560px;">
-        <div class="modal-header"><h3>Bulk Edit Classes</h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkClassModal')">&times;</button></div>
-        <div class="modal-body" style="padding:16px 20px;">
-            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Select days of the week and/or a date range, then set the values to apply to every matching day in the current month.</p>
-
-            <div style="margin-bottom:14px;">
-                <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px;">Days of the week</div>
-                <div id="bulkClassDows" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <div class="modal" style="max-width:840px;">
+        <div class="modal-header"><h3>Bulk Edit Classes — <span id="bcMonthLabel"></span></h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkClassModal')">&times;</button></div>
+        <div class="modal-body" style="padding:14px 18px;">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                <span style="font-size:0.85rem;color:var(--gray-500);">Filter:</span>
+                <div id="bcDowFilter" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                <button class="btn btn-outline btn-sm" onclick="bcClearFilter()">All days</button>
+                <button class="btn btn-outline btn-sm" onclick="bcFillDown()" title="Copy the first visible row's values to all rows below">Fill down &darr;</button>
             </div>
-
-            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-                <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;"><label>From date (optional)</label><input type="date" class="form-control" id="bcFromDate"></div>
-                <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;"><label>To date (optional)</label><input type="date" class="form-control" id="bcToDate"></div>
-            </div>
-
-            <div style="border-top:1px solid var(--gray-200);padding-top:14px;">
-                <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">Values to apply</div>
-                <p style="font-size:0.78rem;color:var(--gray-500);margin-bottom:10px;">Only checked fields will be written. Leave unchecked to preserve each day's existing value.</p>
-
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApStart"> Start time</label><input type="time" class="form-control" id="bcStart"></div>
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApEnd"> End time</label><input type="time" class="form-control" id="bcEnd"></div>
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApAM"> Students AM</label><input type="number" min="0" class="form-control" id="bcAM"></div>
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApPM"> Students PM</label><input type="number" min="0" class="form-control" id="bcPM"></div>
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApCapAM"> Cap AM</label><select class="form-control" id="bcCapAM"><option value="true">Yes</option><option value="false">No</option></select></div>
-                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApCapPM"> Cap PM</label><select class="form-control" id="bcCapPM"><option value="true">Yes</option><option value="false">No</option></select></div>
+            <p style="font-size:0.78rem;color:var(--gray-500);margin-bottom:10px;">Edit any cell directly. Empty rows are ignored. Use "Fill down" to copy the top visible row's values to the rest.</p>
+            <div style="overflow:auto;max-height:60vh;border:1px solid var(--gray-200);border-radius:var(--radius);">
+                <table class="bc-grid" id="bulkClassGrid"></table>
             </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" onclick="closeModal('bulkClassModal')">Cancel</button>
-            <button class="btn btn-success" id="bcApplyBtn" onclick="applyBulkClass()">Apply to Month</button>
+            <button class="btn btn-success" id="bcApplyBtn" onclick="applyBulkClass()">Save Changes</button>
         </div>
     </div>
 </div>
@@ -2093,83 +2087,146 @@ async function deleteClassEntry() {
     showToast('Class cleared');
 }
 
+// Snapshot of initial row values to detect which rows were actually edited
+var _bcInitial = {};
+
 function openBulkClassEdit() {
-    var container = document.getElementById('bulkClassDows');
+    document.getElementById('bcMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
+
+    // Build DOW filter
+    var filter = document.getElementById('bcDowFilter');
     var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     var dows = [1,2,3,4,5,6,0];
-    container.innerHTML = labels.map(function(lbl, i) {
-        var dow = dows[i];
-        return '<label style="display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--gray-200);border-radius:var(--radius);cursor:pointer;font-size:0.85rem;background:white;" data-dow="' + dow + '"><input type="checkbox" class="bc-dow" data-dow="' + dow + '" style="width:16px;height:16px;cursor:pointer;">' + lbl + '</label>';
+    filter.innerHTML = labels.map(function(lbl, i) {
+        return '<label style="display:flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--gray-200);border-radius:var(--radius);cursor:pointer;font-size:0.78rem;background:white;"><input type="checkbox" class="bc-dow-filter" data-dow="' + dows[i] + '" style="width:14px;height:14px;cursor:pointer;" onchange="bcApplyFilter()">' + lbl + '</label>';
     }).join('');
-    // Reset fields
-    document.querySelectorAll('.bc-apply').forEach(function(cb) { cb.checked = false; });
-    ['bcStart','bcEnd','bcAM','bcPM','bcFromDate','bcToDate'].forEach(function(id){ document.getElementById(id).value = ''; });
-    document.getElementById('bcCapAM').value = 'true';
-    document.getElementById('bcCapPM').value = 'true';
-    document.getElementById('bulkClassModal').classList.add('active');
-}
 
-async function applyBulkClass() {
-    var checkedDows = {};
-    document.querySelectorAll('.bc-dow:checked').forEach(function(cb) { checkedDows[parseInt(cb.dataset.dow)] = true; });
-    var hasDowFilter = Object.keys(checkedDows).length > 0;
-    var fromDate = document.getElementById('bcFromDate').value || null;
-    var toDate = document.getElementById('bcToDate').value || null;
-
-    // Build the set of fields to apply
-    var apply = {};
-    if (document.getElementById('bcApStart').checked) apply.start_time = document.getElementById('bcStart').value || null;
-    if (document.getElementById('bcApEnd').checked) apply.end_time = document.getElementById('bcEnd').value || null;
-    if (document.getElementById('bcApAM').checked) apply.students_am = parseInt(document.getElementById('bcAM').value) || 0;
-    if (document.getElementById('bcApPM').checked) apply.students_pm = parseInt(document.getElementById('bcPM').value) || 0;
-    if (document.getElementById('bcApCapAM').checked) apply.capped_am = document.getElementById('bcCapAM').value === 'true';
-    if (document.getElementById('bcApCapPM').checked) apply.capped_pm = document.getElementById('bcCapPM').value === 'true';
-
-    if (Object.keys(apply).length === 0) { showToast('Check at least one field to apply'); return; }
-
+    // Build the grid with one row per day of the month
     var daysInMonth = new Date(classesYear, classesMonth + 1, 0).getDate();
-    var upserts = [];
+    var DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var grid = document.getElementById('bulkClassGrid');
+    var html = '<thead><tr>' +
+        '<th>Date</th><th>Start</th><th>End</th><th>AM</th><th>PM</th><th>Cap AM</th><th>Cap PM</th>' +
+        '</tr></thead><tbody>';
+    _bcInitial = {};
     for (var day = 1; day <= daysInMonth; day++) {
         var d = new Date(classesYear, classesMonth, day);
         var dow = d.getDay();
+        var isWeekend = (dow === 0 || dow === 6);
         var dateStr = classesYear + '-' + String(classesMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-        if (hasDowFilter && !checkedDows[dow]) continue;
-        if (fromDate && dateStr < fromDate) continue;
-        if (toDate && dateStr > toDate) continue;
+        var ci = getDayClass(dateStr) || {};
+        var startVal = ci.start_time ? ci.start_time.slice(0,5) : '';
+        var endVal = ci.end_time ? ci.end_time.slice(0,5) : '';
+        var amVal = ci.students_am || 0;
+        var pmVal = ci.students_pm || 0;
+        var capAm = !!ci.capped_am;
+        var capPm = !!ci.capped_pm;
+        _bcInitial[dateStr] = { start: startVal, end: endVal, am: amVal, pm: pmVal, capAm: capAm, capPm: capPm };
 
-        var existing = getDayClass(dateStr) || {};
-        var row = {
-            date: dateStr,
-            start_time: apply.hasOwnProperty('start_time') ? apply.start_time : (existing.start_time || null),
-            end_time: apply.hasOwnProperty('end_time') ? apply.end_time : (existing.end_time || null),
-            students_am: apply.hasOwnProperty('students_am') ? apply.students_am : (existing.students_am || 0),
-            students_pm: apply.hasOwnProperty('students_pm') ? apply.students_pm : (existing.students_pm || 0),
-            capped_am: apply.hasOwnProperty('capped_am') ? apply.capped_am : !!existing.capped_am,
-            capped_pm: apply.hasOwnProperty('capped_pm') ? apply.capped_pm : !!existing.capped_pm,
-            updated_by: currentUser.id
-        };
-        upserts.push(row);
+        html += '<tr class="bc-row' + (isWeekend ? ' bc-weekend' : '') + '" data-date="' + dateStr + '" data-dow="' + dow + '">' +
+            '<td class="bc-date-cell">' + day + ' <span class="bc-dow-cell">' + DOW_LABELS[dow] + '</span></td>' +
+            '<td><input type="time" class="bc-start" value="' + startVal + '"></td>' +
+            '<td><input type="time" class="bc-end" value="' + endVal + '"></td>' +
+            '<td><input type="number" min="0" class="bc-am" value="' + amVal + '"></td>' +
+            '<td><input type="number" min="0" class="bc-pm" value="' + pmVal + '"></td>' +
+            '<td class="bc-cap"><input type="checkbox" class="bc-capam"' + (capAm ? ' checked' : '') + '></td>' +
+            '<td class="bc-cap"><input type="checkbox" class="bc-cappm"' + (capPm ? ' checked' : '') + '></td>' +
+        '</tr>';
     }
+    html += '</tbody>';
+    grid.innerHTML = html;
+    document.getElementById('bulkClassModal').classList.add('active');
+}
 
-    if (upserts.length === 0) { showToast('No matching days'); return; }
+function bcClearFilter() {
+    document.querySelectorAll('.bc-dow-filter').forEach(function(cb) { cb.checked = false; });
+    bcApplyFilter();
+}
+
+function bcApplyFilter() {
+    var checked = {};
+    var anyChecked = false;
+    document.querySelectorAll('.bc-dow-filter:checked').forEach(function(cb) { checked[cb.dataset.dow] = true; anyChecked = true; });
+    document.querySelectorAll('#bulkClassGrid tbody tr').forEach(function(tr) {
+        if (!anyChecked || checked[tr.dataset.dow]) tr.classList.remove('bc-hidden');
+        else tr.classList.add('bc-hidden');
+    });
+}
+
+function bcFillDown() {
+    var visible = Array.prototype.slice.call(document.querySelectorAll('#bulkClassGrid tbody tr:not(.bc-hidden)'));
+    if (visible.length < 2) { showToast('Need at least 2 visible rows to fill down'); return; }
+    var src = visible[0];
+    var vals = {
+        start: src.querySelector('.bc-start').value,
+        end: src.querySelector('.bc-end').value,
+        am: src.querySelector('.bc-am').value,
+        pm: src.querySelector('.bc-pm').value,
+        capAm: src.querySelector('.bc-capam').checked,
+        capPm: src.querySelector('.bc-cappm').checked
+    };
+    for (var i = 1; i < visible.length; i++) {
+        var tr = visible[i];
+        tr.querySelector('.bc-start').value = vals.start;
+        tr.querySelector('.bc-end').value = vals.end;
+        tr.querySelector('.bc-am').value = vals.am;
+        tr.querySelector('.bc-pm').value = vals.pm;
+        tr.querySelector('.bc-capam').checked = vals.capAm;
+        tr.querySelector('.bc-cappm').checked = vals.capPm;
+    }
+    showToast('Filled ' + (visible.length - 1) + ' rows from the top row');
+}
+
+async function applyBulkClass() {
+    var rows = document.querySelectorAll('#bulkClassGrid tbody tr');
+    var upserts = [];
+    rows.forEach(function(tr) {
+        var dateStr = tr.dataset.date;
+        var startV = tr.querySelector('.bc-start').value || null;
+        var endV = tr.querySelector('.bc-end').value || null;
+        var amV = parseInt(tr.querySelector('.bc-am').value) || 0;
+        var pmV = parseInt(tr.querySelector('.bc-pm').value) || 0;
+        var capAmV = tr.querySelector('.bc-capam').checked;
+        var capPmV = tr.querySelector('.bc-cappm').checked;
+
+        var initial = _bcInitial[dateStr] || {};
+        var changed = (startV || '') !== (initial.start || '') ||
+                      (endV || '') !== (initial.end || '') ||
+                      amV !== (initial.am || 0) ||
+                      pmV !== (initial.pm || 0) ||
+                      capAmV !== !!initial.capAm ||
+                      capPmV !== !!initial.capPm;
+        if (!changed) return;
+
+        upserts.push({
+            date: dateStr,
+            start_time: startV,
+            end_time: endV,
+            students_am: amV,
+            students_pm: pmV,
+            capped_am: capAmV,
+            capped_pm: capPmV,
+            updated_by: currentUser.id
+        });
+    });
+
+    if (upserts.length === 0) { showToast('No changes to save'); return; }
 
     var btn = document.getElementById('bcApplyBtn');
     setLoading(btn, true);
-
     for (var i = 0; i < upserts.length; i += 50) {
         var batch = upserts.slice(i, i + 50);
         var result = await sb.from('cbd_day_classes').upsert(batch, { onConflict: 'date' });
         if (result.error) { setLoading(btn, false); showToast('Error: ' + result.error.message); return; }
         batch.forEach(function(r) { dayClassesCache[r.date] = r; });
     }
-
     setLoading(btn, false);
     closeModal('bulkClassModal');
     renderClassesCalendar();
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
     updateSummary();
-    showToast('Applied to ' + upserts.length + ' days');
+    showToast('Saved ' + upserts.length + ' day' + (upserts.length === 1 ? '' : 's'));
 }
 
 // ============ Assistant Availability View (Trainer) ============
