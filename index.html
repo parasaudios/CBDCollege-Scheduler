@@ -949,7 +949,7 @@ function showApp() {
     loadAllData();
     setupRealtime();
     if (isActualTrainer()) {
-        loadNotifications();
+        loadNotifications({ silent: true }).then(startNotifPolling);
         setTimeout(requestNotificationPermission, 2000);
     }
 }
@@ -2510,18 +2510,54 @@ function teardownRealtime() {
 // ============ Notifications ============
 var notifications = []; // array of notification rows
 var notifReads = {}; // notification_id -> true if read
+var notifPollTimer = null;
+var notifLastSeenIds = {}; // dedupe — id -> true (prevents toasts/browser notifs on re-poll)
+var notifInitialLoadDone = false;
 
-async function loadNotifications() {
+async function loadNotifications(opts) {
+    opts = opts || {};
     if (!isActualTrainer()) return;
     // Load last 50 notifications
     var result = await sb.from('cbd_notifications').select('*').order('created_at', { ascending: false }).limit(50);
-    notifications = result.data || [];
+    var fresh = result.data || [];
     // Load read receipts for current user
     var readsResult = await sb.from('cbd_notification_reads').select('notification_id').eq('user_id', currentUser.id);
     notifReads = {};
     (readsResult.data || []).forEach(function(r) { notifReads[r.notification_id] = true; });
+
+    // Detect brand-new notifications (not in previous list) for toast/desktop-notification fanfare
+    if (notifInitialLoadDone && !opts.silent) {
+        fresh.forEach(function(n) {
+            if (!notifLastSeenIds[n.id]) {
+                // New since last poll — fire alerts (unless it's already read, which would be odd)
+                if (!notifReads[n.id]) {
+                    showBrowserNotification(n);
+                    showToast(n.title);
+                }
+            }
+        });
+    }
+    notifications = fresh;
+    fresh.forEach(function(n) { notifLastSeenIds[n.id] = true; });
+    notifInitialLoadDone = true;
     renderNotifBadge();
     if (document.getElementById('notifModal').classList.contains('active')) renderNotifList();
+}
+
+function startNotifPolling() {
+    if (notifPollTimer) clearInterval(notifPollTimer);
+    // Poll every 15s while the tab is visible
+    notifPollTimer = setInterval(function() {
+        if (document.visibilityState === 'visible' && isActualTrainer()) loadNotifications();
+    }, 15000);
+    // Refresh immediately when the tab becomes visible
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible' && isActualTrainer()) loadNotifications();
+    });
+}
+
+function stopNotifPolling() {
+    if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
 }
 
 function renderNotifBadge() {
@@ -2603,13 +2639,14 @@ async function markAllNotificationsRead() {
 
 function handleNewNotification(row) {
     if (!isActualTrainer()) return;
+    // Dedupe against polling — if already seen, skip alerts
+    if (notifLastSeenIds[row.id]) return;
+    notifLastSeenIds[row.id] = true;
     notifications.unshift(row);
     if (notifications.length > 50) notifications.length = 50;
     renderNotifBadge();
     if (document.getElementById('notifModal').classList.contains('active')) renderNotifList();
-    // Browser notification
     showBrowserNotification(row);
-    // Subtle toast for in-app awareness
     showToast(row.title);
 }
 
