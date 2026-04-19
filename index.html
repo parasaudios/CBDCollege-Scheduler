@@ -312,6 +312,7 @@
             <div><h1>CBD College Staff Scheduler</h1><div class="header-subtitle" id="headerSub">Manage team schedules</div></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <div class="user-info"><span id="userName"></span><span class="user-badge" id="userRole"></span></div>
+                <button class="btn btn-ghost btn-sm" id="viewAsBtn" style="display:none;" onclick="toggleViewAsAssistant()">View as Assistant</button>
                 <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="openExportModal()">Export PDF</button>
                 <button class="btn btn-ghost btn-sm" onclick="handleLogout()">Sign Out</button>
             </div>
@@ -786,7 +787,41 @@ function escHtml(str) { var d = document.createElement('div'); d.textContent = s
 function formatDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function showToast(msg) { var c = document.getElementById('toastContainer'); var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; c.appendChild(t); setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity 0.3s'; }, 2500); setTimeout(function(){ t.remove(); }, 2800); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-function isTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
+var viewAsAssistant = false;
+function isActualTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
+function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
+async function toggleViewAsAssistant() {
+    if (!isActualTrainer()) return;
+    viewAsAssistant = !viewAsAssistant;
+    var btn = document.getElementById('viewAsBtn');
+    var roleEl = document.getElementById('userRole');
+    if (viewAsAssistant) {
+        // Resolve the trainer's staff_member for myroster/myavail views
+        myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
+        if (!myStaffMember) {
+            showToast('Your user is not linked to a staff member — cannot preview assistant view');
+            viewAsAssistant = false;
+            return;
+        }
+        btn.textContent = 'Back to Trainer View';
+        btn.classList.remove('btn-ghost');
+        btn.classList.add('btn-primary');
+        roleEl.textContent = 'assistant (preview)';
+        roleEl.className = 'user-badge assistant';
+        document.getElementById('headerSub').textContent = 'Previewing assistant view';
+        document.getElementById('exportBtn').style.display = 'none';
+    } else {
+        btn.textContent = 'View as Assistant';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-ghost');
+        roleEl.textContent = currentProfile.role;
+        roleEl.className = 'user-badge ' + currentProfile.role;
+        document.getElementById('headerSub').textContent = 'Manage team schedules and rosters';
+        document.getElementById('exportBtn').style.display = '';
+    }
+    buildTabs();
+    await loadAllData();
+}
 function debouncedNav(key, fn, delay) {
     clearTimeout(_navDebounce[key]);
     _navDebounce[key] = setTimeout(fn, delay || 150);
@@ -857,6 +892,7 @@ function showApp() {
     document.getElementById('userRole').textContent = currentProfile.role;
     document.getElementById('userRole').className = 'user-badge ' + currentProfile.role;
     document.getElementById('headerSub').textContent = isTrainer() ? 'Manage team schedules and rosters' : 'View your roster and submit availability';
+    document.getElementById('viewAsBtn').style.display = isActualTrainer() ? '' : 'none';
     buildTabs();
     loadAllData();
     setupRealtime();
