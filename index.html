@@ -114,6 +114,16 @@
         .avail-dot.partial { background: var(--warning); }
         .avail-dot.unavailable { background: var(--danger); }
 
+        /* Calendar cell content sizing — generous on desktop, condensed on small screens */
+        .cal-cell-badge-row { text-align: center; margin-bottom: 3px; }
+        .cal-cell-badge { background: var(--primary); color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; }
+        .cal-cell-badge.assistant { background: var(--gray-400); }
+        .cal-cell-info { font-size: 0.85rem; color: var(--gray-700); line-height: 1.45; text-align: center; width: 100%; overflow: hidden; }
+        .cal-cell-info .time { font-weight: 600; color: var(--gray-800); }
+        .cal-cell-info .students { color: var(--gray-600); }
+        .cal-cell-info .start-time { color: var(--primary); font-weight: 600; }
+        .cal-cell-info .others { color: var(--gray-600); font-size: 0.8rem; }
+        .cal-cell-info .others .ht { color: var(--primary); font-weight: 700; }
         .overview-day-staff { font-size: 0.8rem; line-height: 1.4; width: 100%; overflow: hidden; }
         .overview-staff-entry { display: flex; align-items: center; gap: 3px; padding: 1px 0; }
         .overview-staff-entry .mini-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -263,6 +273,9 @@
             .calendar-day-header { padding: 4px 2px; font-size: 0.7rem; }
             .calendar-day { aspect-ratio: auto; min-height: 48px; padding: 2px; border-radius: 4px; }
             .calendar-day .day-number { font-size: 0.8rem; }
+            .cal-cell-badge { font-size: 0.55rem; padding: 1px 3px; }
+            .cal-cell-info { font-size: 0.6rem; line-height: 1.3; }
+            .cal-cell-info .others { font-size: 0.55rem; }
 
             .bulk-panel { padding: 8px 10px; margin-bottom: 10px; }
             .bulk-panel-header h4 { font-size: 0.8rem; }
@@ -1230,30 +1243,26 @@ function renderCalendar() {
         var detail = '';
         // Show selected staff member's role badge
         if (entry) {
-            var entryParts = [];
-            if (entry.day_role === 'head_trainer') entryParts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">HT</span>');
-            else if (entry.status === 'available' || entry.status === 'partial') entryParts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">AST</span>');
-            if (entryParts.length > 0) detail += '<div style="font-size:0.6rem;text-align:center;margin-bottom:2px">' + entryParts.join(' ') + '</div>';
+            if (entry.day_role === 'head_trainer') detail += '<div class="cal-cell-badge-row"><span class="cal-cell-badge">HT</span></div>';
+            else if (entry.status === 'available' || entry.status === 'partial') detail += '<div class="cal-cell-badge-row"><span class="cal-cell-badge assistant">AST</span></div>';
         }
         // Show class info, start time, and other rostered staff
         var ci = getDayClass(dateStr);
-        var aggParts = [];
-        if (ci && ci.start_time && ci.end_time) aggParts.push(ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5));
-        if (ci && (ci.students_am || ci.students_pm)) aggParts.push((ci.students_am||0) + '/' + (ci.students_pm||0));
-        // Show selected staff's start time
-        if (entry && entry.start_time) aggParts.push('<span style="color:var(--primary);font-weight:600;">Start: ' + entry.start_time.slice(0,5) + '</span>');
-        // Show other rostered staff names
+        var infoBits = [];
+        if (ci && ci.start_time && ci.end_time) infoBits.push('<span class="time">' + ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5) + '</span>');
+        if (ci && (ci.students_am || ci.students_pm)) infoBits.push('<span class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</span>');
+        if (entry && entry.start_time) infoBits.push('<span class="start-time">Start: ' + entry.start_time.slice(0,5) + '</span>');
         var otherNames = [];
         staffList.forEach(function(s) {
             if (s.id === selectedStaffId) return;
             var se = getAvailability(s.id, dateStr);
             if (se && (se.status === 'available' || se.status === 'partial')) {
-                var roleBadge = se.day_role === 'head_trainer' ? '<span style="color:var(--primary);font-weight:700;">HT</span> ' : '';
+                var roleBadge = se.day_role === 'head_trainer' ? '<span class="ht">HT</span> ' : '';
                 otherNames.push(roleBadge + escHtml(s.name.split(' ')[0]));
             }
         });
-        if (otherNames.length > 0) aggParts.push(otherNames.join('<br>'));
-        if (aggParts.length > 0) detail += '<div style="font-size:0.55rem;color:var(--gray-500);line-height:1.4;text-align:center">' + aggParts.join('<br>') + '</div>';
+        if (otherNames.length > 0) infoBits.push('<span class="others">' + otherNames.join('<br>') + '</span>');
+        if (infoBits.length > 0) detail += '<div class="cal-cell-info">' + infoBits.join('<br>') + '</div>';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
     grid.innerHTML = html;
@@ -2349,14 +2358,15 @@ function renderMyRoster() {
         if (entry && (entry.status === 'available' || entry.status === 'partial')) cls += ' ' + entry.status;
         var detail = '';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) {
-            var parts = [];
-            if (entry.day_role === 'head_trainer') parts.push('<span style="background:var(--primary);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Head Trainer</span>');
-            else parts.push('<span style="background:var(--gray-400);color:white;padding:1px 4px;border-radius:3px;font-size:0.55rem;font-weight:600;">Assistant</span>');
+            if (entry.day_role === 'head_trainer') detail += '<div class="cal-cell-badge-row"><span class="cal-cell-badge">Head Trainer</span></div>';
+            else detail += '<div class="cal-cell-badge-row"><span class="cal-cell-badge assistant">Assistant</span></div>';
             var mci = getDayClass(dateStr);
-            if (mci && mci.start_time && mci.end_time) parts.push(mci.start_time.slice(0,5) + ' - ' + mci.end_time.slice(0,5));
-            if (mci && mci.students_am) parts.push('AM: ' + mci.students_am + (mci.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (mci && mci.students_pm) parts.push('PM: ' + mci.students_pm + (mci.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (parts.length > 0) detail = '<div style="font-size:0.6rem;color:var(--gray-600);line-height:1.4;text-align:center">' + parts.join('<br>') + '</div>';
+            var parts = [];
+            if (entry.start_time) parts.push('<span class="start-time">Start: ' + entry.start_time.slice(0,5) + '</span>');
+            if (mci && mci.start_time && mci.end_time) parts.push('<span class="time">' + mci.start_time.slice(0,5) + ' - ' + mci.end_time.slice(0,5) + '</span>');
+            if (mci && mci.students_am) parts.push('<span class="students">AM: ' + mci.students_am + (mci.capped_am ? ' <span class="capped-badge">CAP</span>' : '') + '</span>');
+            if (mci && mci.students_pm) parts.push('<span class="students">PM: ' + mci.students_pm + (mci.capped_pm ? ' <span class="capped-badge">CAP</span>' : '') + '</span>');
+            if (parts.length > 0) detail += '<div class="cal-cell-info">' + parts.join('<br>') + '</div>';
         }
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
