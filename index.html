@@ -2366,6 +2366,9 @@ async function refreshCurrentView(table) {
     if (table === 'assistant_availability') {
         if (isTrainer()) {
             if (currentTab === 'assistavail') { await loadAssistantAvailForMonth(assistMonth, assistYear); renderAssistAvail(); }
+            // Conflict indicators (red dots) on roster/overview depend on assistant availability
+            if (currentTab === 'roster') { await loadAssistantAvailForMonth(currentMonth, currentYear); renderCalendar(); }
+            if (currentTab === 'overview') { await loadAssistantAvailForMonth(overviewMonth, overviewYear); renderOverview(); }
         } else {
             if (currentTab === 'myavail') { await loadMyAvailForMonth(myAvailMonth, myAvailYear); renderMyAvail(); }
         }
