@@ -160,6 +160,10 @@
         .multi-select-bar .btn { background: rgba(255,255,255,0.2); color: white; }
         .multi-select-bar .btn:hover { background: rgba(255,255,255,0.3); }
         .bulk-panel { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; }
+        .bulk-class-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .bulk-class-row label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; min-width: 140px; cursor: pointer; }
+        .bulk-class-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .bulk-class-row .form-control { flex: 1; padding: 5px 8px; font-size: 0.9rem; }
         .bulk-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .bulk-panel-header h4 { font-size: 0.85rem; font-weight: 600; color: var(--gray-700); margin: 0; }
         .bulk-panel-hint { font-size: 0.75rem; color: var(--gray-500); margin-bottom: 10px; }
@@ -434,6 +438,28 @@
                         </div>
                     </div>
                     <div id="assistAvailGrid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRAINER: Classes Tab -->
+        <div id="tab-classes" class="tab-content" style="display:none;">
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <div>
+                        <h2>Classes</h2>
+                        <div style="font-size:0.85rem;color:var(--gray-500);">Click a day to edit class times, student counts, and capped status.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="btn btn-outline btn-sm" onclick="changeClassesMonth(-1)">&lsaquo;</button>
+                        <span id="classesMonthLabel" style="font-weight:600;min-width:140px;text-align:center;"></span>
+                        <button class="btn btn-outline btn-sm" onclick="changeClassesMonth(1)">&rsaquo;</button>
+                        <button class="btn btn-outline btn-sm" onclick="goToClassesToday()">Today</button>
+                        <button class="btn btn-primary btn-sm" onclick="openBulkClassEdit()">Bulk Edit</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="calendar-grid" id="classesGrid"></div>
                 </div>
             </div>
         </div>
@@ -713,6 +739,68 @@
     </div>
 </div>
 
+<!-- Class Edit Modal (standalone, used by Classes tab) -->
+<div class="modal-overlay" id="classEditModal">
+    <div class="modal" style="max-width:460px;">
+        <div class="modal-header"><h3 id="classEditTitle">Edit Class</h3><button class="btn btn-icon btn-outline" onclick="closeModal('classEditModal')">&times;</button></div>
+        <div class="modal-body">
+            <div style="display:flex;gap:10px;margin-bottom:12px;">
+                <div class="form-group" style="flex:1;margin-bottom:0;"><label>Start</label><input type="time" class="form-control" id="ceStart"></div>
+                <div class="form-group" style="flex:1;margin-bottom:0;"><label>End</label><input type="time" class="form-control" id="ceEnd"></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:12px;">
+                <div class="form-group" style="flex:1;margin-bottom:0;"><label>Students AM</label><input type="number" min="0" class="form-control" id="ceAM"></div>
+                <div class="form-group" style="flex:1;margin-bottom:0;"><label>Students PM</label><input type="number" min="0" class="form-control" id="cePM"></div>
+            </div>
+            <div style="display:flex;gap:20px;align-items:center;margin-top:8px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="ceCapAM" style="width:16px;height:16px;cursor:pointer;"> Cap AM</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="ceCapPM" style="width:16px;height:16px;cursor:pointer;"> Cap PM</label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('classEditModal')">Cancel</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteClassEntry()" id="ceDeleteBtn" style="margin-right:auto;">Clear</button>
+            <button class="btn btn-success" id="ceSaveBtn" onclick="saveClassEdit()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Class Edit Modal -->
+<div class="modal-overlay" id="bulkClassModal">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header"><h3>Bulk Edit Classes</h3><button class="btn btn-icon btn-outline" onclick="closeModal('bulkClassModal')">&times;</button></div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Select days of the week and/or a date range, then set the values to apply to every matching day in the current month.</p>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px;">Days of the week</div>
+                <div id="bulkClassDows" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;"><label>From date (optional)</label><input type="date" class="form-control" id="bcFromDate"></div>
+                <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;"><label>To date (optional)</label><input type="date" class="form-control" id="bcToDate"></div>
+            </div>
+
+            <div style="border-top:1px solid var(--gray-200);padding-top:14px;">
+                <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">Values to apply</div>
+                <p style="font-size:0.78rem;color:var(--gray-500);margin-bottom:10px;">Only checked fields will be written. Leave unchecked to preserve each day's existing value.</p>
+
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApStart"> Start time</label><input type="time" class="form-control" id="bcStart"></div>
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApEnd"> End time</label><input type="time" class="form-control" id="bcEnd"></div>
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApAM"> Students AM</label><input type="number" min="0" class="form-control" id="bcAM"></div>
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApPM"> Students PM</label><input type="number" min="0" class="form-control" id="bcPM"></div>
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApCapAM"> Cap AM</label><select class="form-control" id="bcCapAM"><option value="true">Yes</option><option value="false">No</option></select></div>
+                <div class="bulk-class-row"><label><input type="checkbox" class="bc-apply" id="bcApCapPM"> Cap PM</label><select class="form-control" id="bcCapPM"><option value="true">Yes</option><option value="false">No</option></select></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('bulkClassModal')">Cancel</button>
+            <button class="btn btn-success" id="bcApplyBtn" onclick="applyBulkClass()">Apply to Month</button>
+        </div>
+    </div>
+</div>
+
 <!-- Notifications Modal -->
 <div class="modal-overlay" id="notifModal">
     <div class="modal" style="max-width:540px;">
@@ -783,6 +871,8 @@ var currentMonth = new Date().getMonth();
 var currentYear = new Date().getFullYear();
 var overviewMonth = new Date().getMonth();
 var overviewYear = new Date().getFullYear();
+var classesMonth = new Date().getMonth();
+var classesYear = new Date().getFullYear();
 var assistMonth = new Date().getMonth();
 var assistYear = new Date().getFullYear();
 var myRosterMonth = new Date().getMonth();
@@ -959,6 +1049,7 @@ function buildTabs() {
     if (isTrainer()) {
         tabsEl.innerHTML = '<button class="tab active" data-tab="roster" onclick="switchTab(\'roster\')">Roster</button>' +
             '<button class="tab" data-tab="overview" onclick="switchTab(\'overview\')">Team Overview</button>' +
+            '<button class="tab" data-tab="classes" onclick="switchTab(\'classes\')">Classes</button>' +
             '<button class="tab" data-tab="assistavail" onclick="switchTab(\'assistavail\')">Availability</button>' +
             '<button class="tab" data-tab="staff" onclick="switchTab(\'staff\')">Manage Staff</button>' +
             '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>';
@@ -1063,6 +1154,7 @@ function switchTab(tab) {
     document.getElementById('tab-' + tab).style.display = 'block';
     if (tab === 'roster') { refreshTrainerUI(); }
     if (tab === 'overview') { Promise.all([loadAvailabilityForMonth(overviewMonth, overviewYear), loadDayClassesForMonth(overviewMonth, overviewYear)]).then(renderOverview); }
+    if (tab === 'classes') { loadDayClassesForMonth(classesMonth, classesYear).then(renderClassesCalendar); }
     if (tab === 'assistavail') { loadAssistantAvailForMonth(assistMonth, assistYear).then(renderAssistAvail); }
     if (tab === 'staff') renderStaffGrid();
     if (tab === 'admin') loadUsers();
@@ -1892,6 +1984,194 @@ function renderOverview() {
 function changeOverviewMonth(dir) { overviewMonth += dir; if (overviewMonth > 11) { overviewMonth = 0; overviewYear++; } if (overviewMonth < 0) { overviewMonth = 11; overviewYear--; } document.getElementById('overviewMonthLabel').textContent = MONTH_NAMES[overviewMonth] + ' ' + overviewYear; debouncedNav('overview', function() { Promise.all([loadAvailabilityForMonth(overviewMonth, overviewYear), loadDayClassesForMonth(overviewMonth, overviewYear)]).then(renderOverview); }); }
 function goToOverviewToday() { var n = new Date(); overviewMonth = n.getMonth(); overviewYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(overviewMonth,overviewYear), loadDayClassesForMonth(overviewMonth,overviewYear)]).then(renderOverview); }
 
+// ============ Classes Tab (Trainer) ============
+function renderClassesCalendar() {
+    document.getElementById('classesMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
+    var grid = document.getElementById('classesGrid');
+    if (!grid) return;
+    var firstDay = new Date(classesYear, classesMonth, 1);
+    var lastDay = new Date(classesYear, classesMonth + 1, 0);
+    var startDow = firstDay.getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
+    var todayStr = formatDate(new Date());
+    var html = DAY_NAMES.map(function(d) { return '<div class="calendar-day-header">' + d + '</div>'; }).join('');
+    for (var i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>';
+    for (var day = 1; day <= lastDay.getDate(); day++) {
+        var dateStr = classesYear + '-' + String(classesMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        var ci = getDayClass(dateStr);
+        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (ci ? ' has-staff' : '');
+        var detail = '<div style="font-size:0.78rem;line-height:1.35;">';
+        if (ci) {
+            if (ci.start_time && ci.end_time) {
+                detail += '<div style="font-weight:600;color:var(--primary);">' + ci.start_time.slice(0,5) + '-' + ci.end_time.slice(0,5) + '</div>';
+            }
+            if (ci.students_am || ci.students_pm) {
+                detail += '<div style="color:var(--gray-700);">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
+            }
+            var caps = [];
+            if (ci.capped_am) caps.push('AM');
+            if (ci.capped_pm) caps.push('PM');
+            if (caps.length) detail += '<div><span class="capped-badge">' + caps.join(' & ') + ' CAP</span></div>';
+        } else {
+            detail += '<div style="color:var(--gray-400);font-style:italic;font-size:0.7rem;">no class set</div>';
+        }
+        detail += '</div>';
+        html += '<div class="' + cls + '" onclick="openClassEdit(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
+    }
+    grid.innerHTML = html;
+}
+
+function changeClassesMonth(dir) {
+    classesMonth += dir;
+    if (classesMonth > 11) { classesMonth = 0; classesYear++; }
+    if (classesMonth < 0) { classesMonth = 11; classesYear--; }
+    document.getElementById('classesMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
+    debouncedNav('classes', function() { loadDayClassesForMonth(classesMonth, classesYear).then(renderClassesCalendar); });
+}
+
+function goToClassesToday() {
+    var n = new Date();
+    classesMonth = n.getMonth();
+    classesYear = n.getFullYear();
+    loadDayClassesForMonth(classesMonth, classesYear).then(renderClassesCalendar);
+}
+
+function openClassEdit(dateStr) {
+    var p = dateStr.split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+    document.getElementById('classEditTitle').textContent = 'Class — ' + dayName + ', ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1] + ' ' + p[0];
+    var ci = getDayClass(dateStr) || {};
+    document.getElementById('ceStart').value = ci.start_time ? ci.start_time.slice(0,5) : '';
+    document.getElementById('ceEnd').value = ci.end_time ? ci.end_time.slice(0,5) : '';
+    document.getElementById('ceAM').value = ci.students_am || '';
+    document.getElementById('cePM').value = ci.students_pm || '';
+    document.getElementById('ceCapAM').checked = !!ci.capped_am;
+    document.getElementById('ceCapPM').checked = !!ci.capped_pm;
+    document.getElementById('ceSaveBtn').dataset.date = dateStr;
+    document.getElementById('ceDeleteBtn').style.display = ci.date ? '' : 'none';
+    document.getElementById('classEditModal').classList.add('active');
+}
+
+async function saveClassEdit() {
+    var dateStr = document.getElementById('ceSaveBtn').dataset.date;
+    if (!dateStr) return;
+    var row = {
+        date: dateStr,
+        start_time: document.getElementById('ceStart').value || null,
+        end_time: document.getElementById('ceEnd').value || null,
+        students_am: parseInt(document.getElementById('ceAM').value) || 0,
+        students_pm: parseInt(document.getElementById('cePM').value) || 0,
+        capped_am: document.getElementById('ceCapAM').checked,
+        capped_pm: document.getElementById('ceCapPM').checked,
+        updated_by: currentUser.id
+    };
+    var btn = document.getElementById('ceSaveBtn');
+    setLoading(btn, true);
+    var result = await sb.from('cbd_day_classes').upsert(row, { onConflict: 'date' });
+    setLoading(btn, false);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    dayClassesCache[dateStr] = row;
+    closeModal('classEditModal');
+    renderClassesCalendar();
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
+    updateSummary();
+    showToast('Class saved');
+}
+
+async function deleteClassEntry() {
+    var dateStr = document.getElementById('ceSaveBtn').dataset.date;
+    if (!dateStr) return;
+    if (!confirm('Clear the class for this day? This removes times, student counts, and capped flags.')) return;
+    var result = await sb.from('cbd_day_classes').delete().eq('date', dateStr);
+    if (result.error) { showToast('Error: ' + result.error.message); return; }
+    delete dayClassesCache[dateStr];
+    closeModal('classEditModal');
+    renderClassesCalendar();
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
+    showToast('Class cleared');
+}
+
+function openBulkClassEdit() {
+    var container = document.getElementById('bulkClassDows');
+    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var dows = [1,2,3,4,5,6,0];
+    container.innerHTML = labels.map(function(lbl, i) {
+        var dow = dows[i];
+        return '<label style="display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--gray-200);border-radius:var(--radius);cursor:pointer;font-size:0.85rem;background:white;" data-dow="' + dow + '"><input type="checkbox" class="bc-dow" data-dow="' + dow + '" style="width:16px;height:16px;cursor:pointer;">' + lbl + '</label>';
+    }).join('');
+    // Reset fields
+    document.querySelectorAll('.bc-apply').forEach(function(cb) { cb.checked = false; });
+    ['bcStart','bcEnd','bcAM','bcPM','bcFromDate','bcToDate'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('bcCapAM').value = 'true';
+    document.getElementById('bcCapPM').value = 'true';
+    document.getElementById('bulkClassModal').classList.add('active');
+}
+
+async function applyBulkClass() {
+    var checkedDows = {};
+    document.querySelectorAll('.bc-dow:checked').forEach(function(cb) { checkedDows[parseInt(cb.dataset.dow)] = true; });
+    var hasDowFilter = Object.keys(checkedDows).length > 0;
+    var fromDate = document.getElementById('bcFromDate').value || null;
+    var toDate = document.getElementById('bcToDate').value || null;
+
+    // Build the set of fields to apply
+    var apply = {};
+    if (document.getElementById('bcApStart').checked) apply.start_time = document.getElementById('bcStart').value || null;
+    if (document.getElementById('bcApEnd').checked) apply.end_time = document.getElementById('bcEnd').value || null;
+    if (document.getElementById('bcApAM').checked) apply.students_am = parseInt(document.getElementById('bcAM').value) || 0;
+    if (document.getElementById('bcApPM').checked) apply.students_pm = parseInt(document.getElementById('bcPM').value) || 0;
+    if (document.getElementById('bcApCapAM').checked) apply.capped_am = document.getElementById('bcCapAM').value === 'true';
+    if (document.getElementById('bcApCapPM').checked) apply.capped_pm = document.getElementById('bcCapPM').value === 'true';
+
+    if (Object.keys(apply).length === 0) { showToast('Check at least one field to apply'); return; }
+
+    var daysInMonth = new Date(classesYear, classesMonth + 1, 0).getDate();
+    var upserts = [];
+    for (var day = 1; day <= daysInMonth; day++) {
+        var d = new Date(classesYear, classesMonth, day);
+        var dow = d.getDay();
+        var dateStr = classesYear + '-' + String(classesMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        if (hasDowFilter && !checkedDows[dow]) continue;
+        if (fromDate && dateStr < fromDate) continue;
+        if (toDate && dateStr > toDate) continue;
+
+        var existing = getDayClass(dateStr) || {};
+        var row = {
+            date: dateStr,
+            start_time: apply.hasOwnProperty('start_time') ? apply.start_time : (existing.start_time || null),
+            end_time: apply.hasOwnProperty('end_time') ? apply.end_time : (existing.end_time || null),
+            students_am: apply.hasOwnProperty('students_am') ? apply.students_am : (existing.students_am || 0),
+            students_pm: apply.hasOwnProperty('students_pm') ? apply.students_pm : (existing.students_pm || 0),
+            capped_am: apply.hasOwnProperty('capped_am') ? apply.capped_am : !!existing.capped_am,
+            capped_pm: apply.hasOwnProperty('capped_pm') ? apply.capped_pm : !!existing.capped_pm,
+            updated_by: currentUser.id
+        };
+        upserts.push(row);
+    }
+
+    if (upserts.length === 0) { showToast('No matching days'); return; }
+
+    var btn = document.getElementById('bcApplyBtn');
+    setLoading(btn, true);
+
+    for (var i = 0; i < upserts.length; i += 50) {
+        var batch = upserts.slice(i, i + 50);
+        var result = await sb.from('cbd_day_classes').upsert(batch, { onConflict: 'date' });
+        if (result.error) { setLoading(btn, false); showToast('Error: ' + result.error.message); return; }
+        batch.forEach(function(r) { dayClassesCache[r.date] = r; });
+    }
+
+    setLoading(btn, false);
+    closeModal('bulkClassModal');
+    renderClassesCalendar();
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
+    updateSummary();
+    showToast('Applied to ' + upserts.length + ' days');
+}
+
 // ============ Assistant Availability View (Trainer) ============
 async function renderAssistAvail() {
     document.getElementById('assistMonthLabel').textContent = MONTH_NAMES[assistMonth] + ' ' + assistYear;
@@ -2496,6 +2776,7 @@ async function refreshCurrentView(table) {
         if (isTrainer()) {
             if (currentTab === 'roster') { await loadDayClassesForMonth(currentMonth, currentYear); renderCalendar(); }
             if (currentTab === 'overview') { await loadDayClassesForMonth(overviewMonth, overviewYear); renderOverview(); }
+            if (currentTab === 'classes') { await loadDayClassesForMonth(classesMonth, classesYear); renderClassesCalendar(); }
         } else {
             if (currentTab === 'myroster') { await loadDayClassesForMonth(myRosterMonth, myRosterYear); renderMyRoster(); }
         }
