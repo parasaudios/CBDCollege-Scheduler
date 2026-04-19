@@ -312,6 +312,7 @@
             <div><h1>CBD College Staff Scheduler</h1><div class="header-subtitle" id="headerSub">Manage team schedules</div></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <div class="user-info"><span id="userName"></span><span class="user-badge" id="userRole"></span></div>
+                <select id="viewAsStaffSelect" class="form-control" style="display:none;font-size:0.85rem;padding:4px 8px;width:auto;" onchange="changePreviewStaff()"></select>
                 <button class="btn btn-ghost btn-sm" id="viewAsBtn" style="display:none;" onclick="toggleViewAsAssistant()">View as Assistant</button>
                 <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="openExportModal()">Export PDF</button>
                 <button class="btn btn-ghost btn-sm" onclick="handleLogout()">Sign Out</button>
@@ -790,27 +791,40 @@ function closeModal(id) { document.getElementById(id).classList.remove('active')
 var viewAsAssistant = false;
 function isActualTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
 function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
+
+function pickDefaultPreviewStaff() {
+    // Default to Cameron if present, otherwise first staff
+    var cam = staffList.find(function(s) { return s.name && s.name.toLowerCase().indexOf('cameron') === 0; });
+    return cam || staffList[0] || null;
+}
+
 async function toggleViewAsAssistant() {
     if (!isActualTrainer()) return;
     viewAsAssistant = !viewAsAssistant;
     var btn = document.getElementById('viewAsBtn');
     var roleEl = document.getElementById('userRole');
+    var selector = document.getElementById('viewAsStaffSelect');
     if (viewAsAssistant) {
-        // Resolve the trainer's staff_member for myroster/myavail views
-        myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
-        if (!myStaffMember) {
-            showToast('Your user is not linked to a staff member — cannot preview assistant view');
+        if (!staffList.length) {
+            showToast('No staff to preview');
             viewAsAssistant = false;
             return;
         }
+        myStaffMember = pickDefaultPreviewStaff();
+        // Populate and show the staff selector
+        selector.innerHTML = staffList.map(function(s) {
+            return '<option value="' + s.id + '"' + (s.id === myStaffMember.id ? ' selected' : '') + '>' + escHtml(s.name.split(' ')[0]) + '</option>';
+        }).join('');
+        selector.style.display = '';
         btn.textContent = 'Back to Trainer View';
         btn.classList.remove('btn-ghost');
         btn.classList.add('btn-primary');
         roleEl.textContent = 'assistant (preview)';
         roleEl.className = 'user-badge assistant';
-        document.getElementById('headerSub').textContent = 'Previewing assistant view';
+        document.getElementById('headerSub').textContent = 'Previewing: ' + myStaffMember.name.split(' ')[0];
         document.getElementById('exportBtn').style.display = 'none';
     } else {
+        selector.style.display = 'none';
         btn.textContent = 'View as Assistant';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-ghost');
@@ -820,6 +834,16 @@ async function toggleViewAsAssistant() {
         document.getElementById('exportBtn').style.display = '';
     }
     buildTabs();
+    await loadAllData();
+}
+
+async function changePreviewStaff() {
+    if (!viewAsAssistant) return;
+    var selector = document.getElementById('viewAsStaffSelect');
+    var newStaff = staffList.find(function(s) { return s.id === selector.value; });
+    if (!newStaff) return;
+    myStaffMember = newStaff;
+    document.getElementById('headerSub').textContent = 'Previewing: ' + myStaffMember.name.split(' ')[0];
     await loadAllData();
 }
 function debouncedNav(key, fn, delay) {
@@ -927,7 +951,8 @@ async function loadAllData() {
         refreshTrainerUI();
         switchTab('roster');
     } else {
-        myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
+        // Only auto-resolve when NOT in view-as-assistant mode (toggle already set myStaffMember)
+        if (!viewAsAssistant) myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
         await Promise.all([
             loadAvailabilityForMonth(myRosterMonth, myRosterYear),
             loadMyAvailForMonth(myAvailMonth, myAvailYear),
@@ -982,7 +1007,9 @@ async function loadMyAvailForMonth(month, year) {
     var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
     var lastDay = new Date(year, month+1, 0).getDate();
     var endDate = year + '-' + String(month+1).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
-    var result = await sb.from('cbd_assistant_availability').select('*').eq('user_id', currentUser.id).gte('date', startDate).lte('date', endDate);
+    // In view-as-assistant mode, load the previewed staff member's availability instead of the logged-in user's
+    var userId = (viewAsAssistant && myStaffMember && myStaffMember.user_id) ? myStaffMember.user_id : currentUser.id;
+    var result = await sb.from('cbd_assistant_availability').select('*').eq('user_id', userId).gte('date', startDate).lte('date', endDate);
     assistantAvailCache['_my'] = {};
     (result.data || []).forEach(function(e) { assistantAvailCache['_my'][e.date] = e; });
 }
@@ -2029,6 +2056,7 @@ function selectMyAvail(el) {
     else el.classList.add('selected-unavailable');
 }
 async function saveMyAvailability() {
+    if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
     if (!myAvailSelectedDay) return;
     var yesEl = document.getElementById('myAvailYes');
     var noEl = document.getElementById('myAvailNo');
@@ -2045,6 +2073,7 @@ async function saveMyAvailability() {
 }
 
 async function bulkSetMyAvail(isAvail) {
+    if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
     if (multiSelectedDays.size === 0) return;
     var upserts = [];
     multiSelectedDays.forEach(function(dateStr) { upserts.push({ user_id: currentUser.id, date: dateStr, is_available: isAvail, note: '' }); });
@@ -2054,6 +2083,7 @@ async function bulkSetMyAvail(isAvail) {
     await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
 }
 async function bulkClearMyAvail() {
+    if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
     if (multiSelectedDays.size === 0) return;
     var dates = Array.from(multiSelectedDays);
     var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', currentUser.id).in('date', dates);
