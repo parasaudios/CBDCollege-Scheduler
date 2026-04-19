@@ -312,7 +312,6 @@
             <div><h1>CBD College Staff Scheduler</h1><div class="header-subtitle" id="headerSub">Manage team schedules</div></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <div class="user-info"><span id="userName"></span><span class="user-badge" id="userRole"></span></div>
-                <select id="viewAsStaffSelect" class="form-control" style="display:none;font-size:0.85rem;padding:4px 8px;width:auto;" onchange="changePreviewStaff()"></select>
                 <button class="btn btn-ghost btn-sm" id="viewAsBtn" style="display:none;" onclick="toggleViewAsAssistant()">View as Assistant</button>
                 <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="openExportModal()">Export PDF</button>
                 <button class="btn btn-ghost btn-sm" onclick="handleLogout()">Sign Out</button>
@@ -322,6 +321,11 @@
 
     <div class="container">
         <div class="tabs" id="mainTabs"></div>
+        <div id="previewBar" style="display:none;background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-weight:600;color:var(--primary);font-size:0.9rem;">Previewing as:</span>
+            <select id="viewAsStaffSelect" class="form-control" style="font-size:0.9rem;padding:5px 10px;width:auto;" onchange="changePreviewStaff()"></select>
+            <span style="color:var(--gray-500);font-size:0.85rem;">Click "Back to Trainer View" in the header to exit preview.</span>
+        </div>
 
         <!-- TRAINER: Roster Tab -->
         <div id="tab-roster" class="tab-content" style="display:none;">
@@ -803,6 +807,7 @@ async function toggleViewAsAssistant() {
     viewAsAssistant = !viewAsAssistant;
     var btn = document.getElementById('viewAsBtn');
     var roleEl = document.getElementById('userRole');
+    var previewBar = document.getElementById('previewBar');
     var selector = document.getElementById('viewAsStaffSelect');
     if (viewAsAssistant) {
         if (!staffList.length) {
@@ -811,11 +816,11 @@ async function toggleViewAsAssistant() {
             return;
         }
         myStaffMember = pickDefaultPreviewStaff();
-        // Populate and show the staff selector
+        // Populate the staff selector
         selector.innerHTML = staffList.map(function(s) {
             return '<option value="' + s.id + '"' + (s.id === myStaffMember.id ? ' selected' : '') + '>' + escHtml(s.name.split(' ')[0]) + '</option>';
         }).join('');
-        selector.style.display = '';
+        previewBar.style.display = 'flex';
         btn.textContent = 'Back to Trainer View';
         btn.classList.remove('btn-ghost');
         btn.classList.add('btn-primary');
@@ -824,7 +829,7 @@ async function toggleViewAsAssistant() {
         document.getElementById('headerSub').textContent = 'Previewing: ' + myStaffMember.name.split(' ')[0];
         document.getElementById('exportBtn').style.display = 'none';
     } else {
-        selector.style.display = 'none';
+        previewBar.style.display = 'none';
         btn.textContent = 'View as Assistant';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-ghost');
@@ -948,6 +953,12 @@ async function loadAllData() {
             loadAssistantAvailForMonth(currentMonth, currentYear),
             loadDayClassesForMonth(currentMonth, currentYear)
         ]);
+        // Default staff selection to the logged-in trainer's own record, else Cameron, else first staff
+        if (!selectedStaffId) {
+            var own = staffList.find(function(s) { return s.user_id === currentUser.id; });
+            var def = own || pickDefaultPreviewStaff();
+            if (def) selectedStaffId = def.id;
+        }
         refreshTrainerUI();
         switchTab('roster');
     } else {
