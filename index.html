@@ -2254,11 +2254,15 @@ async function generateAutoRosterPreview() {
             htIndex++;
         }
 
-        // Pick assistants: by per-DOW priority, skipping anyone marked unavailable
+        // Pick assistants: by per-DOW priority, skipping anyone explicitly excluded
+        // from this DOW or marked unavailable for this date
+        var dayDow = d.getDay();
         var needed = _assistantsNeededForClass(ci, rules);
-        var dayAssists = assistsRaw.slice().sort(function(a, b) {
-            return (effectivePriority(a, ds) - effectivePriority(b, ds)) || a.name.localeCompare(b.name);
-        });
+        var dayAssists = assistsRaw.slice()
+            .filter(function(a) { return !_isExcludedFromDow(a, dayDow); })
+            .sort(function(a, b) {
+                return (effectivePriority(a, ds) - effectivePriority(b, ds)) || a.name.localeCompare(b.name);
+            });
         var availableAssists = dayAssists.filter(function(a) { return !_isStaffMarkedUnavailable(a, ds); });
         var picked = availableAssists.slice(0, needed);
         var pickedIds = picked.map(function(a) { return a.id; });
@@ -3977,10 +3981,10 @@ async function deleteStaff(id) {
 // ============ Priority Order by Day editor ============
 // Selected DOW (0=Sun..6=Sat); default Monday
 var _priorityDow = 1;
-// Working copy: { staffId: priorityNumber }, mutated as user reorders before save
+// Working copy: { staffId: priorityNumber }
 var _priorityWorking = {};
-// Whether to show staff who are hidden by next-occurrence availability
-var _priorityShowAll = false;
+// Working copy of which staff are excluded from THIS DOW (Set of staff IDs)
+var _priorityExcludedThisDow = new Set();
 
 function _nextDateForDow(dow) {
     var today = new Date();
@@ -3992,8 +3996,12 @@ function _nextDateForDow(dow) {
     return formatDate(today);
 }
 
+function _isExcludedFromDow(staff, dow) {
+    return Array.isArray(staff.excluded_dows) && staff.excluded_dows.indexOf(dow) >= 0;
+}
+
 function _isAssistantUnavailableForNextDow(staff, dow) {
-    if (!staff.user_id) return false; // no linked account → can't check
+    if (!staff.user_id) return false;
     var nextDate = _nextDateForDow(dow);
     var entries = assistantAvailCache[nextDate] || [];
     var entry = entries.find(function(e) { return e.user_id === staff.user_id; });
@@ -4014,136 +4022,136 @@ function renderPriorityDowSelector() {
     }).join('');
 }
 
-async function selectPriorityDow(dow) {
+function selectPriorityDow(dow) {
     _priorityDow = dow;
-    _priorityShowAll = false;
-    // Snapshot the current ordering for this DOW into the working copy
+    // Snapshot priority + exclusion state for this DOW
     _priorityWorking = {};
+    _priorityExcludedThisDow = new Set();
     var assists = staffList.filter(function(s) { return !s.is_head_trainer; });
     assists.forEach(function(s) {
         var dowKey = String(dow);
         var v = (s.priorities_by_dow && s.priorities_by_dow[dowKey] != null) ? s.priorities_by_dow[dowKey] : (s.priority != null ? s.priority : 100);
         _priorityWorking[s.id] = parseInt(v, 10);
+        if (_isExcludedFromDow(s, dow)) _priorityExcludedThisDow.add(s.id);
     });
     renderPriorityDowSelector();
     renderPriorityList();
-    // Lazy-load the next-occurrence date's availability so the filter reflects fresh data
-    var nextDate = _nextDateForDow(dow);
-    var p = nextDate.split('-');
-    var m = parseInt(p[1], 10) - 1;
-    var y = parseInt(p[0], 10);
-    try {
-        await loadAssistantAvailForMonth(m, y);
-        // Re-render only if user is still viewing this DOW
-        if (_priorityDow === dow) renderPriorityList();
-    } catch (e) { /* networkErr handled */ }
 }
 
-function togglePriorityShowAll() {
-    _priorityShowAll = !_priorityShowAll;
+function excludeFromDow(staffId) {
+    _priorityExcludedThisDow.add(staffId);
+    renderPriorityList();
+}
+function includeInDow(staffId) {
+    _priorityExcludedThisDow.delete(staffId);
+    // New addition gets the highest visible priority + 1 (placed at end of visible list)
+    var visibleCount = staffList.filter(function(s) { return !s.is_head_trainer && !_priorityExcludedThisDow.has(s.id); }).length;
+    _priorityWorking[staffId] = visibleCount; // they're already counted as visible now; renumber happens on next move
     renderPriorityList();
 }
 
 function renderPriorityList() {
     var container = document.getElementById('priorityList');
     if (!container) return;
-    // Sort assistants by their working priority
-    var allAssists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
-    allAssists.sort(function(a, b) {
-        return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
-    });
+    var DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+    var allAssists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
     if (allAssists.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding:24px;"><div>No assistants — add staff members and unset their "Eligible Head Trainer" flag to manage priority.</div></div>';
         return;
     }
 
-    // Partition by next-occurrence availability
-    var hidden = [], visible = [];
-    allAssists.forEach(function(s) {
-        if (_isAssistantUnavailableForNextDow(s, _priorityDow)) hidden.push(s);
-        else visible.push(s);
-    });
+    // Visible (work this DOW) vs excluded (don't work this DOW)
+    var visible = allAssists.filter(function(s) { return !_priorityExcludedThisDow.has(s.id); });
+    var excluded = allAssists.filter(function(s) { return _priorityExcludedThisDow.has(s.id); });
 
-    // The list to render orderable rows for: visible, OR everyone if "show all" is toggled
-    var listForRows = _priorityShowAll ? allAssists : visible;
-    var rowsHtml = listForRows.map(function(s, i) {
+    // Sort visible by working priority
+    visible.sort(function(a, b) {
+        return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
+    });
+    excluded.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+    var rowsHtml = visible.map(function(s, i) {
         var rank = i + 1;
         var isFirst = i === 0;
-        var isLast = i === listForRows.length - 1;
-        var faded = _priorityShowAll && hidden.indexOf(s) >= 0;
-        return '<div data-staff-id="' + s.id + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--gray-200);border-radius:var(--radius);background:white;' + (faded ? 'opacity:0.55;' : '') + '">' +
+        var isLast = i === visible.length - 1;
+        return '<div data-staff-id="' + s.id + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--gray-200);border-radius:var(--radius);background:white;">' +
             '<span style="font-weight:700;color:var(--primary);min-width:24px;text-align:center;">' + rank + '</span>' +
             '<span style="width:14px;height:14px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
-            '<span style="flex:1;font-weight:500;">' + escHtml(s.name) + (faded ? ' <span style="font-size:0.72rem;color:var(--gray-400);font-weight:400;font-style:italic;">unavailable</span>' : '') + '</span>' +
+            '<span style="flex:1;font-weight:500;">' + escHtml(s.name) + '</span>' +
             '<button class="btn btn-icon btn-outline btn-sm" onclick="movePriority(\'' + s.id + '\', -1)"' + (isFirst ? ' disabled' : '') + ' title="Move up">&#8593;</button>' +
             '<button class="btn btn-icon btn-outline btn-sm" onclick="movePriority(\'' + s.id + '\', 1)"' + (isLast ? ' disabled' : '') + ' title="Move down">&#8595;</button>' +
+            '<button class="btn btn-icon btn-outline btn-sm" onclick="excludeFromDow(\'' + s.id + '\')" title="Doesn\'t work ' + DOW_FULL[_priorityDow] + '" style="color:var(--danger);">&times;</button>' +
         '</div>';
     }).join('');
 
-    var html = rowsHtml;
+    var html;
     if (visible.length === 0) {
-        html = '<div class="empty-state" style="padding:18px;color:var(--gray-500);">All assistants are marked unavailable for the next ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_priorityDow] + '. Reorder still affects the persistent priority — use "Show all".</div>';
+        html = '<div class="empty-state" style="padding:18px;color:var(--gray-500);">No assistants assigned to ' + DOW_FULL[_priorityDow] + '. Add some from the list below.</div>';
+    } else {
+        html = rowsHtml;
     }
-    if (hidden.length > 0) {
-        var nextDate = _nextDateForDow(_priorityDow);
-        var dowName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][_priorityDow];
-        var hiddenNames = hidden.map(function(s) { return escHtml(s.name); }).join(', ');
-        html += '<div style="margin-top:10px;padding:10px 12px;background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:var(--radius);font-size:0.85rem;color:var(--gray-600);">' +
-            '<strong>' + hidden.length + ' hidden</strong> — marked unavailable on next ' + dowName + ' (' + nextDate + '): ' + hiddenNames +
-            ' <button class="btn btn-outline btn-sm" style="margin-left:8px;" onclick="togglePriorityShowAll()">' + (_priorityShowAll ? 'Hide them' : 'Show all') + '</button>' +
+
+    if (excluded.length > 0) {
+        var excludedHtml = excluded.map(function(s) {
+            return '<button class="btn btn-outline btn-sm" onclick="includeInDow(\'' + s.id + '\')" style="display:inline-flex;align-items:center;gap:6px;">' +
+                '<span style="width:10px;height:10px;border-radius:50%;background:' + s.color + ';"></span>' +
+                escHtml(s.name) +
+                ' <span style="color:var(--gray-400);">+ Add</span>' +
+            '</button>';
+        }).join(' ');
+        html += '<div style="margin-top:14px;padding:10px 12px;background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:var(--radius);">' +
+            '<div style="font-size:0.85rem;color:var(--gray-600);margin-bottom:8px;">Doesn\'t work ' + DOW_FULL[_priorityDow] + ':</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + excludedHtml + '</div>' +
         '</div>';
     }
     container.innerHTML = html;
 }
 
 function movePriority(staffId, delta) {
-    var allAssists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
-    allAssists.sort(function(a, b) {
+    var visible = staffList.filter(function(s) { return !s.is_head_trainer && !_priorityExcludedThisDow.has(s.id); }).slice();
+    visible.sort(function(a, b) {
         return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
     });
-    // Operate on the currently-visible list so swaps only affect what the user sees
-    var listForOps;
-    if (_priorityShowAll) {
-        listForOps = allAssists;
-    } else {
-        listForOps = allAssists.filter(function(s) { return !_isAssistantUnavailableForNextDow(s, _priorityDow); });
-    }
-    var idx = listForOps.findIndex(function(s) { return s.id === staffId; });
+    var idx = visible.findIndex(function(s) { return s.id === staffId; });
     if (idx < 0) return;
     var newIdx = idx + delta;
-    if (newIdx < 0 || newIdx >= listForOps.length) return;
-    var tmp = listForOps[idx];
-    listForOps[idx] = listForOps[newIdx];
-    listForOps[newIdx] = tmp;
-    // Renumber visible 1..N; if there are hidden assistants, append them as N+1..M
-    // (preserving their original relative order — they'll be ranked after visible).
-    listForOps.forEach(function(s, i) { _priorityWorking[s.id] = i + 1; });
-    if (!_priorityShowAll) {
-        var hiddenAssists = allAssists.filter(function(s) { return listForOps.indexOf(s) < 0; });
-        hiddenAssists.forEach(function(s, i) { _priorityWorking[s.id] = listForOps.length + i + 1; });
-    }
+    if (newIdx < 0 || newIdx >= visible.length) return;
+    var tmp = visible[idx];
+    visible[idx] = visible[newIdx];
+    visible[newIdx] = tmp;
+    visible.forEach(function(s, i) { _priorityWorking[s.id] = i + 1; });
     renderPriorityList();
 }
 
 async function _commitPriorityToDows(dowList) {
-    // Build per-staff updates: write _priorityWorking values into priorities_by_dow[dow] for each DOW in dowList
+    // For each non-HT assistant, update:
+    //   - priorities_by_dow[dow] for each dow in dowList (if visible)
+    //   - excluded_dows: add `dow` if assistant is in _priorityExcludedThisDow, remove otherwise
+    // The exclusion change reflects the current dow's working state for ALL dows in dowList.
     var assists = staffList.filter(function(s) { return !s.is_head_trainer; });
     var updates = assists.map(function(s) {
         var pbd = Object.assign({}, s.priorities_by_dow || {});
-        var v = _priorityWorking[s.id];
-        if (v != null) {
-            dowList.forEach(function(d) { pbd[String(d)] = v; });
-        }
-        return { id: s.id, priorities_by_dow: pbd };
+        var excludedNow = _priorityExcludedThisDow.has(s.id);
+        var existingExcl = Array.isArray(s.excluded_dows) ? s.excluded_dows.slice() : [];
+        // Apply for each DOW in dowList
+        dowList.forEach(function(d) {
+            if (excludedNow) {
+                if (existingExcl.indexOf(d) < 0) existingExcl.push(d);
+                // Don't write a priority for this DOW (or remove it)
+                delete pbd[String(d)];
+            } else {
+                existingExcl = existingExcl.filter(function(x) { return x !== d; });
+                if (_priorityWorking[s.id] != null) pbd[String(d)] = _priorityWorking[s.id];
+            }
+        });
+        return { id: s.id, priorities_by_dow: pbd, excluded_dows: existingExcl.sort(function(a,b){return a-b;}) };
     });
-    // Write each row
     for (var i = 0; i < updates.length; i++) {
         var u = updates[i];
-        var r = await sb.from('cbd_staff_members').update({ priorities_by_dow: u.priorities_by_dow }).eq('id', u.id);
+        var r = await sb.from('cbd_staff_members').update({ priorities_by_dow: u.priorities_by_dow, excluded_dows: u.excluded_dows }).eq('id', u.id);
         if (r.error) { showToast('Error updating ' + (assists[i].name) + ': ' + r.error.message); return false; }
     }
-    // Refresh the local cache
     await loadStaff({ force: true });
     return true;
 }
