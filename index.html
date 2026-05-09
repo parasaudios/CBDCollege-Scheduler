@@ -560,6 +560,18 @@
 
         <!-- TRAINER: Manage Staff Tab -->
         <div id="tab-staff" class="tab-content" style="display:none;">
+            <div class="card" style="margin-bottom:14px;">
+                <div class="card-header"><div><h2>Priority Order by Day</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Pick a day to set the order assistants are auto-rostered. Lower number = picked first. Head trainers are excluded — they're rostered based on their own availability.</div></div></div>
+                <div class="card-body">
+                    <div id="priorityDowSelector" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;"></div>
+                    <div id="priorityList" style="max-width:560px;display:flex;flex-direction:column;gap:6px;"></div>
+                    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+                        <button class="btn btn-success" id="savePriorityBtn" onclick="savePriorityOrder()">Save This Day</button>
+                        <button class="btn btn-outline btn-sm" onclick="applyPriorityToWeekdays()">Apply to Tue–Fri</button>
+                        <button class="btn btn-outline btn-sm" onclick="applyPriorityToAllDays()">Apply to all days</button>
+                    </div>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-header">
                     <h2>Staff Members</h2>
@@ -1142,6 +1154,19 @@ var viewAsAssistant = false;
 function isActualTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
 function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
 
+// Resolve a staff member's effective priority for a given date.
+// Per-DOW override takes precedence; falls back to global priority; falls back to 100.
+function effectivePriority(staff, dateStr) {
+    if (!staff) return 100;
+    if (dateStr && staff.priorities_by_dow) {
+        var p = dateStr.split('-');
+        var dow = new Date(+p[0], +p[1]-1, +p[2]).getDay();
+        var v = staff.priorities_by_dow[String(dow)];
+        if (v != null && v !== '') return parseInt(v, 10);
+    }
+    return staff.priority != null ? parseInt(staff.priority, 10) : 100;
+}
+
 function pickDefaultPreviewStaff() {
     // Default to Cameron if present, otherwise first staff
     var cam = staffList.find(function(s) { return s.name && s.name.toLowerCase().indexOf('cameron') === 0; });
@@ -1528,6 +1553,7 @@ function switchTab(tab) {
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
     } else if (tab === 'staff') {
         renderStaffGrid();
+        selectPriorityDow(_priorityDow);
     } else if (tab === 'admin') {
         loadUsers();
     } else if (tab === 'myroster') {
@@ -2134,10 +2160,10 @@ async function generateAutoRosterPreview() {
         return Promise.all([loadDayClassesForMonth(p.m, p.y), loadAssistantAvailForMonth(p.m, p.y), loadAvailabilityForMonth(p.m, p.y)]);
     }));
 
-    // Sort once for deterministic priority picks (stable secondary sort by name)
-    var allStaff = staffList.slice().sort(function(a,b) { return ((a.priority||100) - (b.priority||100)) || a.name.localeCompare(b.name); });
+    // HTs get filtered separately; assistants are re-sorted PER DAY using per-DOW priority.
+    var allStaff = staffList.slice();
     var hts = allStaff.filter(function(s) { return s.is_head_trainer; });
-    var assists = allStaff.filter(function(s) { return !s.is_head_trainer; });
+    var assistsRaw = allStaff.filter(function(s) { return !s.is_head_trainer; });
 
     // Track HT rotation across the range — round-robin among HTs that aren't unavailable
     var htRotation = [];
@@ -2167,9 +2193,12 @@ async function generateAutoRosterPreview() {
             htIndex++;
         }
 
-        // Pick assistants: by priority, skipping anyone marked unavailable
+        // Pick assistants: by per-DOW priority, skipping anyone marked unavailable
         var needed = _assistantsNeededForClass(ci, rules);
-        var availableAssists = assists.filter(function(a) { return !_isStaffMarkedUnavailable(a, ds); });
+        var dayAssists = assistsRaw.slice().sort(function(a, b) {
+            return (effectivePriority(a, ds) - effectivePriority(b, ds)) || a.name.localeCompare(b.name);
+        });
+        var availableAssists = dayAssists.filter(function(a) { return !_isStaffMarkedUnavailable(a, ds); });
         var picked = availableAssists.slice(0, needed);
         var pickedIds = picked.map(function(a) { return a.id; });
 
@@ -3884,6 +3913,141 @@ async function deleteStaff(id) {
     delete availabilityCache[id];
     await loadStaff(); refreshTrainerUI(); showToast(s.name + ' removed');
 }
+// ============ Priority Order by Day editor ============
+// Selected DOW (0=Sun..6=Sat); default Monday
+var _priorityDow = 1;
+// Working copy: { staffId: priorityNumber }, mutated as user reorders before save
+var _priorityWorking = {};
+
+function renderPriorityDowSelector() {
+    var container = document.getElementById('priorityDowSelector');
+    if (!container) return;
+    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var dows = [1,2,3,4,5,6,0];
+    container.innerHTML = labels.map(function(lbl, i) {
+        var dow = dows[i];
+        var active = dow === _priorityDow;
+        var isWeekend = dow === 0 || dow === 6;
+        return '<button class="sub-tab' + (active ? ' active' : '') + '" data-dow="' + dow + '" onclick="selectPriorityDow(' + dow + ')"' +
+            (isWeekend && !active ? ' style="background:var(--primary-light);"' : '') + '>' + lbl + '</button>';
+    }).join('');
+}
+
+function selectPriorityDow(dow) {
+    _priorityDow = dow;
+    // Snapshot the current ordering for this DOW into the working copy
+    _priorityWorking = {};
+    var assists = staffList.filter(function(s) { return !s.is_head_trainer; });
+    assists.forEach(function(s) {
+        var dowKey = String(dow);
+        var v = (s.priorities_by_dow && s.priorities_by_dow[dowKey] != null) ? s.priorities_by_dow[dowKey] : (s.priority != null ? s.priority : 100);
+        _priorityWorking[s.id] = parseInt(v, 10);
+    });
+    renderPriorityDowSelector();
+    renderPriorityList();
+}
+
+function renderPriorityList() {
+    var container = document.getElementById('priorityList');
+    if (!container) return;
+    // Sort assistants by their working priority
+    var assists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
+    assists.sort(function(a, b) {
+        return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
+    });
+
+    if (assists.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:24px;"><div>No assistants — add staff members and unset their "Eligible Head Trainer" flag to manage priority.</div></div>';
+        return;
+    }
+
+    container.innerHTML = assists.map(function(s, i) {
+        var rank = i + 1;
+        var isFirst = i === 0;
+        var isLast = i === assists.length - 1;
+        return '<div data-staff-id="' + s.id + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--gray-200);border-radius:var(--radius);background:white;">' +
+            '<span style="font-weight:700;color:var(--primary);min-width:24px;text-align:center;">' + rank + '</span>' +
+            '<span style="width:14px;height:14px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
+            '<span style="flex:1;font-weight:500;">' + escHtml(s.name) + '</span>' +
+            '<button class="btn btn-icon btn-outline btn-sm" onclick="movePriority(\'' + s.id + '\', -1)"' + (isFirst ? ' disabled' : '') + ' title="Move up">&#8593;</button>' +
+            '<button class="btn btn-icon btn-outline btn-sm" onclick="movePriority(\'' + s.id + '\', 1)"' + (isLast ? ' disabled' : '') + ' title="Move down">&#8595;</button>' +
+        '</div>';
+    }).join('');
+}
+
+function movePriority(staffId, delta) {
+    var assists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
+    assists.sort(function(a, b) {
+        return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
+    });
+    var idx = assists.findIndex(function(s) { return s.id === staffId; });
+    if (idx < 0) return;
+    var newIdx = idx + delta;
+    if (newIdx < 0 || newIdx >= assists.length) return;
+    // Swap by reassigning priority numbers
+    var tmp = assists[idx];
+    assists[idx] = assists[newIdx];
+    assists[newIdx] = tmp;
+    // Renumber 1..N
+    assists.forEach(function(s, i) { _priorityWorking[s.id] = i + 1; });
+    renderPriorityList();
+}
+
+async function _commitPriorityToDows(dowList) {
+    // Build per-staff updates: write _priorityWorking values into priorities_by_dow[dow] for each DOW in dowList
+    var assists = staffList.filter(function(s) { return !s.is_head_trainer; });
+    var updates = assists.map(function(s) {
+        var pbd = Object.assign({}, s.priorities_by_dow || {});
+        var v = _priorityWorking[s.id];
+        if (v != null) {
+            dowList.forEach(function(d) { pbd[String(d)] = v; });
+        }
+        return { id: s.id, priorities_by_dow: pbd };
+    });
+    // Write each row
+    for (var i = 0; i < updates.length; i++) {
+        var u = updates[i];
+        var r = await sb.from('cbd_staff_members').update({ priorities_by_dow: u.priorities_by_dow }).eq('id', u.id);
+        if (r.error) { showToast('Error updating ' + (assists[i].name) + ': ' + r.error.message); return false; }
+    }
+    // Refresh the local cache
+    await loadStaff({ force: true });
+    return true;
+}
+
+async function savePriorityOrder() {
+    var btn = document.getElementById('savePriorityBtn');
+    setLoading(btn, true);
+    var ok = await _commitPriorityToDows([_priorityDow]);
+    setLoading(btn, false);
+    if (!ok) return;
+    selectPriorityDow(_priorityDow); // re-snapshot from fresh data
+    renderStaffGrid();
+    showToast('Priority order saved for ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_priorityDow]);
+}
+
+async function applyPriorityToWeekdays() {
+    var ok = await showConfirm({
+        title: 'Apply order to Tue–Fri?',
+        body: 'This will overwrite Tue–Fri priority orders with the current order. Sat and Sun will keep their existing values.',
+        okText: 'Apply'
+    });
+    if (!ok) return;
+    var done = await _commitPriorityToDows([2,3,4,5]);
+    if (done) { await loadStaff({ force: true }); selectPriorityDow(_priorityDow); renderStaffGrid(); showToast('Applied to Tue–Fri'); }
+}
+
+async function applyPriorityToAllDays() {
+    var ok = await showConfirm({
+        title: 'Apply order to all 7 days?',
+        body: 'This overwrites priority orders for every day of the week with the current order.',
+        okText: 'Apply'
+    });
+    if (!ok) return;
+    var done = await _commitPriorityToDows([0,1,2,3,4,5,6]);
+    if (done) { await loadStaff({ force: true }); selectPriorityDow(_priorityDow); renderStaffGrid(); showToast('Applied to all days'); }
+}
+
 function renderStaffGrid() {
     var grid = document.getElementById('staffGrid');
     var noMsg = document.getElementById('noStaffMessage');
