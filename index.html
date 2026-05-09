@@ -1288,7 +1288,7 @@ function buildTabs() {
     if (isTrainer()) {
         tabsEl.innerHTML = '<button class="tab active" data-tab="schedule" onclick="switchTab(\'schedule\')">Schedule</button>' +
             '<button class="tab" data-tab="classes" onclick="switchTab(\'classes\')">Classes</button>' +
-            '<button class="tab" data-tab="staff" onclick="switchTab(\'staff\')">Staff</button>' +
+            '<button class="tab" data-tab="people" onclick="switchTab(\'people\')">Staff</button>' +
             '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>';
         document.getElementById('exportBtn').style.display = '';
     } else {
@@ -1474,10 +1474,10 @@ function loadMonth(view, month, year, opts) {
 // Trainer-only consolidation: top-level groups map to one or more underlying tab-content panes
 var _groupSubViews = {
     schedule: [{ id: 'roster', label: 'Per-staff' }, { id: 'overview', label: 'Team' }],
-    staff:    [{ id: 'staff',  label: 'Manage Staff' }, { id: 'assistavail', label: 'Availability' }]
+    people:   [{ id: 'staff',  label: 'Manage Staff' }, { id: 'assistavail', label: 'Availability' }]
 };
-var _subToGroup = { roster: 'schedule', overview: 'schedule', staff: 'staff', assistavail: 'staff' };
-var _lastSubView = { schedule: 'roster', staff: 'staff' };
+var _subToGroup = { roster: 'schedule', overview: 'schedule', staff: 'people', assistavail: 'people' };
+var _lastSubView = { schedule: 'roster', people: 'staff' };
 
 function _renderSubTabBar(group, activeSubId) {
     var bar = document.getElementById('subTabBar');
@@ -1521,6 +1521,7 @@ function switchTab(tab) {
         renderClassesSkeleton();
         loadSettings().then(function() {
             renderSettingsCardsInClasses();
+            renderDowDefaultsGrid();
             return loadMonth('classes', classesMonth, classesYear);
         }).then(renderClassesCalendar);
     } else if (tab === 'assistavail') {
@@ -2971,7 +2972,10 @@ function dowDefaultsCopyMonToAll() {
 
 function renderClassesCalendar() {
     document.getElementById('classesMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
-    renderDowDefaultsGrid();
+    // Note: renderDowDefaultsGrid() is intentionally NOT called here. It populates
+    // input fields from settingsCache, which would clobber any in-progress edits
+    // when polling/realtime triggers a re-render. Grid is rendered once per tab
+    // entry from switchTab + after a successful save.
     var grid = document.getElementById('classesGrid');
     if (!grid) return;
     var firstDay = new Date(classesYear, classesMonth, 1);
@@ -3063,7 +3067,7 @@ async function saveDefaultClassTimes() {
         message: diff.length + ' day-of-week defaults changed',
         data: { changes: diff }
     });
-    if (currentTab === 'classes') renderClassesCalendar();
+    if (currentTab === 'classes') { renderDowDefaultsGrid(); renderClassesCalendar(); }
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
     showToast('Defaults saved · all staff notified');
