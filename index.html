@@ -2715,101 +2715,133 @@ function renderMyRoster() {
     grid.innerHTML = html;
 }
 
-async function renderNextShiftHero() {
-    var hero = document.getElementById('nextShiftHero');
-    if (!hero || !myStaffMember) return;
-    var todayStr = formatDate(new Date());
-
-    // First try the local cache for instant render — but if not found, query the server.
-    var found = null;
-    var horizon = formatDate(new Date(Date.now() + 60 * 86400000));
-    if (availabilityCache[myStaffMember.id]) {
-        var dates = Object.keys(availabilityCache[myStaffMember.id]).filter(function(d) {
-            var e = availabilityCache[myStaffMember.id][d];
-            return d >= todayStr && (e.status === 'available' || e.status === 'partial');
-        }).sort();
-        if (dates.length > 0) {
-            var ds = dates[0];
-            found = { date: new Date(ds + 'T00:00:00'), dateStr: ds, entry: availabilityCache[myStaffMember.id][ds] };
-        }
-    }
-
-    // Fallback to server query (no horizon cap — finds the next shift even if months away)
-    if (!found) {
-        try {
-            var r = await sb.from('cbd_availability')
-                .select('*')
-                .eq('staff_id', myStaffMember.id)
-                .in('status', ['available','partial'])
-                .gte('date', todayStr)
-                .order('date', { ascending: true })
-                .limit(1);
-            if (r.error) throw r.error;
-            if (r.data && r.data.length > 0) {
-                var row = r.data[0];
-                found = { date: new Date(row.date + 'T00:00:00'), dateStr: row.date, entry: row };
-                // Lazy: if the next shift is in a different month than what's loaded, also load that
-                // month's data so dayClass info is available for the hero card.
-                var m = found.date.getMonth(), y = found.date.getFullYear();
-                if (!_loadedMonths[_monthKey('day_classes', m, y)]) await loadDayClassesForMonth(m, y);
-                if (!_loadedMonths[_monthKey('staff_avail', m, y)]) await loadAvailabilityForMonth(m, y);
-            }
-        } catch (e) { /* networkErr already shown */ }
-    }
-
-    if (!found) {
-        hero.innerHTML = '<div class="hero-card"><div class="hero-card-label">Your next shift</div><div class="hero-card-date">Nothing scheduled</div><div class="hero-card-row"><span class="hero-card-empty">You\'re not currently rostered for any upcoming days.</span></div></div>';
-        return;
-    }
-
-    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][found.date.getDay()];
-    var dateLabel = dayName + ', ' + found.date.getDate() + ' ' + MONTH_NAMES[found.date.getMonth()];
-    var todayStr = formatDate(new Date());
-    var relLabel = found.dateStr === todayStr ? 'Today' : (function() {
-        var diff = Math.round((found.date - new Date(todayStr)) / 86400000);
-        if (diff === 1) return 'Tomorrow';
-        return 'In ' + diff + ' days';
-    })();
-
-    var ci = getDayClass(found.dateStr);
+function _shiftSection(label, dateLabel, ci, entry, others, isToday) {
+    // entry may be null when user is not rostered (today, no class for them)
     var classTime = (ci && ci.start_time && ci.end_time) ? (ci.start_time.slice(0,5) + ' – ' + ci.end_time.slice(0,5)) : '—';
-    var startTime = found.entry.start_time ? found.entry.start_time.slice(0,5) : '—';
-    var roleLabel = found.entry.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant';
+    var startTime = (entry && entry.start_time) ? entry.start_time.slice(0,5) : '—';
+    var roleLabel = entry ? (entry.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant') : 'Not rostered';
     var students = ci ? ('AM ' + (ci.students_am||0) + ' · PM ' + (ci.students_pm||0)) : '—';
+    var capParts = [];
+    if (ci && ci.capped_am) capParts.push('AM');
+    if (ci && ci.capped_pm) capParts.push('PM');
+    var capText = capParts.length ? capParts.join(' & ') + ' capped' : (ci ? 'Not capped' : '—');
 
-    // Other staff working that day
-    var others = [];
-    staffList.forEach(function(s) {
-        if (s.id === myStaffMember.id) return;
-        var se = getAvailability(s.id, found.dateStr);
-        if (se && (se.status === 'available' || se.status === 'partial')) {
-            others.push({ name: s.name, color: s.color, isHT: se.day_role === 'head_trainer' });
-        }
-    });
-    others.sort(function(a, b) { return (b.isHT ? 1 : 0) - (a.isHT ? 1 : 0); });
     var othersHtml;
-    if (others.length === 0) {
-        othersHtml = '<span class="hero-card-empty">Working solo</span>';
+    if (!entry && !ci) {
+        othersHtml = '<span class="hero-card-empty">No class scheduled</span>';
+    } else if (others.length === 0) {
+        othersHtml = '<span class="hero-card-empty">' + (entry ? 'Working solo' : 'No-one rostered') + '</span>';
     } else {
         othersHtml = others.map(function(o) {
             return '<span class="hero-card-chip' + (o.isHT ? ' ht' : '') + '"><span style="width:8px;height:8px;border-radius:50%;background:' + o.color + ';"></span>' + (o.isHT ? 'HT ' : '') + escHtml(o.name.split(' ')[0]) + '</span>';
         }).join('');
     }
 
-    hero.innerHTML = '<div class="hero-card">' +
-        '<div class="hero-card-label">' + relLabel + ' · Your next shift</div>' +
+    var statusBadge = '';
+    if (isToday) {
+        if (entry) statusBadge = '<span style="background:rgba(255,255,255,0.25);padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;letter-spacing:0.5px;margin-left:10px;vertical-align:middle;">YOU\'RE WORKING</span>';
+        else if (ci) statusBadge = '<span style="background:rgba(0,0,0,0.18);padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;letter-spacing:0.5px;margin-left:10px;vertical-align:middle;">NOT NEEDED</span>';
+    }
+
+    var stats = '<div class="hero-card-row">' +
+        '<div class="hero-card-stat"><div class="hero-card-stat-label">Class hours</div><div class="hero-card-stat-value">' + classTime + '</div></div>' +
+        '<div class="hero-card-stat"><div class="hero-card-stat-label">Students</div><div class="hero-card-stat-value">' + students + '</div></div>';
+    if (entry) {
+        stats += '<div class="hero-card-stat"><div class="hero-card-stat-label">Your start</div><div class="hero-card-stat-value">' + startTime + '</div></div>' +
+                 '<div class="hero-card-stat"><div class="hero-card-stat-label">Role</div><div class="hero-card-stat-value">' + roleLabel + '</div></div>';
+    } else {
+        stats += '<div class="hero-card-stat"><div class="hero-card-stat-label">Status</div><div class="hero-card-stat-value">' + capText + '</div></div>';
+    }
+    stats += '</div>';
+
+    return '<div class="hero-card-label">' + label + statusBadge + '</div>' +
         '<div class="hero-card-date">' + dateLabel + '</div>' +
-        '<div class="hero-card-row">' +
-            '<div class="hero-card-stat"><div class="hero-card-stat-label">Class hours</div><div class="hero-card-stat-value">' + classTime + '</div></div>' +
-            '<div class="hero-card-stat"><div class="hero-card-stat-label">Your start</div><div class="hero-card-stat-value">' + startTime + '</div></div>' +
-            '<div class="hero-card-stat"><div class="hero-card-stat-label">Role</div><div class="hero-card-stat-value">' + roleLabel + '</div></div>' +
-            '<div class="hero-card-stat"><div class="hero-card-stat-label">Students</div><div class="hero-card-stat-value">' + students + '</div></div>' +
-        '</div>' +
+        stats +
         '<div class="hero-card-staff">' +
-            '<div class="hero-card-staff-label">Working with</div>' +
+            '<div class="hero-card-staff-label">' + (entry ? 'Working with' : 'Rostered staff') + '</div>' +
             '<div class="hero-card-staff-list">' + othersHtml + '</div>' +
-        '</div>' +
-    '</div>';
+        '</div>';
+}
+
+function _gatherOthers(dateStr, excludeStaffId) {
+    var others = [];
+    staffList.forEach(function(s) {
+        if (s.id === excludeStaffId) return;
+        var se = getAvailability(s.id, dateStr);
+        if (se && (se.status === 'available' || se.status === 'partial')) {
+            others.push({ name: s.name, color: s.color, isHT: se.day_role === 'head_trainer' });
+        }
+    });
+    others.sort(function(a, b) { return (b.isHT ? 1 : 0) - (a.isHT ? 1 : 0); });
+    return others;
+}
+
+async function renderNextShiftHero() {
+    var hero = document.getElementById('nextShiftHero');
+    if (!hero || !myStaffMember) return;
+    var todayStr = formatDate(new Date());
+    var todayDate = new Date(todayStr + 'T00:00:00');
+    var dayName = function(d) { return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; };
+
+    // Today's data
+    var todayEntry = getAvailability(myStaffMember.id, todayStr);
+    var todayClass = getDayClass(todayStr);
+    var todayLabel = dayName(todayDate) + ', ' + todayDate.getDate() + ' ' + MONTH_NAMES[todayDate.getMonth()];
+
+    // Find the next future shift (skip today). Check cache first, fall back to server.
+    var nextShift = null;
+    if (availabilityCache[myStaffMember.id]) {
+        var dates = Object.keys(availabilityCache[myStaffMember.id]).filter(function(d) {
+            var e = availabilityCache[myStaffMember.id][d];
+            return d > todayStr && (e.status === 'available' || e.status === 'partial');
+        }).sort();
+        if (dates.length > 0) {
+            var ds = dates[0];
+            nextShift = { date: new Date(ds + 'T00:00:00'), dateStr: ds, entry: availabilityCache[myStaffMember.id][ds] };
+        }
+    }
+    if (!nextShift) {
+        try {
+            var r = await sb.from('cbd_availability')
+                .select('*')
+                .eq('staff_id', myStaffMember.id)
+                .in('status', ['available','partial'])
+                .gt('date', todayStr)
+                .order('date', { ascending: true })
+                .limit(1);
+            if (r.error) throw r.error;
+            if (r.data && r.data.length > 0) {
+                var row = r.data[0];
+                nextShift = { date: new Date(row.date + 'T00:00:00'), dateStr: row.date, entry: row };
+                var m = nextShift.date.getMonth(), y = nextShift.date.getFullYear();
+                if (!_loadedMonths[_monthKey('day_classes', m, y)]) await loadDayClassesForMonth(m, y);
+                if (!_loadedMonths[_monthKey('staff_avail', m, y)]) await loadAvailabilityForMonth(m, y);
+            }
+        } catch (e) { /* networkErr handled */ }
+    }
+
+    var html = '<div class="hero-card">';
+
+    // SECTION 1: Today (always show)
+    var todayOthers = _gatherOthers(todayStr, myStaffMember.id);
+    html += _shiftSection('Today', todayLabel, todayClass, todayEntry, todayOthers, true);
+
+    // SECTION 2: Next shift (only if we found one and it's not today)
+    if (nextShift && nextShift.dateStr !== todayStr) {
+        var diff = Math.round((nextShift.date - todayDate) / 86400000);
+        var rel = diff === 1 ? 'Tomorrow' : ('In ' + diff + ' day' + (diff === 1 ? '' : 's'));
+        var nextLabel = dayName(nextShift.date) + ', ' + nextShift.date.getDate() + ' ' + MONTH_NAMES[nextShift.date.getMonth()];
+        var nextCi = getDayClass(nextShift.dateStr);
+        var nextOthers = _gatherOthers(nextShift.dateStr, myStaffMember.id);
+        html += '<div style="border-top:1px solid rgba(255,255,255,0.25);margin-top:18px;padding-top:14px;">';
+        html += _shiftSection(rel + ' · Your next shift', nextLabel, nextCi, nextShift.entry, nextOthers, false);
+        html += '</div>';
+    } else if (!nextShift && !todayEntry) {
+        html += '<div style="border-top:1px solid rgba(255,255,255,0.25);margin-top:18px;padding-top:14px;font-size:0.9rem;font-style:italic;opacity:0.85;">You\'re not currently rostered for any upcoming days.</div>';
+    }
+
+    html += '</div>';
+    hero.innerHTML = html;
 }
 function changeMyRosterMonth(dir) {
     myRosterMonth += dir;
