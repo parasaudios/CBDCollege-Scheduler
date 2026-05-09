@@ -444,8 +444,9 @@
                             <div class="month-label" id="overviewMonthLabel"></div>
                             <button class="btn btn-outline btn-icon" onclick="changeOverviewMonth(1)">&#8250;</button>
                         </div>
-                        <div style="display:flex;gap:8px;">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
                             <button class="btn btn-outline btn-sm" onclick="goToOverviewToday()">Today</button>
+                            <button class="btn btn-outline btn-sm" onclick="openAutoRoster()">Auto-roster</button>
                             <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
                         </div>
                     </div>
@@ -634,6 +635,16 @@
             <div class="form-group"><label for="staffName">Full Name *</label><input type="text" class="form-control" id="staffName" placeholder="e.g. John Smith"></div>
             <div class="form-group"><label for="staffRole">Role / Position</label><input type="text" class="form-control" id="staffRole" placeholder="e.g. Trainer, Assistant"></div>
             <div class="form-group"><label for="staffColor">Colour</label><input type="color" id="staffColor" value="#2563eb" style="width:50px;height:36px;border:none;cursor:pointer;"></div>
+            <div class="form-group" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+                <div style="flex:1;min-width:140px;">
+                    <label for="staffPriority">Priority <span style="font-weight:400;color:var(--gray-500);font-size:0.78rem;">(lower = picked first)</span></label>
+                    <input type="number" class="form-control" id="staffPriority" min="1" max="999" value="100">
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--gray-200);border-radius:var(--radius);cursor:pointer;background:var(--gray-50);font-weight:500;">
+                    <input type="checkbox" id="staffIsHT" style="width:16px;height:16px;cursor:pointer;">
+                    Eligible Head Trainer
+                </label>
+            </div>
             <div class="form-group"><label for="staffUser">Link to User Account (optional)</label>
                 <select class="form-control" id="staffUser"><option value="">-- No linked account --</option></select>
             </div>
@@ -853,6 +864,42 @@
         </div>
         <div class="modal-body" style="padding:0;max-height:70vh;overflow-y:auto;">
             <div id="notifList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-roster Modal -->
+<div class="modal-overlay" id="autoRosterModal">
+    <div class="modal" style="max-width:760px;">
+        <div class="modal-header"><h3>Auto-roster from Availability</h3><button class="btn btn-icon btn-outline" onclick="closeModal('autoRosterModal')">&times;</button></div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Automatically build the roster from staff availability. Only days that have a class set will be rostered. Existing roster entries in the date range will be replaced.</p>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0;"><label>From</label><input type="date" id="arFromDate" class="form-control"></div>
+                <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0;"><label>To</label><input type="date" id="arToDate" class="form-control"></div>
+            </div>
+
+            <div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;background:var(--gray-50);">
+                <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">Staffing rules</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:0.85rem;">
+                    <label style="display:flex;align-items:center;gap:6px;">Need 1 assistant when class &ge; <input type="number" id="arRule1" min="1" style="width:60px;padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;"></label>
+                    <label style="display:flex;align-items:center;gap:6px;">Need 2 assistants when class &ge; <input type="number" id="arRule2" min="1" style="width:60px;padding:3px 6px;border:1px solid var(--gray-200);border-radius:4px;"></label>
+                </div>
+                <div style="font-size:0.78rem;color:var(--gray-500);margin-top:8px;">"Class" uses max(AM, PM) for that day. Save rules will persist them for next time.</div>
+                <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="saveAutoRosterRules()">Save rules</button>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                <button class="btn btn-outline btn-sm" onclick="generateAutoRosterPreview()">Generate preview</button>
+                <span id="arPreviewSummary" style="font-size:0.85rem;color:var(--gray-500);"></span>
+            </div>
+
+            <div id="arPreviewContainer" style="max-height:46vh;overflow:auto;border:1px solid var(--gray-200);border-radius:var(--radius);"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('autoRosterModal')">Cancel</button>
+            <button class="btn btn-success" id="arApplyBtn" onclick="applyAutoRoster()" disabled>Apply Roster</button>
         </div>
     </div>
 </div>
@@ -1698,6 +1745,228 @@ async function clearAllRosterMonth() {
         Object.keys(availabilityCache[selectedStaffId]).forEach(function(d) { if (d >= startDate && d <= endDate) delete availabilityCache[selectedStaffId][d]; });
     }
     showToast(MONTH_NAMES[currentMonth] + ' cleared'); renderCalendar(); updateSummary();
+}
+
+// ============ Auto-roster ============
+var _autoRosterRules = { min_students_for_one_assistant: 8, min_students_for_two_assistants: 16 };
+var _autoRosterPreview = []; // [{ dateStr, dateLabel, ci, htId, assistantIds, reason }]
+
+async function loadAutoRosterRules() {
+    try {
+        var r = await sb.from('cbd_auto_roster_rules').select('*').eq('id', 1).maybeSingle();
+        if (r.error) throw r.error;
+        if (r.data) _autoRosterRules = r.data;
+    } catch (e) { /* default rules */ }
+}
+
+async function openAutoRoster() {
+    await loadAutoRosterRules();
+    document.getElementById('arRule1').value = _autoRosterRules.min_students_for_one_assistant;
+    document.getElementById('arRule2').value = _autoRosterRules.min_students_for_two_assistants;
+
+    // Default range: current month being viewed
+    var range = _monthRange(currentMonth, currentYear);
+    document.getElementById('arFromDate').value = range.startDate;
+    document.getElementById('arToDate').value = range.endDate;
+
+    document.getElementById('arPreviewContainer').innerHTML = '';
+    document.getElementById('arPreviewSummary').textContent = '';
+    document.getElementById('arApplyBtn').disabled = true;
+    _autoRosterPreview = [];
+
+    document.getElementById('autoRosterModal').classList.add('active');
+}
+
+async function saveAutoRosterRules() {
+    var r1 = parseInt(document.getElementById('arRule1').value, 10);
+    var r2 = parseInt(document.getElementById('arRule2').value, 10);
+    if (isNaN(r1) || isNaN(r2) || r1 < 1 || r2 < 1) { showToast('Invalid rule values'); return; }
+    if (r2 < r1) { showToast('Two-assistant threshold must be >= one-assistant threshold'); return; }
+    var res = await sb.from('cbd_auto_roster_rules').update({ min_students_for_one_assistant: r1, min_students_for_two_assistants: r2, updated_by: currentUser.id, updated_at: new Date().toISOString() }).eq('id', 1);
+    if (res.error) { showToast('Error: ' + res.error.message); return; }
+    _autoRosterRules = { min_students_for_one_assistant: r1, min_students_for_two_assistants: r2 };
+    showToast('Rules saved');
+}
+
+function _assistantsNeededForClass(ci, rules) {
+    if (!ci) return 0;
+    var biggest = Math.max(ci.students_am || 0, ci.students_pm || 0);
+    if (biggest >= rules.min_students_for_two_assistants) return 2;
+    if (biggest >= rules.min_students_for_one_assistant) return 1;
+    return 0;
+}
+
+function _isStaffMarkedUnavailable(staff, dateStr) {
+    if (!staff.user_id) return false;
+    var entries = assistantAvailCache[dateStr] || [];
+    var match = entries.find(function(e) { return e.user_id === staff.user_id; });
+    return !!(match && !match.is_available);
+}
+
+async function generateAutoRosterPreview() {
+    var fromDate = document.getElementById('arFromDate').value;
+    var toDate = document.getElementById('arToDate').value;
+    if (!fromDate || !toDate) { showToast('Select a date range'); return; }
+    if (fromDate > toDate) { showToast('Invalid range'); return; }
+
+    var r1 = parseInt(document.getElementById('arRule1').value, 10) || _autoRosterRules.min_students_for_one_assistant;
+    var r2 = parseInt(document.getElementById('arRule2').value, 10) || _autoRosterRules.min_students_for_two_assistants;
+    var rules = { min_students_for_one_assistant: r1, min_students_for_two_assistants: r2 };
+
+    // Make sure the data we need for the range is loaded (covers multi-month spans)
+    var fromYM = fromDate.slice(0,7), toYM = toDate.slice(0,7);
+    var monthsToLoad = [];
+    var [fy, fm] = fromYM.split('-').map(Number);
+    var [ty, tm] = toYM.split('-').map(Number);
+    var ym = fy * 12 + (fm - 1), tym = ty * 12 + (tm - 1);
+    for (; ym <= tym; ym++) monthsToLoad.push({ m: ym % 12, y: Math.floor(ym / 12) });
+    await Promise.all(monthsToLoad.map(function(p) {
+        return Promise.all([loadDayClassesForMonth(p.m, p.y), loadAssistantAvailForMonth(p.m, p.y), loadAvailabilityForMonth(p.m, p.y)]);
+    }));
+
+    // Sort once for deterministic priority picks (stable secondary sort by name)
+    var allStaff = staffList.slice().sort(function(a,b) { return ((a.priority||100) - (b.priority||100)) || a.name.localeCompare(b.name); });
+    var hts = allStaff.filter(function(s) { return s.is_head_trainer; });
+    var assists = allStaff.filter(function(s) { return !s.is_head_trainer; });
+
+    // Track HT rotation across the range — round-robin among HTs that aren't unavailable
+    var htRotation = [];
+    var htIndex = 0;
+
+    var preview = [];
+    var skipped = 0;
+    var startD = new Date(fromDate + 'T00:00:00');
+    var endD = new Date(toDate + 'T00:00:00');
+    for (var t = startD.getTime(); t <= endD.getTime(); t += 86400000) {
+        var d = new Date(t);
+        var ds = formatDate(d);
+        var ci = getDayClass(ds);
+        if (!ci || !ci.start_time) {
+            skipped++;
+            preview.push({ dateStr: ds, dateLabel: _autoRosterDayLabel(d), ci: ci, skipped: true, reason: 'No class set' });
+            continue;
+        }
+
+        // Pick HT: round-robin among HTs not marked unavailable
+        var availHTs = hts.filter(function(h) { return !_isStaffMarkedUnavailable(h, ds); });
+        var htId = null;
+        if (availHTs.length > 0) {
+            htId = availHTs[htIndex % availHTs.length].id;
+            htIndex++;
+        }
+
+        // Pick assistants: by priority, skipping anyone marked unavailable
+        var needed = _assistantsNeededForClass(ci, rules);
+        var availableAssists = assists.filter(function(a) { return !_isStaffMarkedUnavailable(a, ds); });
+        var picked = availableAssists.slice(0, needed);
+        var pickedIds = picked.map(function(a) { return a.id; });
+
+        preview.push({
+            dateStr: ds,
+            dateLabel: _autoRosterDayLabel(d),
+            ci: ci,
+            htId: htId,
+            htName: htId ? (hts.find(function(h) { return h.id === htId; }) || {}).name : null,
+            assistantIds: pickedIds,
+            assistantNames: picked.map(function(a) { return a.name; }),
+            needed: needed,
+            shortBy: needed - picked.length,
+            skipped: false
+        });
+    }
+
+    _autoRosterPreview = preview;
+    _renderAutoRosterPreview();
+    var actionable = preview.filter(function(p) { return !p.skipped; });
+    var summary = actionable.length + ' day' + (actionable.length === 1 ? '' : 's') + ' to roster';
+    if (skipped > 0) summary += ' · ' + skipped + ' skipped (no class set)';
+    document.getElementById('arPreviewSummary').textContent = summary;
+    document.getElementById('arApplyBtn').disabled = actionable.length === 0;
+}
+
+function _autoRosterDayLabel(d) {
+    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + d.getDate() + ' ' + MONTH_NAMES[d.getMonth()].slice(0,3);
+}
+
+function _renderAutoRosterPreview() {
+    var rows = _autoRosterPreview.map(function(p) {
+        if (p.skipped) {
+            return '<tr style="color:var(--gray-400);"><td>' + escHtml(p.dateLabel) + '</td><td colspan="3" style="font-style:italic;">' + escHtml(p.reason) + '</td></tr>';
+        }
+        var biggest = Math.max(p.ci.students_am || 0, p.ci.students_pm || 0);
+        var ht = p.htName ? '<span style="background:var(--primary);color:white;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-right:5px;">HT</span>' + escHtml(p.htName.split(' ')[0]) : '<span style="color:var(--danger);font-style:italic;">No HT available</span>';
+        var assists = p.assistantNames.length > 0 ? p.assistantNames.map(function(n) { return escHtml(n.split(' ')[0]); }).join(', ') : '<span style="color:var(--gray-400);font-style:italic;">None</span>';
+        if (p.shortBy > 0) assists += ' <span style="color:var(--danger);font-style:italic;">(short ' + p.shortBy + ')</span>';
+        return '<tr><td>' + escHtml(p.dateLabel) + '</td><td>' + biggest + '</td><td>' + ht + '</td><td>' + assists + '</td></tr>';
+    }).join('');
+
+    document.getElementById('arPreviewContainer').innerHTML =
+        '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">' +
+            '<thead><tr style="background:var(--gray-50);"><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Day</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Class</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Head Trainer</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Assistants</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>';
+    document.querySelectorAll('#arPreviewContainer tbody td').forEach(function(td) { td.style.padding = '6px 10px'; td.style.borderBottom = '1px solid var(--gray-100)'; });
+}
+
+async function applyAutoRoster() {
+    var actionable = _autoRosterPreview.filter(function(p) { return !p.skipped; });
+    if (actionable.length === 0) { showToast('Nothing to apply'); return; }
+
+    var btn = document.getElementById('arApplyBtn');
+    setLoading(btn, true);
+    showToast('Applying auto-roster...');
+
+    var fromDate = document.getElementById('arFromDate').value;
+    var toDate = document.getElementById('arToDate').value;
+
+    // Build desired set
+    var desired = {}; // 'staff_id|date' -> { staff_id, date, day_role }
+    var upserts = [];
+    actionable.forEach(function(p) {
+        if (p.htId) {
+            desired[p.htId + '|' + p.dateStr] = true;
+            upserts.push({ staff_id: p.htId, date: p.dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id });
+        }
+        p.assistantIds.forEach(function(aid) {
+            desired[aid + '|' + p.dateStr] = true;
+            upserts.push({ staff_id: aid, date: p.dateStr, status: 'available', start_time: null, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
+        });
+    });
+
+    // Diff: delete existing rows in date range that aren't in the desired set
+    var staleByStaff = {};
+    Object.keys(availabilityCache).forEach(function(sid) {
+        var byDate = availabilityCache[sid] || {};
+        Object.keys(byDate).forEach(function(d) {
+            if (d < fromDate || d > toDate) return;
+            if (!desired[sid + '|' + d]) {
+                (staleByStaff[sid] = staleByStaff[sid] || []).push(d);
+            }
+        });
+    });
+    for (var sidKey in staleByStaff) {
+        var dates = staleByStaff[sidKey];
+        for (var di = 0; di < dates.length; di += 100) {
+            var dchunk = dates.slice(di, di + 100);
+            var dr = await sb.from('cbd_availability').delete().eq('staff_id', sidKey).in('date', dchunk);
+            if (dr.error) { setLoading(btn, false); showToast('Error clearing stale rows: ' + dr.error.message); return; }
+        }
+    }
+
+    for (var i = 0; i < upserts.length; i += 50) {
+        var batch = upserts.slice(i, i + 50);
+        var res = await sb.from('cbd_availability').upsert(batch, { onConflict: 'staff_id,date' });
+        if (res.error) { setLoading(btn, false); showToast('Error: ' + res.error.message); return; }
+    }
+
+    setLoading(btn, false);
+    closeModal('autoRosterModal');
+    invalidateAllMonths('staff_avail');
+    await loadMonth(isTrainer() ? 'roster' : 'myroster', currentMonth, currentYear, { force: true });
+    if (currentTab === 'roster') refreshTrainerUI();
+    if (currentTab === 'overview') renderOverview();
+    if (currentTab === 'classes') renderClassesCalendar();
+    showToast('Auto-rostered ' + actionable.length + ' day' + (actionable.length === 1 ? '' : 's'));
 }
 
 // ============ Bulk Roster Template ============
@@ -3004,6 +3273,8 @@ async function openAddStaffModal() {
     document.getElementById('staffName').value = '';
     document.getElementById('staffRole').value = '';
     document.getElementById('staffColor').value = COLORS[staffList.length % COLORS.length];
+    document.getElementById('staffPriority').value = 100;
+    document.getElementById('staffIsHT').checked = false;
     await populateStaffUserDropdown();
     document.getElementById('staffUser').value = '';
     document.getElementById('staffModal').classList.add('active');
@@ -3018,6 +3289,8 @@ async function openEditStaffModal(id) {
     document.getElementById('staffName').value = s.name;
     document.getElementById('staffRole').value = s.role || '';
     document.getElementById('staffColor').value = s.color;
+    document.getElementById('staffPriority').value = (s.priority != null) ? s.priority : 100;
+    document.getElementById('staffIsHT').checked = !!s.is_head_trainer;
     await populateStaffUserDropdown();
     document.getElementById('staffUser').value = s.user_id || '';
     document.getElementById('staffModal').classList.add('active');
@@ -3039,21 +3312,24 @@ async function saveStaff() {
     var role = document.getElementById('staffRole').value.trim();
     var color = document.getElementById('staffColor').value;
     var userId = document.getElementById('staffUser').value || null;
+    var priority = parseInt(document.getElementById('staffPriority').value, 10);
+    if (isNaN(priority)) priority = 100;
+    var isHT = document.getElementById('staffIsHT').checked;
     if (!name) { showToast('Please enter a name'); return; }
     var saveBtn = document.getElementById('staffModalSave');
     setLoading(saveBtn, true);
     if (editingStaffId) {
-        var result = await sb.from('cbd_staff_members').update({ name: name, role: role, color: color, user_id: userId }).eq('id', editingStaffId);
+        var result = await sb.from('cbd_staff_members').update({ name: name, role: role, color: color, user_id: userId, priority: priority, is_head_trainer: isHT }).eq('id', editingStaffId);
         setLoading(saveBtn, false);
         if (result.error) { showToast('Failed to update staff: ' + result.error.message); return; }
         showToast('Staff member updated');
     } else {
-        var result = await sb.from('cbd_staff_members').insert({ name: name, role: role, color: color, user_id: userId, created_by: currentUser.id });
+        var result = await sb.from('cbd_staff_members').insert({ name: name, role: role, color: color, user_id: userId, priority: priority, is_head_trainer: isHT, created_by: currentUser.id });
         setLoading(saveBtn, false);
         if (result.error) { showToast('Failed to add staff: ' + result.error.message); return; }
         showToast(name + ' added to the team');
     }
-    closeModal('staffModal'); editingStaffId = null; await loadStaff(); refreshTrainerUI();
+    closeModal('staffModal'); editingStaffId = null; await loadStaff({ force: true }); refreshTrainerUI();
 }
 async function deleteStaff(id) {
     var s = staffList.find(function(x){ return x.id === id; });
@@ -3069,10 +3345,14 @@ function renderStaffGrid() {
     var noMsg = document.getElementById('noStaffMessage');
     if (staffList.length === 0) { grid.innerHTML = ''; noMsg.style.display = 'block'; return; }
     noMsg.style.display = 'none';
-    grid.innerHTML = staffList.map(function(s) {
+    // Sort by priority for the management view (lower = first)
+    var sorted = staffList.slice().sort(function(a,b) { return ((a.priority||100) - (b.priority||100)) || a.name.localeCompare(b.name); });
+    grid.innerHTML = sorted.map(function(s) {
         var initials = s.name.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
         var linked = s.user_id ? '<span style="font-size:0.7rem;color:var(--success);">&#x2713; Linked</span>' : '<span style="font-size:0.7rem;color:var(--gray-400);">Not linked</span>';
-        return '<div class="staff-card"><div class="staff-avatar" style="background:' + s.color + '">' + initials + '</div><div class="staff-info"><div class="staff-name">' + escHtml(s.name) + '</div><div class="staff-role">' + escHtml(s.role || 'No role set') + ' ' + linked + '</div></div>' +
+        var htBadge = s.is_head_trainer ? '<span style="background:var(--primary);color:white;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:700;margin-left:4px;">HT</span>' : '';
+        var priBadge = '<span style="background:var(--gray-100);color:var(--gray-600);padding:1px 6px;border-radius:3px;font-size:0.7rem;font-weight:600;margin-left:4px;" title="Priority (lower picks first)">P' + (s.priority||100) + '</span>';
+        return '<div class="staff-card"><div class="staff-avatar" style="background:' + s.color + '">' + initials + '</div><div class="staff-info"><div class="staff-name">' + escHtml(s.name) + htBadge + priBadge + '</div><div class="staff-role">' + escHtml(s.role || 'No role set') + ' ' + linked + '</div></div>' +
             '<div class="staff-actions"><button class="btn btn-outline btn-sm" onclick="openEditStaffModal(\'' + s.id + '\')" title="Edit">&#9998;</button><button class="btn btn-outline btn-sm" onclick="deleteStaff(\'' + s.id + '\')" title="Remove" style="color:var(--danger);">&times;</button></div></div>';
     }).join('');
 }
