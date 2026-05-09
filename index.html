@@ -71,8 +71,12 @@
         .btn-ghost:hover { background: rgba(255,255,255,0.25); }
 
         .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
-        .tabs { display: flex; gap: 4px; background: var(--gray-200); padding: 4px; border-radius: var(--radius); margin-bottom: 24px; width: fit-content; }
+        .tabs { display: flex; gap: 4px; background: var(--gray-200); padding: 4px; border-radius: var(--radius); margin-bottom: 12px; width: fit-content; }
         .tab { padding: 8px 20px; border: none; background: transparent; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--gray-600); transition: all 0.15s; }
+        .sub-tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+        .sub-tab { padding: 6px 14px; border: 1px solid var(--gray-200); background: white; border-radius: 999px; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--gray-600); transition: all 0.15s; }
+        .sub-tab:hover { border-color: var(--primary-light); color: var(--primary); }
+        .sub-tab.active { background: var(--primary); border-color: var(--primary); color: white; }
         .tab.active { background: white; color: var(--primary); box-shadow: var(--shadow); }
         .tab:hover:not(.active) { color: var(--gray-800); }
 
@@ -385,6 +389,7 @@
     <div class="container">
         <div id="networkErrorBanner" style="display:none;background:var(--warning-light);color:#92400e;border:1px solid var(--warning);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:0.9rem;font-weight:500;"></div>
         <div class="tabs" id="mainTabs"></div>
+        <div id="subTabBar" class="sub-tabs" style="display:none;"></div>
         <div id="previewBar" style="display:none;background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
             <span style="font-weight:600;color:var(--primary);font-size:0.9rem;">Previewing as:</span>
             <select id="viewAsStaffSelect" class="form-control" style="font-size:0.9rem;padding:5px 10px;width:auto;" onchange="changePreviewStaff()"></select>
@@ -527,6 +532,30 @@
                     <div class="calendar-grid" id="classesGrid"></div>
                 </div>
             </div>
+
+            <!-- Settings consolidated into Classes tab -->
+            <div class="card" style="margin-top:14px;">
+                <div class="card-header"><div><h2>Assistant Start Times by Slot</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Auto-rostered assistants get the start time of the slot they're picked into. Slot 1 = 1st picked, Slot 2 = 2nd, etc. If a higher-priority assistant is unavailable, the next-priority assistant takes their slot.</div></div></div>
+                <div class="card-body">
+                    <div id="slotTimesContainer" style="max-width:480px;"></div>
+                    <button class="btn btn-success" id="saveSlotTimesBtn" onclick="saveSlotTimes()" style="margin-top:14px;">Save Start Times</button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;">
+                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size. The bigger of AM and PM student counts is used.</div></div></div>
+                <div class="card-body">
+                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;">
+                        <label style="display:flex;align-items:center;gap:8px;">Need 1 assistant when class &ge;
+                            <input type="number" class="form-control" id="settingsRule1" min="1" style="width:80px;">
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;">Need 2 assistants when class &ge;
+                            <input type="number" class="form-control" id="settingsRule2" min="1" style="width:80px;">
+                        </label>
+                    </div>
+                    <button class="btn btn-success" id="saveRulesBtn" onclick="saveRosterRulesFromSettings()" style="margin-top:14px;">Save Rules</button>
+                </div>
+            </div>
         </div>
 
         <!-- TRAINER: Manage Staff Tab -->
@@ -539,32 +568,6 @@
                 <div class="card-body">
                     <div class="staff-grid" id="staffGrid"></div>
                     <div id="noStaffMessage" class="empty-state" style="display:none;"><div class="empty-state-icon">&#128101;</div><div>No staff members yet</div></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TRAINER: Settings Tab -->
-        <div id="tab-settings" class="tab-content" style="display:none;">
-            <div class="card">
-                <div class="card-header"><div><h2>Assistant Start Times by Slot</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Auto-rostered assistants get the start time of the slot they're picked into. The 1st picked assistant gets Slot 1's time, the 2nd gets Slot 2, etc. If an assistant is unavailable, the next-priority assistant takes their slot.</div></div></div>
-                <div class="card-body">
-                    <div id="slotTimesContainer" style="max-width:480px;"></div>
-                    <button class="btn btn-success" id="saveSlotTimesBtn" onclick="saveSlotTimes()" style="margin-top:14px;">Save Start Times</button>
-                </div>
-            </div>
-
-            <div class="card" style="margin-top:18px;">
-                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size. The bigger of AM and PM student counts is used.</div></div></div>
-                <div class="card-body">
-                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;">
-                        <label style="display:flex;align-items:center;gap:8px;">Need 1 assistant when class &ge;
-                            <input type="number" class="form-control" id="settingsRule1" min="1" style="width:80px;">
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;">Need 2 assistants when class &ge;
-                            <input type="number" class="form-control" id="settingsRule2" min="1" style="width:80px;">
-                        </label>
-                    </div>
-                    <button class="btn btn-success" id="saveRulesBtn" onclick="saveRosterRulesFromSettings()" style="margin-top:14px;">Save Rules</button>
                 </div>
             </div>
         </div>
@@ -1283,12 +1286,9 @@ function showApp() {
 function buildTabs() {
     var tabsEl = document.getElementById('mainTabs');
     if (isTrainer()) {
-        tabsEl.innerHTML = '<button class="tab active" data-tab="roster" onclick="switchTab(\'roster\')">Roster</button>' +
-            '<button class="tab" data-tab="overview" onclick="switchTab(\'overview\')">Team Overview</button>' +
+        tabsEl.innerHTML = '<button class="tab active" data-tab="schedule" onclick="switchTab(\'schedule\')">Schedule</button>' +
             '<button class="tab" data-tab="classes" onclick="switchTab(\'classes\')">Classes</button>' +
-            '<button class="tab" data-tab="assistavail" onclick="switchTab(\'assistavail\')">Availability</button>' +
-            '<button class="tab" data-tab="staff" onclick="switchTab(\'staff\')">Manage Staff</button>' +
-            '<button class="tab" data-tab="settings" onclick="switchTab(\'settings\')">Settings</button>' +
+            '<button class="tab" data-tab="staff" onclick="switchTab(\'staff\')">Staff</button>' +
             '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>';
         document.getElementById('exportBtn').style.display = '';
     } else {
@@ -1471,12 +1471,45 @@ function loadMonth(view, month, year, opts) {
 }
 
 // ============ Tabs ============
+// Trainer-only consolidation: top-level groups map to one or more underlying tab-content panes
+var _groupSubViews = {
+    schedule: [{ id: 'roster', label: 'Per-staff' }, { id: 'overview', label: 'Team' }],
+    staff:    [{ id: 'staff',  label: 'Manage Staff' }, { id: 'assistavail', label: 'Availability' }]
+};
+var _subToGroup = { roster: 'schedule', overview: 'schedule', staff: 'staff', assistavail: 'staff' };
+var _lastSubView = { schedule: 'roster', staff: 'staff' };
+
+function _renderSubTabBar(group, activeSubId) {
+    var bar = document.getElementById('subTabBar');
+    if (!bar) return;
+    var subs = _groupSubViews[group];
+    if (!subs) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    bar.innerHTML = subs.map(function(s) {
+        return '<button class="sub-tab' + (s.id === activeSubId ? ' active' : '') + '" onclick="switchTab(\'' + s.id + '\')">' + s.label + '</button>';
+    }).join('');
+}
+
 function switchTab(tab) {
+    // If user clicked a "group" tab (Schedule, Staff), open its last sub-view
+    if (_groupSubViews[tab]) { return switchTab(_lastSubView[tab]); }
+
     currentTab = tab;
     if (multiSelectedDays.size > 0) clearMultiSelect();
-    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === tab); });
+
+    // Highlight the parent group in the top nav (or the tab itself if it has no group)
+    var groupForActive = _subToGroup[tab] || tab;
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === groupForActive); });
+
+    // Show this sub-view's pane
     document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
-    document.getElementById('tab-' + tab).style.display = 'block';
+    var pane = document.getElementById('tab-' + tab);
+    if (pane) pane.style.display = 'block';
+
+    // Render the sub-tab bar (or hide it for tabs that have no sub-views)
+    _renderSubTabBar(groupForActive, tab);
+    if (_subToGroup[tab]) _lastSubView[_subToGroup[tab]] = tab;
+
     // All loadX calls are dedup+freshness-aware now — no-op if already loaded.
     if (tab === 'roster') {
         renderRosterSkeleton();
@@ -1486,13 +1519,14 @@ function switchTab(tab) {
         loadMonth('overview', overviewMonth, overviewYear).then(renderOverview);
     } else if (tab === 'classes') {
         renderClassesSkeleton();
-        loadMonth('classes', classesMonth, classesYear).then(renderClassesCalendar);
+        loadSettings().then(function() {
+            renderSettingsCardsInClasses();
+            return loadMonth('classes', classesMonth, classesYear);
+        }).then(renderClassesCalendar);
     } else if (tab === 'assistavail') {
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
     } else if (tab === 'staff') {
         renderStaffGrid();
-    } else if (tab === 'settings') {
-        loadSettings().then(renderSettingsTab);
     } else if (tab === 'admin') {
         loadUsers();
     } else if (tab === 'myroster') {
@@ -1842,8 +1876,9 @@ async function clearAllRosterMonth() {
     showToast(MONTH_NAMES[currentMonth] + ' cleared'); renderCalendar(); updateSummary();
 }
 
-// ============ Settings tab (trainer) ============
-function renderSettingsTab() {
+// ============ Settings cards (live inside the Classes tab) ============
+function renderSettingsTab() { return renderSettingsCardsInClasses(); }
+function renderSettingsCardsInClasses() {
     var container = document.getElementById('slotTimesContainer');
     var slots = settingsCache.assistant_slot_times || {};
     var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
