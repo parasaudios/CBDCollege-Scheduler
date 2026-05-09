@@ -114,21 +114,40 @@
         .avail-dot.partial { background: var(--warning); }
         .avail-dot.unavailable { background: var(--danger); }
 
-        /* Calendar cell content — reorganized for clarity */
+        /* Calendar cell content — simplified for clarity */
         .calendar-day .day-number { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
         .cal-cell-badge { background: var(--primary); color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.3px; }
         .cal-cell-badge.assistant { background: var(--gray-400); }
-        .cal-cell-class { width: 100%; text-align: center; margin-top: 4px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.08); }
-        .cal-cell-class .time { font-weight: 600; color: var(--gray-800); font-size: 0.85rem; }
-        .cal-cell-class .students { color: var(--gray-600); font-size: 0.78rem; margin-top: 1px; }
-        .cal-cell-class .start-time { color: var(--primary); font-weight: 600; font-size: 0.78rem; margin-top: 1px; }
-        .cal-cell-others { width: 100%; margin-top: 4px; font-size: 0.8rem; color: var(--gray-700); line-height: 1.4; }
-        .cal-cell-others .other-row { display: block; text-align: left; padding-left: 2px; }
-        .cal-cell-others .ht { color: var(--primary); font-weight: 700; margin-right: 3px; }
+        .cal-cell-time { width: 100%; text-align: center; margin-top: 4px; font-weight: 600; color: var(--gray-700); font-size: 0.78rem; }
+        .cal-cell-students { width: 100%; text-align: center; color: var(--gray-500); font-size: 0.7rem; margin-top: 1px; }
+        .cal-cell-staff-dots { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin-top: auto; padding-top: 4px; }
+        .cal-cell-staff-dots .staff-pip { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
+        .cal-cell-caps { width: 100%; text-align: center; margin-top: 2px; }
+        .cal-cell-caps .capped-badge { font-size: 0.55rem; padding: 1px 4px; }
+
+        /* Today snapshot / Next shift hero card */
+        .hero-card { background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%); color: white; border-radius: 12px; padding: 18px 22px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
+        .hero-card-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.2px; opacity: 0.85; font-weight: 600; }
+        .hero-card-date { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
+        .hero-card-row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+        .hero-card-stat { display: flex; flex-direction: column; }
+        .hero-card-stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.8; font-weight: 600; }
+        .hero-card-stat-value { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+        .hero-card-staff { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.2); }
+        .hero-card-staff-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.85; font-weight: 600; margin-bottom: 8px; }
+        .hero-card-staff-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .hero-card-chip { background: rgba(255,255,255,0.18); padding: 5px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+        .hero-card-chip.ht { background: white; color: var(--primary); font-weight: 700; }
+        .hero-card-empty { font-style: italic; opacity: 0.8; font-size: 0.9rem; }
 
         /* Legacy classes kept for backward compatibility */
         .cal-cell-badge-row { text-align: right; margin-bottom: 3px; }
         .cal-cell-info { font-size: 0.85rem; color: var(--gray-700); line-height: 1.45; text-align: center; width: 100%; overflow: hidden; }
+        .cal-cell-class { width: 100%; text-align: center; margin-top: 4px; }
+        .cal-cell-class .time { font-weight: 600; color: var(--gray-800); font-size: 0.85rem; }
+        .cal-cell-class .students { color: var(--gray-600); font-size: 0.78rem; margin-top: 1px; }
+        .cal-cell-class .start-time { color: var(--primary); font-weight: 600; font-size: 0.78rem; margin-top: 1px; }
         .overview-day-staff { font-size: 0.8rem; line-height: 1.4; width: 100%; overflow: hidden; }
         .overview-staff-entry { display: flex; align-items: center; gap: 3px; padding: 1px 0; }
         .overview-staff-entry .mini-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -279,10 +298,14 @@
             .calendar-day { aspect-ratio: auto; min-height: 48px; padding: 2px; border-radius: 4px; }
             .calendar-day .day-number { font-size: 0.8rem; }
             .cal-cell-badge { font-size: 0.5rem; padding: 0 3px; }
-            .cal-cell-class .time { font-size: 0.62rem; }
-            .cal-cell-class .students, .cal-cell-class .start-time { font-size: 0.55rem; }
-            .cal-cell-others { font-size: 0.55rem; line-height: 1.3; }
-            .cal-cell-info { font-size: 0.6rem; line-height: 1.3; }
+            .cal-cell-time { font-size: 0.6rem; }
+            .cal-cell-students { font-size: 0.55rem; }
+            .cal-cell-staff-dots .staff-pip { width: 6px; height: 6px; }
+            .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
+            .hero-card { padding: 14px 16px; }
+            .hero-card-date { font-size: 1.15rem; }
+            .hero-card-row { gap: 16px; margin-top: 10px; }
+            .hero-card-stat-value { font-size: 1rem; }
 
             .bulk-panel { padding: 8px 10px; margin-bottom: 10px; }
             .bulk-panel-header h4 { font-size: 0.8rem; }
@@ -364,11 +387,7 @@
 
         <!-- TRAINER: Roster Tab -->
         <div id="tab-roster" class="tab-content" style="display:none;">
-            <div class="summary-bar">
-                <div class="summary-item"><div class="summary-number" id="totalStaff">0</div><div class="summary-label">Total Staff</div></div>
-                <div class="summary-item"><div class="summary-number" id="availableToday">0</div><div class="summary-label">Rostered Today</div></div>
-                <div class="summary-item"><div class="summary-number" id="studentsToday">0/0</div><div class="summary-label">Students AM/PM</div></div>
-            </div>
+            <div id="todayHero"></div>
             <div class="card">
                 <div class="card-header">
                     <div>
@@ -523,6 +542,7 @@
 
         <!-- ASSISTANT: My Roster Tab (read-only) -->
         <div id="tab-myroster" class="tab-content" style="display:none;">
+            <div id="nextShiftHero"></div>
             <div class="card">
                 <div class="card-header">
                     <h2>My Roster</h2>
@@ -1210,18 +1230,60 @@ function onStaffSelected() {
 }
 
 function updateSummary() {
-    document.getElementById('totalStaff').textContent = staffList.length;
-    var todayStr = formatDate(new Date());
-    var rostered = 0;
+    renderTodayHero();
+}
+
+function renderTodayHero() {
+    var hero = document.getElementById('todayHero');
+    if (!hero) return;
+    var today = new Date();
+    var todayStr = formatDate(today);
+    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][today.getDay()];
+    var dateLabel = dayName + ', ' + today.getDate() + ' ' + MONTH_NAMES[today.getMonth()] + ' ' + today.getFullYear();
+
+    // Class info
+    var ci = getDayClass(todayStr);
+    var classTime = (ci && ci.start_time && ci.end_time) ? (ci.start_time.slice(0,5) + ' – ' + ci.end_time.slice(0,5)) : 'No class set';
+    var amCount = ci ? (ci.students_am || 0) : 0;
+    var pmCount = ci ? (ci.students_pm || 0) : 0;
+    var capParts = [];
+    if (ci && ci.capped_am) capParts.push('AM');
+    if (ci && ci.capped_pm) capParts.push('PM');
+    var capStatus = capParts.length > 0 ? capParts.join(' & ') + ' capped' : 'Not capped';
+
+    // Working today
+    var working = [];
     staffList.forEach(function(s) {
         var e = getAvailability(s.id, todayStr);
-        if (e && (e.status === 'available' || e.status === 'partial')) rostered++;
+        if (e && (e.status === 'available' || e.status === 'partial')) {
+            working.push({ name: s.name, color: s.color, isHT: e.day_role === 'head_trainer' });
+        }
     });
-    var todayClass = getDayClass(todayStr);
-    var am = todayClass ? (todayClass.students_am || 0) : 0;
-    var pm = todayClass ? (todayClass.students_pm || 0) : 0;
-    document.getElementById('availableToday').textContent = rostered;
-    document.getElementById('studentsToday').textContent = am + '/' + pm;
+    working.sort(function(a, b) { return (b.isHT ? 1 : 0) - (a.isHT ? 1 : 0); });
+
+    var staffHtml;
+    if (working.length === 0) {
+        staffHtml = '<span class="hero-card-empty">No staff rostered today</span>';
+    } else {
+        staffHtml = working.map(function(w) {
+            return '<span class="hero-card-chip' + (w.isHT ? ' ht' : '') + '"><span style="width:8px;height:8px;border-radius:50%;background:' + w.color + ';"></span>' + (w.isHT ? 'HT ' : '') + escHtml(w.name.split(' ')[0]) + '</span>';
+        }).join('');
+    }
+
+    hero.innerHTML = '<div class="hero-card">' +
+        '<div class="hero-card-label">Today</div>' +
+        '<div class="hero-card-date">' + dateLabel + '</div>' +
+        '<div class="hero-card-row">' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Class hours</div><div class="hero-card-stat-value">' + classTime + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Students</div><div class="hero-card-stat-value">AM ' + amCount + ' · PM ' + pmCount + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Status</div><div class="hero-card-stat-value">' + capStatus + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Working</div><div class="hero-card-stat-value">' + working.length + ' staff</div></div>' +
+        '</div>' +
+        '<div class="hero-card-staff">' +
+            '<div class="hero-card-staff-label">Working today</div>' +
+            '<div class="hero-card-staff-list">' + staffHtml + '</div>' +
+        '</div>' +
+    '</div>';
 }
 
 // ============ Calendar (Trainer) ============
@@ -1247,8 +1309,7 @@ function renderCalendar() {
         var rosterConflict = selAssistEntry && !selAssistEntry.is_available && entry && (entry.status === 'available' || entry.status === 'partial');
         if (entry) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
-        // Build cell content — reorganized for readability
-        // Row 1: day number + role badge (right-aligned)
+        // Day header: number + role badge
         var badgeHtml = '';
         if (entry) {
             if (entry.day_role === 'head_trainer') badgeHtml = '<span class="cal-cell-badge">HT</span>';
@@ -1256,28 +1317,31 @@ function renderCalendar() {
         }
         var dayHeader = '<div class="day-number"><span>' + day + '</span>' + badgeHtml + '</div>';
 
-        // Class info section (time, students, personal start time)
+        // Compact class line (time only — full info on click)
         var ci = getDayClass(dateStr);
-        var classHtml = '';
-        var classParts = [];
-        if (ci && ci.start_time && ci.end_time) classParts.push('<div class="time">' + ci.start_time.slice(0,5) + ' – ' + ci.end_time.slice(0,5) + '</div>');
-        if (ci && (ci.students_am || ci.students_pm)) classParts.push('<div class="students">AM ' + (ci.students_am||0) + ' · PM ' + (ci.students_pm||0) + '</div>');
-        if (entry && entry.start_time) classParts.push('<div class="start-time">You: ' + entry.start_time.slice(0,5) + '</div>');
-        if (classParts.length > 0) classHtml = '<div class="cal-cell-class">' + classParts.join('') + '</div>';
+        var timeHtml = '';
+        if (ci && ci.start_time && ci.end_time) timeHtml = '<div class="cal-cell-time">' + ci.start_time.slice(0,5) + '–' + ci.end_time.slice(0,5) + '</div>';
+        var stuHtml = '';
+        if (ci && (ci.students_am || ci.students_pm)) stuHtml = '<div class="cal-cell-students">' + (ci.students_am||0) + '·' + (ci.students_pm||0) + '</div>';
+        var capHtml = '';
+        var caps = [];
+        if (ci && ci.capped_am) caps.push('AM');
+        if (ci && ci.capped_pm) caps.push('PM');
+        if (caps.length > 0) capHtml = '<div class="cal-cell-caps"><span class="capped-badge">' + caps.join('+') + '</span></div>';
 
-        // Other rostered staff section
-        var otherRows = [];
+        // Staff dots — compact, color-coded
+        var pips = [];
         staffList.forEach(function(s) {
-            if (s.id === selectedStaffId) return;
             var se = getAvailability(s.id, dateStr);
             if (se && (se.status === 'available' || se.status === 'partial')) {
-                var roleBadge = se.day_role === 'head_trainer' ? '<span class="ht">HT</span>' : '';
-                otherRows.push('<span class="other-row">' + roleBadge + escHtml(s.name.split(' ')[0]) + '</span>');
+                var ht = se.day_role === 'head_trainer';
+                var firstName = escHtml(s.name.split(' ')[0]);
+                pips.push('<span class="staff-pip' + (ht ? ' ht' : '') + '" style="background:' + s.color + ';" title="' + (ht ? 'HT ' : '') + firstName + '"></span>');
             }
         });
-        var othersHtml = otherRows.length > 0 ? '<div class="cal-cell-others">' + otherRows.join('') + '</div>' : '';
+        var pipsHtml = pips.length > 0 ? '<div class="cal-cell-staff-dots">' + pips.join('') + '</div>' : '';
 
-        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classHtml + othersHtml + '</div>';
+        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + timeHtml + stuHtml + capHtml + pipsHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -2356,8 +2420,10 @@ function renderMyRoster() {
     var grid = document.getElementById('myRosterGrid');
     if (!myStaffMember) {
         grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128197;</div><div>Your account is not linked to a staff member yet.</div><div style="font-size:0.85rem;color:var(--gray-500);margin-top:4px;">Ask a trainer to link your account in Manage Staff.</div></div>';
+        document.getElementById('nextShiftHero').innerHTML = '';
         return;
     }
+    renderNextShiftHero();
     var firstDay = new Date(myRosterYear, myRosterMonth, 1);
     var lastDay = new Date(myRosterYear, myRosterMonth+1, 0);
     var startDow = firstDay.getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
@@ -2370,30 +2436,100 @@ function renderMyRoster() {
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) cls += ' ' + entry.status;
-        // Day header with badge on the right
+
+        // Day header: number + role badge if rostered
         var badgeHtml = '';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) {
-            if (entry.day_role === 'head_trainer') badgeHtml = '<span class="cal-cell-badge">HT</span>';
-            else badgeHtml = '<span class="cal-cell-badge assistant">AST</span>';
+            badgeHtml = entry.day_role === 'head_trainer' ? '<span class="cal-cell-badge">HT</span>' : '<span class="cal-cell-badge assistant">AST</span>';
         }
         var dayHeader = '<div class="day-number"><span>' + day + '</span>' + badgeHtml + '</div>';
 
-        var classHtml = '';
+        // Compact: class time only if rostered
+        var timeHtml = '';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) {
             var mci = getDayClass(dateStr);
-            var classParts = [];
-            if (mci && mci.start_time && mci.end_time) classParts.push('<div class="time">' + mci.start_time.slice(0,5) + ' – ' + mci.end_time.slice(0,5) + '</div>');
-            var stuParts = [];
-            if (mci && mci.students_am) stuParts.push('AM ' + mci.students_am + (mci.capped_am ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (mci && mci.students_pm) stuParts.push('PM ' + mci.students_pm + (mci.capped_pm ? ' <span class="capped-badge">CAP</span>' : ''));
-            if (stuParts.length > 0) classParts.push('<div class="students">' + stuParts.join(' · ') + '</div>');
-            if (entry.start_time) classParts.push('<div class="start-time">Start: ' + entry.start_time.slice(0,5) + '</div>');
-            if (classParts.length > 0) classHtml = '<div class="cal-cell-class">' + classParts.join('') + '</div>';
+            if (mci && mci.start_time && mci.end_time) {
+                timeHtml = '<div class="cal-cell-time">' + mci.start_time.slice(0,5) + '–' + mci.end_time.slice(0,5) + '</div>';
+            }
+            if (entry.start_time) {
+                timeHtml += '<div class="cal-cell-students" style="color:var(--primary);font-weight:600;">You: ' + entry.start_time.slice(0,5) + '</div>';
+            }
         }
 
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + classHtml + '</div>';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + timeHtml + '</div>';
     }
     grid.innerHTML = html;
+}
+
+function renderNextShiftHero() {
+    var hero = document.getElementById('nextShiftHero');
+    if (!hero || !myStaffMember) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    // Find the next shift (today or future) where the user is rostered
+    var found = null;
+    for (var offset = 0; offset < 60; offset++) {
+        var d = new Date(today.getTime() + offset * 86400000);
+        var ds = formatDate(d);
+        var entry = getAvailability(myStaffMember.id, ds);
+        if (entry && (entry.status === 'available' || entry.status === 'partial')) {
+            found = { date: d, dateStr: ds, entry: entry };
+            break;
+        }
+    }
+
+    if (!found) {
+        hero.innerHTML = '<div class="hero-card"><div class="hero-card-label">Your next shift</div><div class="hero-card-date">Nothing scheduled</div><div class="hero-card-row"><span class="hero-card-empty">You\'re not rostered for the next 60 days.</span></div></div>';
+        return;
+    }
+
+    var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][found.date.getDay()];
+    var dateLabel = dayName + ', ' + found.date.getDate() + ' ' + MONTH_NAMES[found.date.getMonth()];
+    var todayStr = formatDate(new Date());
+    var relLabel = found.dateStr === todayStr ? 'Today' : (function() {
+        var diff = Math.round((found.date - new Date(todayStr)) / 86400000);
+        if (diff === 1) return 'Tomorrow';
+        return 'In ' + diff + ' days';
+    })();
+
+    var ci = getDayClass(found.dateStr);
+    var classTime = (ci && ci.start_time && ci.end_time) ? (ci.start_time.slice(0,5) + ' – ' + ci.end_time.slice(0,5)) : '—';
+    var startTime = found.entry.start_time ? found.entry.start_time.slice(0,5) : '—';
+    var roleLabel = found.entry.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant';
+    var students = ci ? ('AM ' + (ci.students_am||0) + ' · PM ' + (ci.students_pm||0)) : '—';
+
+    // Other staff working that day
+    var others = [];
+    staffList.forEach(function(s) {
+        if (s.id === myStaffMember.id) return;
+        var se = getAvailability(s.id, found.dateStr);
+        if (se && (se.status === 'available' || se.status === 'partial')) {
+            others.push({ name: s.name, color: s.color, isHT: se.day_role === 'head_trainer' });
+        }
+    });
+    others.sort(function(a, b) { return (b.isHT ? 1 : 0) - (a.isHT ? 1 : 0); });
+    var othersHtml;
+    if (others.length === 0) {
+        othersHtml = '<span class="hero-card-empty">Working solo</span>';
+    } else {
+        othersHtml = others.map(function(o) {
+            return '<span class="hero-card-chip' + (o.isHT ? ' ht' : '') + '"><span style="width:8px;height:8px;border-radius:50%;background:' + o.color + ';"></span>' + (o.isHT ? 'HT ' : '') + escHtml(o.name.split(' ')[0]) + '</span>';
+        }).join('');
+    }
+
+    hero.innerHTML = '<div class="hero-card">' +
+        '<div class="hero-card-label">' + relLabel + ' · Your next shift</div>' +
+        '<div class="hero-card-date">' + dateLabel + '</div>' +
+        '<div class="hero-card-row">' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Class hours</div><div class="hero-card-stat-value">' + classTime + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Your start</div><div class="hero-card-stat-value">' + startTime + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Role</div><div class="hero-card-stat-value">' + roleLabel + '</div></div>' +
+            '<div class="hero-card-stat"><div class="hero-card-stat-label">Students</div><div class="hero-card-stat-value">' + students + '</div></div>' +
+        '</div>' +
+        '<div class="hero-card-staff">' +
+            '<div class="hero-card-staff-label">Working with</div>' +
+            '<div class="hero-card-staff-list">' + othersHtml + '</div>' +
+        '</div>' +
+    '</div>';
 }
 function changeMyRosterMonth(dir) { myRosterMonth += dir; if (myRosterMonth > 11) { myRosterMonth = 0; myRosterYear++; } if (myRosterMonth < 0) { myRosterMonth = 11; myRosterYear--; } document.getElementById('myRosterMonthLabel').textContent = MONTH_NAMES[myRosterMonth] + ' ' + myRosterYear; debouncedNav('myroster', function() { Promise.all([loadAvailabilityForMonth(myRosterMonth, myRosterYear), loadAssistantAvailForMonth(myRosterMonth, myRosterYear), loadDayClassesForMonth(myRosterMonth, myRosterYear)]).then(renderMyRoster); }); }
 function goToMyRosterToday() { var n = new Date(); myRosterMonth = n.getMonth(); myRosterYear = n.getFullYear(); Promise.all([loadAvailabilityForMonth(myRosterMonth,myRosterYear), loadAssistantAvailForMonth(myRosterMonth,myRosterYear), loadDayClassesForMonth(myRosterMonth,myRosterYear)]).then(renderMyRoster); }
