@@ -1907,67 +1907,94 @@ async function clearAllRosterMonth() {
 function renderSettingsTab() { return renderSettingsCardsInClasses(); }
 function renderSettingsCardsInClasses() {
     var container = document.getElementById('slotTimesContainer');
-    var slots = settingsCache.assistant_slot_times || {};
-    var html = '<div style="display:flex;flex-direction:column;gap:8px;">';
-    for (var i = 1; i <= 4; i++) {
-        var v = _trimTime(slots[String(i)]) || '';
-        html += '<div style="display:flex;align-items:center;gap:10px;">' +
-            '<span style="min-width:80px;font-weight:600;color:var(--gray-700);">Slot ' + i + '</span>' +
-            '<input type="time" class="form-control settings-slot-time" data-slot="' + i + '" value="' + v + '" style="width:130px;">' +
-            '<span style="color:var(--gray-500);font-size:0.82rem;">' + (i === 1 ? '(1st picked assistant)' : i + 'th picked').replace(/2th/, '2nd').replace(/3th/, '3rd') + '</span>' +
-        '</div>';
+    var groups = _distinctAmStartGroups();
+    var byStart = settingsCache.assistant_slot_times_by_start || {};
+    var fallbackSlots = settingsCache.assistant_slot_times || {};
+
+    if (groups.length === 0) {
+        container.innerHTML = '<div style="color:var(--gray-500);font-style:italic;font-size:0.9rem;">Set the default class times above first — slot times group themselves by each unique AM start.</div>';
+    } else {
+        var html = '';
+        groups.forEach(function(g, gi) {
+            var slots = byStart[g.am_start] || fallbackSlots;
+            html += '<div class="slot-group" data-am-start="' + g.am_start + '" style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px 14px;' + (gi > 0 ? 'margin-top:12px;' : '') + 'background:var(--gray-50);">' +
+                '<div style="font-weight:600;color:var(--gray-700);margin-bottom:8px;font-size:0.92rem;">When class starts at ' + g.am_start + '<span style="color:var(--gray-500);font-weight:400;font-size:0.82rem;margin-left:6px;">— applies to ' + g.dows.join(', ') + '</span></div>' +
+                '<div style="display:flex;flex-direction:column;gap:6px;">';
+            for (var i = 1; i <= 4; i++) {
+                var v = _trimTime(slots[String(i)]) || '';
+                var ord = (i === 1 ? '1st' : i === 2 ? '2nd' : i === 3 ? '3rd' : i + 'th') + ' picked';
+                html += '<div style="display:flex;align-items:center;gap:10px;">' +
+                    '<span style="min-width:64px;font-weight:600;color:var(--gray-700);">Slot ' + i + '</span>' +
+                    '<input type="time" class="form-control settings-slot-time" data-am-start="' + g.am_start + '" data-slot="' + i + '" value="' + v + '" style="width:130px;">' +
+                    '<span style="color:var(--gray-500);font-size:0.82rem;">' + ord + '</span>' +
+                '</div>';
+            }
+            html += '</div></div>';
+        });
+        container.innerHTML = html;
     }
-    html += '</div>';
-    container.innerHTML = html;
 
     document.getElementById('settingsRule1').value = settingsCache.min_students_for_one_assistant;
     document.getElementById('settingsRule2').value = settingsCache.min_students_for_two_assistants;
 }
 
 async function saveSlotTimes() {
-    var newSlots = {};
+    // Read all slot inputs grouped by AM start
+    var newByStart = {};
     document.querySelectorAll('.settings-slot-time').forEach(function(inp) {
-        var v = inp.value;
-        if (v) newSlots[inp.dataset.slot] = v;
+        var amStart = inp.dataset.amStart;
+        if (!newByStart[amStart]) newByStart[amStart] = {};
+        if (inp.value) newByStart[amStart][inp.dataset.slot] = inp.value;
     });
-    if (Object.keys(newSlots).length === 0) { showToast('Set at least one slot time'); return; }
+    if (Object.keys(newByStart).length === 0) { showToast('No slot groups defined yet — set default class times first'); return; }
 
-    // Diff vs current to know which slots actually changed
-    var current = settingsCache.assistant_slot_times || {};
-    var changed = [];
-    for (var k = 1; k <= 4; k++) {
-        var cur = _trimTime(current[String(k)]);
-        var nxt = _trimTime(newSlots[String(k)]);
-        if (cur !== nxt) changed.push({ slot: k, from: cur, to: nxt });
-    }
-    if (changed.length === 0) { showToast('No changes to save'); return; }
+    // Diff vs current
+    var currentByStart = settingsCache.assistant_slot_times_by_start || {};
+    var changes = []; // [{ amStart, slot, from, to }]
+    Object.keys(newByStart).forEach(function(amStart) {
+        var cur = currentByStart[amStart] || {};
+        var nxt = newByStart[amStart];
+        for (var k = 1; k <= 4; k++) {
+            var fr = _trimTime(cur[String(k)]);
+            var to = _trimTime(nxt[String(k)]);
+            if ((fr || '') !== (to || '')) changes.push({ amStart: amStart, slot: k, from: fr, to: to });
+        }
+    });
+    if (changes.length === 0) { showToast('No changes to save'); return; }
 
-    var detail = '<ul style="margin:6px 0 0 16px;padding:0;">' + changed.map(function(c) {
-        return '<li>Slot ' + c.slot + ': ' + (c.from || '—') + ' &rarr; ' + (c.to || '—') + '</li>';
+    var detail = '<ul style="margin:6px 0 0 16px;padding:0;max-height:240px;overflow:auto;">' + changes.map(function(c) {
+        return '<li>' + escHtml(c.amStart) + ' · Slot ' + c.slot + ': ' + (c.from || '—') + ' &rarr; ' + (c.to || '—') + '</li>';
     }).join('') + '</ul>';
     var ok = await showConfirm({
         title: 'Confirm assistant start time changes',
-        body: 'This will change the auto-roster start times for these slots. All assistants will be notified.',
+        body: 'This will change the auto-roster start times for one or more class-start groups. All assistants will be notified.',
         detail: detail,
         okText: 'Save & Notify'
     });
     if (!ok) return;
 
+    // Merge new groups into the stored map (preserve any AM starts not currently shown — they remain inert until an AM start matches them again)
+    var mergedByStart = Object.assign({}, currentByStart, newByStart);
     var btn = document.getElementById('saveSlotTimesBtn');
     setLoading(btn, true);
-    var res = await sb.from('cbd_auto_roster_rules').update({ assistant_slot_times: newSlots, updated_by: currentUser.id, updated_at: new Date().toISOString() }).eq('id', 1);
+    var res = await sb.from('cbd_auto_roster_rules').update({
+        assistant_slot_times_by_start: mergedByStart,
+        updated_by: currentUser.id,
+        updated_at: new Date().toISOString()
+    }).eq('id', 1);
     setLoading(btn, false);
     if (res.error) { showToast('Error: ' + res.error.message); return; }
-    settingsCache.assistant_slot_times = newSlots;
+    settingsCache.assistant_slot_times_by_start = mergedByStart;
 
-    // Notify all assistants (broad notification — anyone non-HT could be affected)
+    var groups = Array.from(new Set(changes.map(function(c) { return c.amStart; }))).join(', ');
     await emitNotification({
         type: 'start_time_changed',
         title: 'Assistant start times updated',
-        message: 'Slot start times have been changed: ' + changed.map(function(c) { return 'Slot ' + c.slot + ' is now ' + (c.to || '—'); }).join(', '),
-        data: { changes: changed }
+        message: 'Slot times changed for class-start group(s): ' + groups,
+        data: { changes: changes }
     });
     showToast('Saved · all assistants notified');
+    renderSettingsCardsInClasses();
 }
 
 async function saveRosterRulesFromSettings() {
@@ -2008,7 +2035,8 @@ var settingsCache = {
     min_students_for_one_assistant: 8,
     min_students_for_two_assistants: 16,
     default_class_times: _seedDowDefaults(),
-    assistant_slot_times: { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' }
+    assistant_slot_times: { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' },
+    assistant_slot_times_by_start: {}
 };
 // Backward-compat alias
 var _autoRosterRules = settingsCache;
@@ -2044,15 +2072,48 @@ async function loadSettings(force) {
                     };
                 });
             }
+            // Normalize assistant_slot_times_by_start times to HH:MM
+            var stbs = r.data.assistant_slot_times_by_start || {};
+            var normStbs = {};
+            Object.keys(stbs).forEach(function(amStart) {
+                var slots = stbs[amStart] || {};
+                var normSlots = {};
+                Object.keys(slots).forEach(function(k) { normSlots[k] = _trimTime(slots[k]); });
+                normStbs[_trimTime(amStart) || amStart] = normSlots;
+            });
             settingsCache = {
                 min_students_for_one_assistant: r.data.min_students_for_one_assistant,
                 min_students_for_two_assistants: r.data.min_students_for_two_assistants,
                 default_class_times: dct,
-                assistant_slot_times: r.data.assistant_slot_times || { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' }
+                assistant_slot_times: r.data.assistant_slot_times || { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' },
+                assistant_slot_times_by_start: normStbs
             };
             _autoRosterRules = settingsCache;
         }
     } catch (e) { /* leave defaults */ }
+}
+
+function _slotTimesForAmStart(amStart) {
+    if (!amStart) return settingsCache.assistant_slot_times || {};
+    var byStart = settingsCache.assistant_slot_times_by_start || {};
+    if (byStart[amStart]) return byStart[amStart];
+    return settingsCache.assistant_slot_times || {};
+}
+
+function _distinctAmStartGroups() {
+    // Returns [{ am_start, dows: [labels] }] sorted by am_start time.
+    var dct = settingsCache.default_class_times || {};
+    var DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var groups = {};
+    var dowOrder = [1,2,3,4,5,6,0]; // Mon..Sun for label sorting
+    dowOrder.forEach(function(d) {
+        var def = dct[String(d)];
+        var amStart = def && def.am_start;
+        if (!amStart) return;
+        if (!groups[amStart]) groups[amStart] = { am_start: amStart, dows: [] };
+        groups[amStart].dows.push(DOW_LABELS[d]);
+    });
+    return Object.values(groups).sort(function(a,b) { return a.am_start.localeCompare(b.am_start); });
 }
 
 function _dowDefaults(dateStr) {
@@ -2263,17 +2324,17 @@ async function applyAutoRoster() {
     // Build desired set
     var desired = {}; // 'staff_id|date' -> { staff_id, date, day_role }
     var upserts = [];
-    var slotTimes = settingsCache.assistant_slot_times || {};
     actionable.forEach(function(p) {
+        var dayTimes = getEffectiveClassTimes(p.dateStr);
+        // Slot times depend on the day's AM start (different starts get different slot times)
+        var slotTimes = _slotTimesForAmStart(dayTimes.am_start);
         if (p.htId) {
             desired[p.htId + '|' + p.dateStr] = true;
             // HTs get the day's AM start time (they cover the whole day)
-            var dayTimes = getEffectiveClassTimes(p.dateStr);
             upserts.push({ staff_id: p.htId, date: p.dateStr, status: 'available', start_time: dayTimes.am_start || null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id });
         }
         p.assistantIds.forEach(function(aid, i) {
             desired[aid + '|' + p.dateStr] = true;
-            // i is 0-indexed pick order — slot 1 is the first picked, so use String(i+1)
             var slotKey = String(i + 1);
             var slotStart = _trimTime(slotTimes[slotKey]) || null;
             upserts.push({ staff_id: aid, date: p.dateStr, status: 'available', start_time: slotStart, end_time: null, note: '', day_role: 'assistant', created_by: currentUser.id });
@@ -3096,7 +3157,7 @@ async function saveDefaultClassTimes() {
         message: diff.length + ' day-of-week defaults changed',
         data: { changes: diff }
     });
-    if (currentTab === 'classes') { renderDowDefaultsGrid(); renderClassesCalendar(); }
+    if (currentTab === 'classes') { renderDowDefaultsGrid(); renderSettingsCardsInClasses(); renderClassesCalendar(); }
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
     showToast('Defaults saved · all staff notified');
