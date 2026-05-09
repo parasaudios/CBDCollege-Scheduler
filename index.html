@@ -498,26 +498,14 @@
         <!-- TRAINER: Classes Tab -->
         <div id="tab-classes" class="tab-content" style="display:none;">
             <div class="card" style="margin-bottom:14px;">
-                <div class="card-header"><div><h2>Default Class Times</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">These apply to every day automatically. Manually-edited days keep their custom times.</div></div></div>
+                <div class="card-header"><div><h2>Default Class Times</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Per-day-of-week defaults. Each day automatically uses its own row unless that specific date has been manually overridden.</div></div></div>
                 <div class="card-body">
-                    <div style="display:flex;gap:18px;flex-wrap:wrap;">
-                        <div style="display:flex;flex-direction:column;gap:6px;">
-                            <span style="font-weight:600;color:var(--gray-700);font-size:0.9rem;">Morning session</span>
-                            <div style="display:flex;gap:8px;">
-                                <input type="time" class="form-control" id="defAmStart" style="width:120px;">
-                                <span style="align-self:center;color:var(--gray-500);">to</span>
-                                <input type="time" class="form-control" id="defAmEnd" style="width:120px;">
-                            </div>
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:6px;">
-                            <span style="font-weight:600;color:var(--gray-700);font-size:0.9rem;">Afternoon session</span>
-                            <div style="display:flex;gap:8px;">
-                                <input type="time" class="form-control" id="defPmStart" style="width:120px;">
-                                <span style="align-self:center;color:var(--gray-500);">to</span>
-                                <input type="time" class="form-control" id="defPmEnd" style="width:120px;">
-                            </div>
-                        </div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="dowDefaultsCopyMonToWeekdays()">Copy Mon to Tue–Fri</button>
+                        <button class="btn btn-outline btn-sm" onclick="dowDefaultsCopySatToSun()">Copy Sat to Sun</button>
+                        <button class="btn btn-outline btn-sm" onclick="dowDefaultsCopyMonToAll()">Copy Mon to all days</button>
                     </div>
+                    <div id="dowDefaultsGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
                     <button class="btn btn-success" id="saveDefaultsBtn" onclick="saveDefaultClassTimes()" style="margin-top:14px;">Save Defaults</button>
                 </div>
             </div>
@@ -1948,14 +1936,16 @@ async function emitNotification(opts) {
 }
 
 // ============ Auto-roster ============
-// Single-row settings: rules + default class times + assistant slot times
+// Single-row settings: rules + per-DOW default class times + assistant slot times
+function _seedDowDefaults() {
+    var out = {};
+    for (var i = 0; i < 7; i++) out[String(i)] = { am_start:'08:30', am_end:'12:00', pm_start:'13:00', pm_end:'15:30' };
+    return out;
+}
 var settingsCache = {
     min_students_for_one_assistant: 8,
     min_students_for_two_assistants: 16,
-    default_am_start_time: '08:30',
-    default_am_end_time: '12:00',
-    default_pm_start_time: '13:00',
-    default_pm_end_time: '15:30',
+    default_class_times: _seedDowDefaults(),
     assistant_slot_times: { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' }
 };
 // Backward-compat alias
@@ -1969,23 +1959,50 @@ async function loadSettings(force) {
         var r = await sb.from('cbd_auto_roster_rules').select('*').eq('id', 1).maybeSingle();
         if (r.error) throw r.error;
         if (r.data) {
+            // Prefer per-DOW jsonb; fall back to deriving from old global columns if absent
+            var dct = r.data.default_class_times;
+            if (!dct || typeof dct !== 'object' || Object.keys(dct).length === 0) {
+                dct = {};
+                var globalDef = {
+                    am_start: _trimTime(r.data.default_am_start_time) || '08:30',
+                    am_end: _trimTime(r.data.default_am_end_time) || '12:00',
+                    pm_start: _trimTime(r.data.default_pm_start_time) || '13:00',
+                    pm_end: _trimTime(r.data.default_pm_end_time) || '15:30'
+                };
+                for (var i = 0; i < 7; i++) dct[String(i)] = globalDef;
+            } else {
+                // Normalize stored times to HH:MM
+                Object.keys(dct).forEach(function(k) {
+                    var d = dct[k] || {};
+                    dct[k] = {
+                        am_start: _trimTime(d.am_start) || '08:30',
+                        am_end: _trimTime(d.am_end) || '12:00',
+                        pm_start: _trimTime(d.pm_start) || '13:00',
+                        pm_end: _trimTime(d.pm_end) || '15:30'
+                    };
+                });
+            }
             settingsCache = {
                 min_students_for_one_assistant: r.data.min_students_for_one_assistant,
                 min_students_for_two_assistants: r.data.min_students_for_two_assistants,
-                default_am_start_time: _trimTime(r.data.default_am_start_time) || '08:30',
-                default_am_end_time: _trimTime(r.data.default_am_end_time) || '12:00',
-                default_pm_start_time: _trimTime(r.data.default_pm_start_time) || '13:00',
-                default_pm_end_time: _trimTime(r.data.default_pm_end_time) || '15:30',
+                default_class_times: dct,
                 assistant_slot_times: r.data.assistant_slot_times || { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' }
             };
             _autoRosterRules = settingsCache;
         }
     } catch (e) { /* leave defaults */ }
 }
+
+function _dowDefaults(dateStr) {
+    if (!dateStr) return settingsCache.default_class_times['1'];
+    var p = dateStr.split('-');
+    var dow = new Date(+p[0], +p[1]-1, +p[2]).getDay();
+    return settingsCache.default_class_times[String(dow)] || settingsCache.default_class_times['1'];
+}
 // Backward-compat name kept
 async function loadAutoRosterRules() { return loadSettings(); }
 
-// Effective class times for a given day — merges per-day overrides with defaults.
+// Effective class times for a given day — merges per-day overrides with per-DOW defaults.
 function getEffectiveClassTimes(dateStr) {
     var ci = dayClassesCache[dateStr];
     if (ci && ci.times_manually_set) {
@@ -1997,11 +2014,12 @@ function getEffectiveClassTimes(dateStr) {
             manual: true
         };
     }
+    var def = _dowDefaults(dateStr);
     return {
-        am_start: settingsCache.default_am_start_time,
-        am_end: settingsCache.default_am_end_time,
-        pm_start: settingsCache.default_pm_start_time,
-        pm_end: settingsCache.default_pm_end_time,
+        am_start: def.am_start,
+        am_end: def.am_end,
+        pm_start: def.pm_start,
+        pm_end: def.pm_end,
         manual: false
     };
 }
@@ -2846,16 +2864,79 @@ function goToOverviewToday() {
 }
 
 // ============ Classes Tab (Trainer) ============
+function renderDowDefaultsGrid() {
+    var container = document.getElementById('dowDefaultsGrid');
+    if (!container) return;
+    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var dows = [1,2,3,4,5,6,0];
+    var html = '';
+    for (var i = 0; i < 7; i++) {
+        var dow = dows[i];
+        var def = (settingsCache.default_class_times || {})[String(dow)] || { am_start:'', am_end:'', pm_start:'', pm_end:'' };
+        var isWeekend = dow === 0 || dow === 6;
+        html += '<div data-dow="' + dow + '" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 8px;border-radius:var(--radius);' + (isWeekend ? 'background:var(--primary-light);' : '') + '">' +
+            '<span style="font-weight:600;color:var(--gray-700);min-width:42px;">' + labels[i] + '</span>' +
+            '<span style="font-size:0.78rem;color:var(--gray-500);min-width:34px;">AM</span>' +
+            '<input type="time" class="form-control dow-am-start" data-dow="' + dow + '" value="' + def.am_start + '" style="width:120px;">' +
+            '<span style="color:var(--gray-400);font-size:0.85rem;">to</span>' +
+            '<input type="time" class="form-control dow-am-end" data-dow="' + dow + '" value="' + def.am_end + '" style="width:120px;">' +
+            '<span style="font-size:0.78rem;color:var(--gray-500);min-width:34px;margin-left:8px;">PM</span>' +
+            '<input type="time" class="form-control dow-pm-start" data-dow="' + dow + '" value="' + def.pm_start + '" style="width:120px;">' +
+            '<span style="color:var(--gray-400);font-size:0.85rem;">to</span>' +
+            '<input type="time" class="form-control dow-pm-end" data-dow="' + dow + '" value="' + def.pm_end + '" style="width:120px;">' +
+        '</div>';
+    }
+    container.innerHTML = html;
+}
+
+function _dowDefaultsReadInputs() {
+    var out = {};
+    document.querySelectorAll('#dowDefaultsGrid > div[data-dow]').forEach(function(row) {
+        var dow = row.dataset.dow;
+        out[dow] = {
+            am_start: row.querySelector('.dow-am-start').value,
+            am_end: row.querySelector('.dow-am-end').value,
+            pm_start: row.querySelector('.dow-pm-start').value,
+            pm_end: row.querySelector('.dow-pm-end').value
+        };
+    });
+    return out;
+}
+
+function _dowDefaultsWriteInputs(dow, vals) {
+    var row = document.querySelector('#dowDefaultsGrid > div[data-dow="' + dow + '"]');
+    if (!row) return;
+    row.querySelector('.dow-am-start').value = vals.am_start || '';
+    row.querySelector('.dow-am-end').value = vals.am_end || '';
+    row.querySelector('.dow-pm-start').value = vals.pm_start || '';
+    row.querySelector('.dow-pm-end').value = vals.pm_end || '';
+}
+
+function dowDefaultsCopyMonToWeekdays() {
+    var current = _dowDefaultsReadInputs();
+    var src = current['1'];
+    if (!src) return;
+    [2,3,4,5].forEach(function(d) { _dowDefaultsWriteInputs(d, src); });
+    showToast('Copied Monday to Tue–Fri');
+}
+function dowDefaultsCopySatToSun() {
+    var current = _dowDefaultsReadInputs();
+    var src = current['6'];
+    if (!src) return;
+    _dowDefaultsWriteInputs(0, src);
+    showToast('Copied Saturday to Sunday');
+}
+function dowDefaultsCopyMonToAll() {
+    var current = _dowDefaultsReadInputs();
+    var src = current['1'];
+    if (!src) return;
+    [2,3,4,5,6,0].forEach(function(d) { _dowDefaultsWriteInputs(d, src); });
+    showToast('Copied Monday to all days');
+}
+
 function renderClassesCalendar() {
     document.getElementById('classesMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
-    // Populate the defaults panel from current settings
-    var defAmStart = document.getElementById('defAmStart');
-    if (defAmStart) {
-        defAmStart.value = settingsCache.default_am_start_time || '';
-        document.getElementById('defAmEnd').value = settingsCache.default_am_end_time || '';
-        document.getElementById('defPmStart').value = settingsCache.default_pm_start_time || '';
-        document.getElementById('defPmEnd').value = settingsCache.default_pm_end_time || '';
-    }
+    renderDowDefaultsGrid();
     var grid = document.getElementById('classesGrid');
     if (!grid) return;
     var firstDay = new Date(classesYear, classesMonth, 1);
@@ -2895,25 +2976,38 @@ function renderClassesCalendar() {
 }
 
 async function saveDefaultClassTimes() {
-    var amStart = document.getElementById('defAmStart').value;
-    var amEnd = document.getElementById('defAmEnd').value;
-    var pmStart = document.getElementById('defPmStart').value;
-    var pmEnd = document.getElementById('defPmEnd').value;
-    if (!amStart || !amEnd || !pmStart || !pmEnd) { showToast('All four times are required'); return; }
-    if (amStart >= amEnd) { showToast('AM start must be before AM end'); return; }
-    if (pmStart >= pmEnd) { showToast('PM start must be before PM end'); return; }
+    var newDct = _dowDefaultsReadInputs();
+    var DOW_LABELS = { '0':'Sun','1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat' };
 
+    // Validate each row
+    for (var d = 0; d < 7; d++) {
+        var row = newDct[String(d)];
+        if (!row || !row.am_start || !row.am_end || !row.pm_start || !row.pm_end) {
+            showToast('All four times are required for ' + DOW_LABELS[String(d)]);
+            return;
+        }
+        if (row.am_start >= row.am_end) { showToast(DOW_LABELS[String(d)] + ': AM start must be before AM end'); return; }
+        if (row.pm_start >= row.pm_end) { showToast(DOW_LABELS[String(d)] + ': PM start must be before PM end'); return; }
+    }
+
+    // Diff vs current
     var diff = [];
-    if (settingsCache.default_am_start_time !== amStart) diff.push('AM start: ' + settingsCache.default_am_start_time + ' → ' + amStart);
-    if (settingsCache.default_am_end_time !== amEnd) diff.push('AM end: ' + settingsCache.default_am_end_time + ' → ' + amEnd);
-    if (settingsCache.default_pm_start_time !== pmStart) diff.push('PM start: ' + settingsCache.default_pm_start_time + ' → ' + pmStart);
-    if (settingsCache.default_pm_end_time !== pmEnd) diff.push('PM end: ' + settingsCache.default_pm_end_time + ' → ' + pmEnd);
+    var current = settingsCache.default_class_times || {};
+    for (var d2 = 0; d2 < 7; d2++) {
+        var cur = current[String(d2)] || {};
+        var nxt = newDct[String(d2)];
+        var rowDiff = [];
+        ['am_start','am_end','pm_start','pm_end'].forEach(function(k) {
+            if ((cur[k] || '') !== (nxt[k] || '')) rowDiff.push(k.replace('_',' ') + ': ' + (cur[k] || '—') + ' → ' + (nxt[k] || '—'));
+        });
+        if (rowDiff.length > 0) diff.push(DOW_LABELS[String(d2)] + ': ' + rowDiff.join(', '));
+    }
     if (diff.length === 0) { showToast('No changes to save'); return; }
 
     var ok = await showConfirm({
         title: 'Confirm default class time changes',
-        body: 'These defaults will apply to every day going forward, except days with manually-set times. All staff will be notified.',
-        detail: '<ul style="margin:6px 0 0 16px;padding:0;">' + diff.map(function(d){ return '<li>' + escHtml(d) + '</li>'; }).join('') + '</ul>',
+        body: 'These defaults apply to each day-of-week going forward, except dates with manually-set times. All staff will be notified.',
+        detail: '<ul style="margin:6px 0 0 16px;padding:0;max-height:240px;overflow:auto;">' + diff.map(function(d){ return '<li>' + escHtml(d) + '</li>'; }).join('') + '</ul>',
         okText: 'Save & Notify'
     });
     if (!ok) return;
@@ -2921,23 +3015,17 @@ async function saveDefaultClassTimes() {
     var btn = document.getElementById('saveDefaultsBtn');
     setLoading(btn, true);
     var res = await sb.from('cbd_auto_roster_rules').update({
-        default_am_start_time: amStart,
-        default_am_end_time: amEnd,
-        default_pm_start_time: pmStart,
-        default_pm_end_time: pmEnd,
+        default_class_times: newDct,
         updated_by: currentUser.id,
         updated_at: new Date().toISOString()
     }).eq('id', 1);
     setLoading(btn, false);
     if (res.error) { showToast('Error: ' + res.error.message); return; }
-    settingsCache.default_am_start_time = amStart;
-    settingsCache.default_am_end_time = amEnd;
-    settingsCache.default_pm_start_time = pmStart;
-    settingsCache.default_pm_end_time = pmEnd;
+    settingsCache.default_class_times = newDct;
     await emitNotification({
         type: 'default_class_times_changed',
         title: 'Default class times updated',
-        message: 'New defaults: AM ' + amStart + '–' + amEnd + ' · PM ' + pmStart + '–' + pmEnd,
+        message: diff.length + ' day-of-week defaults changed',
         data: { changes: diff }
     });
     if (currentTab === 'classes') renderClassesCalendar();
@@ -2998,12 +3086,7 @@ async function saveClassEdit() {
     var capped_pm = document.getElementById('ceCapPM').checked;
 
     // Detect whether the user changed times away from defaults — if so, this becomes manually-set
-    var defaults = {
-        am_start: settingsCache.default_am_start_time,
-        am_end: settingsCache.default_am_end_time,
-        pm_start: settingsCache.default_pm_start_time,
-        pm_end: settingsCache.default_pm_end_time
-    };
+    var defaults = _dowDefaults(dateStr);
     var prev = getDayClass(dateStr) || {};
     var prevTimes = getEffectiveClassTimes(dateStr);
     var timesDifferFromDefaults = (amStart && amStart !== defaults.am_start) || (amEnd && amEnd !== defaults.am_end) || (pmStart && pmStart !== defaults.pm_start) || (pmEnd && pmEnd !== defaults.pm_end);
@@ -3182,14 +3265,11 @@ function bcFillDown() {
 async function applyBulkClass() {
     var rows = document.querySelectorAll('#bulkClassGrid tbody tr');
     var upserts = [];
-    var defaults = {
-        amS: settingsCache.default_am_start_time,
-        amE: settingsCache.default_am_end_time,
-        pmS: settingsCache.default_pm_start_time,
-        pmE: settingsCache.default_pm_end_time
-    };
     rows.forEach(function(tr) {
         var dateStr = tr.dataset.date;
+        // Each row's defaults are per-DOW
+        var dowDef = _dowDefaults(dateStr);
+        var defaults = { amS: dowDef.am_start, amE: dowDef.am_end, pmS: dowDef.pm_start, pmE: dowDef.pm_end };
         var amS = tr.querySelector('.bc-am-start').value || null;
         var amE = tr.querySelector('.bc-am-end').value || null;
         var pmS = tr.querySelector('.bc-pm-start').value || null;
@@ -4481,11 +4561,8 @@ async function saveDayClassAndRoster() {
     var cappedPM = document.getElementById('classCappedPM').checked;
 
     var prev = dayClassesCache[dateStr] || {};
-    var defaults = {
-        amS: settingsCache.default_am_start_time, amE: settingsCache.default_am_end_time,
-        pmS: settingsCache.default_pm_start_time, pmE: settingsCache.default_pm_end_time
-    };
-    var differs = (amStart && amStart !== defaults.amS) || (amEnd && amEnd !== defaults.amE) || (pmStart && pmStart !== defaults.pmS) || (pmEnd && pmEnd !== defaults.pmE);
+    var dowDef = _dowDefaults(dateStr);
+    var differs = (amStart && amStart !== dowDef.am_start) || (amEnd && amEnd !== dowDef.am_end) || (pmStart && pmStart !== dowDef.pm_start) || (pmEnd && pmEnd !== dowDef.pm_end);
     var willBeManual = !!prev.times_manually_set || differs;
 
     var classRow = {
