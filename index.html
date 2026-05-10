@@ -583,7 +583,7 @@
                     <div id="priorityList" style="max-width:560px;display:flex;flex-direction:column;gap:6px;"></div>
                     <label id="priorityRotateLabel" style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;color:var(--gray-700);cursor:pointer;max-width:560px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:var(--radius);background:var(--gray-50);">
                         <input type="checkbox" id="priorityRotateChk" style="width:16px;height:16px;cursor:pointer;">
-                        <span><strong>Rotate priority each <span id="priorityRotateDayName">day</span></strong> — alternates which assistant is picked first across consecutive occurrences. Continues onwards across months.</span>
+                        <span><strong>Rotate priority each <span id="priorityRotateDayName">day</span></strong> — alternates which assistant is picked first. Resets at the start of each month so the configured order kicks off the 1st occurrence.</span>
                     </label>
                     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
                         <button class="btn btn-success" id="savePriorityBtn" onclick="savePriorityOrder()">Save This Day</button>
@@ -1186,31 +1186,30 @@ function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
 
 // Resolve a staff member's effective priority for a given date.
 // Per-DOW override takes precedence; falls back to global priority; falls back to 100.
-// 0-indexed nth occurrence of this DOW since Jan 1 of the same year. Used for assistant
-// priority rotation: rotate_dows DOWs cycle their priority list per occurrence so it
-// "continues onwards always" instead of resetting per month.
-function _annualDowIndex(dateStr) {
+// 0-indexed nth occurrence of this DOW within the SAME month. Resets per month so
+// the configured priority order always picks first on the 1st occurrence each month.
+function _monthlyDowIndex(dateStr) {
     var p = dateStr.split('-');
     var year = +p[0], month = +p[1] - 1, dayNum = +p[2];
     var d = new Date(year, month, dayNum);
     var dow = d.getDay();
-    var firstOfYear = new Date(year, 0, 1);
-    var firstDow = firstOfYear.getDay();
-    var daysToFirst = (dow - firstDow + 7) % 7; // days from Jan 1 to the first occurrence of dow
-    var firstOccDayOfYear = daysToFirst + 1;    // 1-indexed
-    var thisDayOfYear = Math.round((d - firstOfYear) / 86400000) + 1;
-    return Math.floor((thisDayOfYear - firstOccDayOfYear) / 7);
+    var count = 0;
+    for (var i = 1; i < dayNum; i++) {
+        var ed = new Date(year, month, i);
+        if (ed.getDay() === dow) count++;
+    }
+    return count;
 }
 
-// Apply rotation to an array if the DOW is in rotate_dows. Rotates by N positions where
-// N = annual occurrence index of the date's DOW.
+// Apply rotation to an array if the DOW is in rotate_dows. Rotation index resets per
+// month — the lowest-priority assistant picks first on the 1st occurrence each month.
 function _maybeRotate(arr, dateStr) {
     if (!arr || arr.length < 2) return arr;
     var p = dateStr.split('-');
     var dow = new Date(+p[0], +p[1]-1, +p[2]).getDay();
     var rotateDows = settingsCache.rotate_dows || [];
     if (rotateDows.indexOf(dow) < 0) return arr;
-    var idx = _annualDowIndex(dateStr);
+    var idx = _monthlyDowIndex(dateStr);
     var k = ((idx % arr.length) + arr.length) % arr.length;
     return arr.slice(k).concat(arr.slice(0, k));
 }
