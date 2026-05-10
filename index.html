@@ -6,11 +6,22 @@
     <title>CBD College - Staff Scheduler</title>
     <meta name="description" content="CBD College Staff Scheduling App">
     <meta name="theme-color" content="#2563eb">
+    <!-- PWA standalone hints -->
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CBD Scheduler">
+    <meta name="application-name" content="CBD Scheduler">
+    <meta name="format-detection" content="telephone=no">
     <link rel="manifest" href="manifest.json">
+    <!-- Apple touch icons (multiple sizes for sharper home-screen rendering) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+    <link rel="shortcut icon" href="icons/icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
         :root {
@@ -376,6 +387,7 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <div class="user-info"><span id="userName"></span><span class="user-badge" id="userRole"></span></div>
                 <button class="btn btn-ghost btn-sm" id="viewAsBtn" style="display:none;" onclick="toggleViewAsAssistant()">View as Assistant</button>
+                <button id="installAppBtn" class="btn btn-ghost btn-sm" style="display:none;" onclick="triggerInstall()" title="Install as app">&#128241; Install</button>
                 <button id="notifBellBtn" class="btn btn-ghost btn-sm" style="display:none;position:relative;" onclick="openNotifPanel()" title="Notifications">
                     <span style="font-size:1.1rem;line-height:1;">&#128276;</span>
                     <span id="notifBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--danger);color:white;border-radius:999px;font-size:0.6rem;font-weight:700;min-width:16px;height:16px;padding:0 4px;align-items:center;justify-content:center;">0</span>
@@ -1549,6 +1561,7 @@ function showApp() {
     document.getElementById('headerSub').textContent = isTrainer() ? 'Manage team schedules and rosters' : 'View your roster and submit availability';
     document.getElementById('viewAsBtn').style.display = isActualTrainer() ? '' : 'none';
     document.getElementById('notifBellBtn').style.display = isActualTrainer() ? '' : 'none';
+    if (typeof _refreshInstallButton === 'function') _refreshInstallButton();
     buildTabs();
     loadAllData();
     setupRealtime();
@@ -5543,50 +5556,97 @@ function isMobileDevice() {
     return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
 }
 
+// PWA install state — visible button in header is the primary install affordance.
+function _refreshInstallButton() {
+    var btn = document.getElementById('installAppBtn');
+    if (!btn) return;
+    if (isStandalone()) { btn.style.display = 'none'; return; }
+    // Show on mobile when either a) Android prompt is available or b) on iOS where 'Add to Home Screen' is the only path
+    var canInstall = !!deferredInstallPrompt || isIOS();
+    btn.style.display = (isMobileDevice() && canInstall) ? '' : 'none';
+}
+
+function triggerInstall() {
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(function() {
+            deferredInstallPrompt = null;
+            _refreshInstallButton();
+        });
+        return;
+    }
+    if (isIOS()) {
+        // Show styled instructions modal
+        showConfirm({
+            title: 'Install on your iPhone',
+            body: 'iOS doesn\'t have a one-tap install. Follow these steps:',
+            detail: '<ol style="margin:8px 0 0 18px;padding:0;line-height:1.6;">' +
+                '<li>Tap the <strong>Share</strong> button (the square with an arrow at the bottom of Safari).</li>' +
+                '<li>Scroll and tap <strong>Add to Home Screen</strong>.</li>' +
+                '<li>Tap <strong>Add</strong> in the top-right.</li>' +
+                '</ol><div style="margin-top:10px;font-size:0.85rem;color:var(--gray-500);">Once added, opening it from your home screen will run as a full-screen app — no browser bar.</div>',
+            okText: 'Got it'
+        });
+        return;
+    }
+    showToast('Install isn\'t available on this browser. Try Chrome or Safari.');
+}
+
+// One-time bottom banner — shown on first visit until user installs or dismisses.
 function showInstallBanner(mode) {
     if (document.getElementById('installBanner')) return;
     if (!isMobileDevice()) return;
     if (isStandalone()) return;
-    if (sessionStorage.getItem('cbdInstallDismissed') === '1') return;
+    if (localStorage.getItem('cbdInstallDismissedAt')) return; // dismissed = persistent across sessions
 
     var banner = document.createElement('div');
     banner.id = 'installBanner';
     banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:var(--primary);color:white;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:10000;font-size:0.9rem;box-shadow:0 -2px 8px rgba(0,0,0,0.15);gap:10px;';
 
     if (mode === 'android' && deferredInstallPrompt) {
-        banner.innerHTML = '<span>Install CBD Scheduler for quick access</span>' +
+        banner.innerHTML = '<span>&#128241; Install CBD Scheduler for an app-like experience</span>' +
             '<div style="display:flex;gap:8px;flex-shrink:0;">' +
-                '<button id="installBtn" style="background:white;color:var(--primary);border:none;padding:6px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer;">Install</button>' +
+                '<button id="installBtnBanner" style="background:white;color:var(--primary);border:none;padding:6px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer;">Install</button>' +
                 '<button id="dismissInstall" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;border-radius:var(--radius);cursor:pointer;">Later</button>' +
             '</div>';
         document.body.appendChild(banner);
-        document.getElementById('installBtn').onclick = function() {
-            if (deferredInstallPrompt) {
-                deferredInstallPrompt.prompt();
-                deferredInstallPrompt.userChoice.then(function() { deferredInstallPrompt = null; banner.remove(); });
-            }
-        };
-    } else { // iOS hint
-        banner.innerHTML = '<span style="font-size:0.85rem;">Tap <strong>Share</strong> then <strong>Add to Home Screen</strong> to install</span>' +
-            '<button id="dismissInstall" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);padding:4px 10px;border-radius:var(--radius);cursor:pointer;white-space:nowrap;flex-shrink:0;">Got it</button>';
+        document.getElementById('installBtnBanner').onclick = function() { triggerInstall(); banner.remove(); };
+    } else if (mode === 'ios') {
+        banner.innerHTML = '<span style="font-size:0.85rem;">&#128241; Tap <strong>Install</strong> to add to your home screen</span>' +
+            '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+                '<button id="installBtnBanner" style="background:white;color:var(--primary);border:none;padding:6px 16px;border-radius:var(--radius);font-weight:600;cursor:pointer;">Install</button>' +
+                '<button id="dismissInstall" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;border-radius:var(--radius);cursor:pointer;">Later</button>' +
+            '</div>';
         document.body.appendChild(banner);
-    }
-    document.getElementById('dismissInstall').onclick = function() { sessionStorage.setItem('cbdInstallDismissed','1'); banner.remove(); };
+        document.getElementById('installBtnBanner').onclick = function() { triggerInstall(); };
+    } else { return; }
+    document.getElementById('dismissInstall').onclick = function() {
+        localStorage.setItem('cbdInstallDismissedAt', new Date().toISOString());
+        banner.remove();
+    };
 }
 
-// Capture the Android install prompt event
 window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
     deferredInstallPrompt = e;
+    _refreshInstallButton();
     showInstallBanner('android');
 });
 
-// iOS hint: no programmatic prompt — show after a delay
-if (isIOS() && !isStandalone()) {
-    window.addEventListener('load', function() {
+window.addEventListener('appinstalled', function() {
+    deferredInstallPrompt = null;
+    _refreshInstallButton();
+    var b = document.getElementById('installBanner');
+    if (b) b.remove();
+});
+
+// On load: refresh the install button visibility + show iOS banner once
+window.addEventListener('load', function() {
+    _refreshInstallButton();
+    if (isIOS() && !isStandalone()) {
         setTimeout(function() { showInstallBanner('ios'); }, 3000);
-    });
-}
+    }
+});
 
 // ============ Init ============
 checkSession();
