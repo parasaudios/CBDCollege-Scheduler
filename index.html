@@ -1262,9 +1262,11 @@ function _pickHTForWeekend(availHTs, dateStr) {
 // Returns array of pseudo-roster entries: { staff_id, staff (full obj), day_role, status, start_time, end_time, source: 'auto' }.
 // Used as a FALLBACK when cbd_availability has no explicit entries for the date.
 function computeRosterForDate(dateStr) {
-    var ci = getDayClass(dateStr);
-    var hasStudents = ci && ((ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0);
+    var info = getEffectiveClassInfo(dateStr);
+    var hasStudents = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0;
     if (!hasStudents) return [];
+    // Build a synthetic ci-like object so existing _assistantsNeededForClass works
+    var ci = { students_am: info.students_am, students_pm: info.students_pm, capped_am: info.capped_am, capped_pm: info.capped_pm };
 
     var p = dateStr.split('-');
     var year = +p[0], month = +p[1] - 1, dayNum = +p[2];
@@ -2297,7 +2299,10 @@ async function emitNotification(opts) {
 // Single-row settings: rules + per-DOW default class times + assistant slot times
 function _seedDowDefaults() {
     var out = {};
-    for (var i = 0; i < 7; i++) out[String(i)] = { am_start:'08:30', am_end:'12:00', pm_start:'13:00', pm_end:'15:30' };
+    for (var i = 0; i < 7; i++) out[String(i)] = {
+        am_start:'08:30', am_end:'12:00', pm_start:'13:00', pm_end:'15:30',
+        students_am: 0, students_pm: 0, capped_am: false, capped_pm: false
+    };
     return out;
 }
 var settingsCache = {
@@ -2330,14 +2335,18 @@ async function loadSettings(force) {
                 };
                 for (var i = 0; i < 7; i++) dct[String(i)] = globalDef;
             } else {
-                // Normalize stored times to HH:MM
+                // Normalize stored times to HH:MM and surface per-DOW student/capped defaults
                 Object.keys(dct).forEach(function(k) {
                     var d = dct[k] || {};
                     dct[k] = {
                         am_start: _trimTime(d.am_start) || '08:30',
                         am_end: _trimTime(d.am_end) || '12:00',
                         pm_start: _trimTime(d.pm_start) || '13:00',
-                        pm_end: _trimTime(d.pm_end) || '15:30'
+                        pm_end: _trimTime(d.pm_end) || '15:30',
+                        students_am: parseInt(d.students_am, 10) || 0,
+                        students_pm: parseInt(d.students_pm, 10) || 0,
+                        capped_am: !!d.capped_am,
+                        capped_pm: !!d.capped_pm
                     };
                 });
             }
@@ -2415,6 +2424,23 @@ function getEffectiveClassTimes(dateStr) {
         pm_start: def.pm_start,
         pm_end: def.pm_end,
         manual: false
+    };
+}
+
+// Effective class info for a date — student counts and capped flags. Per-day row wins
+// only when it has been explicitly set (any of those fields non-zero / true), otherwise
+// fall back to the per-DOW default.
+function getEffectiveClassInfo(dateStr) {
+    var ci = dayClassesCache[dateStr] || {};
+    var def = _dowDefaults(dateStr) || {};
+    // Treat the per-day row as "explicitly set" if students or capped have been touched.
+    var hasManualNumbers = (ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || !!ci.capped_am || !!ci.capped_pm;
+    return {
+        students_am: hasManualNumbers ? (ci.students_am || 0) : (def.students_am || 0),
+        students_pm: hasManualNumbers ? (ci.students_pm || 0) : (def.students_pm || 0),
+        capped_am:   hasManualNumbers ? !!ci.capped_am          : !!def.capped_am,
+        capped_pm:   hasManualNumbers ? !!ci.capped_pm          : !!def.capped_pm,
+        from_default: !hasManualNumbers
     };
 }
 
@@ -2509,9 +2535,9 @@ async function generateAutoRosterPreview() {
     for (var t = startD.getTime(); t <= endD.getTime(); t += 86400000) {
         var d = new Date(t);
         var ds = formatDate(d);
-        var ci = getDayClass(ds);
-        // Roster a day when there are any students (times are derived from defaults if not manually set)
-        var hasStudents = ci && ((ci.students_am && ci.students_am > 0) || (ci.students_pm && ci.students_pm > 0));
+        var infoForDay = getEffectiveClassInfo(ds);
+        var ci = { students_am: infoForDay.students_am, students_pm: infoForDay.students_pm, capped_am: infoForDay.capped_am, capped_pm: infoForDay.capped_pm };
+        var hasStudents = (ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0;
         if (!hasStudents) {
             skipped++;
             preview.push({ dateStr: ds, dateLabel: _autoRosterDayLabel(d), ci: ci, skipped: true, reason: 'No students set' });
@@ -3279,21 +3305,29 @@ function renderDowDefaultsGrid() {
     if (!container) return;
     var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     var dows = [1,2,3,4,5,6,0];
-    var html = '';
+    var html = '<div style="display:grid;grid-template-columns:60px 1fr 1fr 80px 80px 60px 60px;gap:8px;align-items:center;font-size:0.72rem;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.4px;font-weight:600;padding:0 8px 4px;">' +
+        '<span>Day</span><span>AM Class</span><span>PM Class</span><span style="text-align:center;">Students AM</span><span style="text-align:center;">Students PM</span><span style="text-align:center;">Cap AM</span><span style="text-align:center;">Cap PM</span>' +
+        '</div>';
     for (var i = 0; i < 7; i++) {
         var dow = dows[i];
-        var def = (settingsCache.default_class_times || {})[String(dow)] || { am_start:'', am_end:'', pm_start:'', pm_end:'' };
+        var def = (settingsCache.default_class_times || {})[String(dow)] || {};
         var isWeekend = dow === 0 || dow === 6;
-        html += '<div data-dow="' + dow + '" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 8px;border-radius:var(--radius);' + (isWeekend ? 'background:var(--primary-light);' : '') + '">' +
-            '<span style="font-weight:600;color:var(--gray-700);min-width:42px;">' + labels[i] + '</span>' +
-            '<span style="font-size:0.78rem;color:var(--gray-500);min-width:34px;">AM</span>' +
-            '<input type="time" class="form-control dow-am-start" data-dow="' + dow + '" value="' + def.am_start + '" style="width:120px;">' +
-            '<span style="color:var(--gray-400);font-size:0.85rem;">to</span>' +
-            '<input type="time" class="form-control dow-am-end" data-dow="' + dow + '" value="' + def.am_end + '" style="width:120px;">' +
-            '<span style="font-size:0.78rem;color:var(--gray-500);min-width:34px;margin-left:8px;">PM</span>' +
-            '<input type="time" class="form-control dow-pm-start" data-dow="' + dow + '" value="' + def.pm_start + '" style="width:120px;">' +
-            '<span style="color:var(--gray-400);font-size:0.85rem;">to</span>' +
-            '<input type="time" class="form-control dow-pm-end" data-dow="' + dow + '" value="' + def.pm_end + '" style="width:120px;">' +
+        html += '<div data-dow="' + dow + '" style="display:grid;grid-template-columns:60px 1fr 1fr 80px 80px 60px 60px;gap:8px;align-items:center;padding:8px;border-radius:var(--radius);' + (isWeekend ? 'background:var(--primary-light);' : 'background:var(--gray-50);') + '">' +
+            '<span style="font-weight:600;color:var(--gray-700);">' + labels[i] + '</span>' +
+            '<div style="display:flex;gap:4px;align-items:center;">' +
+                '<input type="time" class="form-control dow-am-start" data-dow="' + dow + '" value="' + (def.am_start || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+                '<span style="color:var(--gray-400);font-size:0.75rem;">to</span>' +
+                '<input type="time" class="form-control dow-am-end" data-dow="' + dow + '" value="' + (def.am_end || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+            '</div>' +
+            '<div style="display:flex;gap:4px;align-items:center;">' +
+                '<input type="time" class="form-control dow-pm-start" data-dow="' + dow + '" value="' + (def.pm_start || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+                '<span style="color:var(--gray-400);font-size:0.75rem;">to</span>' +
+                '<input type="time" class="form-control dow-pm-end" data-dow="' + dow + '" value="' + (def.pm_end || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+            '</div>' +
+            '<input type="number" min="0" class="form-control dow-students-am" data-dow="' + dow + '" value="' + (def.students_am || 0) + '" style="padding:4px 6px;font-size:0.85rem;text-align:center;">' +
+            '<input type="number" min="0" class="form-control dow-students-pm" data-dow="' + dow + '" value="' + (def.students_pm || 0) + '" style="padding:4px 6px;font-size:0.85rem;text-align:center;">' +
+            '<label style="display:flex;justify-content:center;cursor:pointer;"><input type="checkbox" class="dow-capped-am" data-dow="' + dow + '"' + (def.capped_am ? ' checked' : '') + ' style="width:18px;height:18px;cursor:pointer;"></label>' +
+            '<label style="display:flex;justify-content:center;cursor:pointer;"><input type="checkbox" class="dow-capped-pm" data-dow="' + dow + '"' + (def.capped_pm ? ' checked' : '') + ' style="width:18px;height:18px;cursor:pointer;"></label>' +
         '</div>';
     }
     container.innerHTML = html;
@@ -3307,7 +3341,11 @@ function _dowDefaultsReadInputs() {
             am_start: row.querySelector('.dow-am-start').value,
             am_end: row.querySelector('.dow-am-end').value,
             pm_start: row.querySelector('.dow-pm-start').value,
-            pm_end: row.querySelector('.dow-pm-end').value
+            pm_end: row.querySelector('.dow-pm-end').value,
+            students_am: parseInt(row.querySelector('.dow-students-am').value, 10) || 0,
+            students_pm: parseInt(row.querySelector('.dow-students-pm').value, 10) || 0,
+            capped_am: row.querySelector('.dow-capped-am').checked,
+            capped_pm: row.querySelector('.dow-capped-pm').checked
         };
     });
     return out;
@@ -3320,6 +3358,10 @@ function _dowDefaultsWriteInputs(dow, vals) {
     row.querySelector('.dow-am-end').value = vals.am_end || '';
     row.querySelector('.dow-pm-start').value = vals.pm_start || '';
     row.querySelector('.dow-pm-end').value = vals.pm_end || '';
+    row.querySelector('.dow-students-am').value = vals.students_am || 0;
+    row.querySelector('.dow-students-pm').value = vals.students_pm || 0;
+    row.querySelector('.dow-capped-am').checked = !!vals.capped_am;
+    row.querySelector('.dow-capped-pm').checked = !!vals.capped_pm;
 }
 
 function dowDefaultsCopyMonToWeekdays() {
@@ -3361,10 +3403,11 @@ function renderClassesCalendar() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = classesYear + '-' + String(classesMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
         var ci = getDayClass(dateStr);
-        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + ((ci && (ci.students_am || ci.students_pm || ci.times_manually_set)) ? ' has-staff' : '');
+        var info = getEffectiveClassInfo(dateStr);
+        var hasNumbers = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
+        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (hasNumbers ? ' has-staff' : '');
         var times = getEffectiveClassTimes(dateStr);
         var detail = '<div style="font-size:0.74rem;line-height:1.35;">';
-        // Show times — bold if manual, italic-faded if defaults
         var timeStyle = times.manual ? 'font-weight:700;color:var(--primary);' : 'color:var(--gray-500);font-style:italic;';
         if (times.am_start && times.am_end) {
             detail += '<div style="' + timeStyle + '">AM ' + times.am_start + '–' + times.am_end + '</div>';
@@ -3372,14 +3415,15 @@ function renderClassesCalendar() {
         if (times.pm_start && times.pm_end) {
             detail += '<div style="' + timeStyle + '">PM ' + times.pm_start + '–' + times.pm_end + '</div>';
         }
-        if (ci && (ci.students_am || ci.students_pm)) {
-            detail += '<div style="color:var(--gray-700);">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
+        if ((info.students_am || 0) > 0 || (info.students_pm || 0) > 0) {
+            var numStyle = info.from_default ? 'color:var(--gray-500);font-style:italic;' : 'color:var(--gray-700);';
+            detail += '<div style="' + numStyle + '">AM:' + (info.students_am||0) + ' PM:' + (info.students_pm||0) + '</div>';
         }
         var caps = [];
-        if (ci && ci.capped_am) caps.push('AM');
-        if (ci && ci.capped_pm) caps.push('PM');
+        if (info.capped_am) caps.push('AM');
+        if (info.capped_pm) caps.push('PM');
         if (caps.length) detail += '<div><span class="capped-badge">' + caps.join(' & ') + ' CAP</span></div>';
-        if (!ci || (!ci.students_am && !ci.students_pm && !times.manual)) {
+        if (!hasNumbers && !times.manual) {
             detail += '<div style="color:var(--gray-400);font-style:italic;font-size:0.7rem;margin-top:2px;">no students set</div>';
         }
         detail += '</div>';
@@ -3470,17 +3514,20 @@ function openClassEdit(dateStr) {
     document.getElementById('classEditTitle').textContent = 'Class — ' + dayName + ', ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1] + ' ' + p[0];
     var ci = getDayClass(dateStr) || {};
     var times = getEffectiveClassTimes(dateStr);
+    var info = getEffectiveClassInfo(dateStr);
     document.getElementById('ceUsingDefaults').textContent = times.manual
         ? 'This day has manually-set times (will not be overwritten by default changes).'
-        : 'Times shown are from defaults — saving with changes will override for this day.';
+        : (info.from_default
+            ? 'Times and numbers shown are from per-DOW defaults — saving with changes will override for this day.'
+            : 'Times shown are from defaults — saving with changes will override for this day.');
     document.getElementById('ceAmStart').value = times.am_start || '';
     document.getElementById('ceAmEnd').value = times.am_end || '';
     document.getElementById('cePmStart').value = times.pm_start || '';
     document.getElementById('cePmEnd').value = times.pm_end || '';
-    document.getElementById('ceAM').value = ci.students_am || '';
-    document.getElementById('cePM').value = ci.students_pm || '';
-    document.getElementById('ceCapAM').checked = !!ci.capped_am;
-    document.getElementById('ceCapPM').checked = !!ci.capped_pm;
+    document.getElementById('ceAM').value = info.students_am || '';
+    document.getElementById('cePM').value = info.students_pm || '';
+    document.getElementById('ceCapAM').checked = !!info.capped_am;
+    document.getElementById('ceCapPM').checked = !!info.capped_pm;
     document.getElementById('ceSaveBtn').dataset.date = dateStr;
     document.getElementById('ceDeleteBtn').style.display = ci.date ? '' : 'none';
     document.getElementById('classEditModal').classList.add('active');
