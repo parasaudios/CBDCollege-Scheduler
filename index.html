@@ -492,7 +492,7 @@
                         </div>
                         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
                             <label style="font-size:0.8rem;font-weight:500;">Assistant:</label>
-                            <select class="form-control" id="assistBulkSelect" style="width:auto;min-width:150px;padding:4px 8px;font-size:0.8rem;" onchange="updateAssistBulkButtons()"><option value="">-- Select --</option></select>
+                            <select class="form-control" id="assistBulkSelect" style="width:auto;min-width:150px;padding:4px 8px;font-size:0.8rem;" onchange="updateAssistBulkButtons(); renderAssistAvail();"><option value="">-- Select --</option></select>
                         </div>
                         <div class="bulk-day-buttons" id="assistBulkBtns">
                             <button class="btn btn-outline btn-sm btn-day" data-dow="1" onclick="toggleDayOfWeek(1,'assistavail')">Mon</button>
@@ -3512,46 +3512,87 @@ async function applyBulkClass() {
 // ============ Assistant Availability View (Trainer) ============
 async function renderAssistAvail() {
     document.getElementById('assistMonthLabel').textContent = MONTH_NAMES[assistMonth] + ' ' + assistYear;
-    // Assistant availability data is loaded by the caller (switchTab/changeAssistMonth via loadMonth)
     var container = document.getElementById('assistAvailGrid');
+    container.className = 'calendar-grid';
     var lastDay = new Date(assistYear, assistMonth+1, 0).getDate();
 
-    // Get assistant profiles from cache
+    // Get linked staff (HT + assistant — both can have overrides now)
     var allProfiles = await getProfiles();
-    assistantProfiles = allProfiles.filter(function(p) { return p.role === 'assistant'; });
-    if (assistantProfiles.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128101;</div><div>No assistants found</div></div>'; return; }
+    var staffWithLinkedUsers = staffList.filter(function(s) { return s.user_id; });
+    if (staffWithLinkedUsers.length === 0) {
+        container.className = '';
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128101;</div><div>No staff with linked accounts</div></div>';
+        return;
+    }
+    // Keep assistantProfiles populated (used by openTrainerAssistAvailModal title resolution)
+    assistantProfiles = staffWithLinkedUsers.map(function(s) {
+        var prof = allProfiles.find(function(p) { return p.id === s.user_id; });
+        return { id: s.user_id, full_name: s.name, role: (prof && prof.role) || 'assistant' };
+    });
 
-    // Populate bulk select dropdown
+    // Populate bulk select dropdown — first staff selected by default
     var bulkSel = document.getElementById('assistBulkSelect');
     var curVal = bulkSel.value;
-    bulkSel.innerHTML = '<option value="">-- Select --</option>' + assistantProfiles.map(function(a) { return '<option value="' + a.id + '">' + escHtml(a.full_name) + '</option>'; }).join('');
-    if (curVal) bulkSel.value = curVal;
+    bulkSel.innerHTML = staffWithLinkedUsers.map(function(s) { return '<option value="' + s.user_id + '">' + escHtml(s.name) + '</option>'; }).join('');
+    if (curVal && staffWithLinkedUsers.find(function(s) { return s.user_id === curVal; })) bulkSel.value = curVal;
+    else bulkSel.value = staffWithLinkedUsers[0].user_id;
 
-    var html = '<table class="admin-table"><thead><tr><th>Date</th>';
-    assistantProfiles.forEach(function(a) { html += '<th>' + escHtml(a.full_name) + '</th>'; });
-    html += '</tr></thead><tbody>';
+    var selectedUserId = bulkSel.value;
+    var selectedStaff = staffWithLinkedUsers.find(function(s) { return s.user_id === selectedUserId; });
+    var selectedProf = allProfiles.find(function(p) { return p.id === selectedUserId; });
+    var pattern = (selectedProf && Array.isArray(selectedProf.available_dows)) ? selectedProf.available_dows : [0,1,2,3,4,5,6];
+
+    // Build calendar
+    var firstDay = new Date(assistYear, assistMonth, 1);
+    var startDow = firstDay.getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
+    var todayStr = formatDate(new Date());
+    var html = DAY_NAMES.map(function(d) { return '<div class="calendar-day-header">' + d + '</div>'; }).join('');
+    for (var i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>';
 
     for (var day = 1; day <= lastDay; day++) {
         var dateStr = assistYear + '-' + String(assistMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var d = new Date(assistYear, assistMonth, day);
-        var dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
-        var isWeekend = d.getDay() === 0 || d.getDay() === 6;
-        html += '<tr style="' + (isWeekend ? 'background:var(--gray-50);' : '') + '"><td style="font-weight:500;">' + dayName + ' ' + day + '</td>';
-        assistantProfiles.forEach(function(a) {
-            var dayEntries = assistantAvailCache[dateStr] || [];
-            var entry = dayEntries.find(function(e) { return e.user_id === a.id; });
-            var cellStyle = 'cursor:pointer;';
-            if (entry) {
-                var badge = entry.is_available ? '<span class="avail-badge yes">Available</span>' : '<span class="avail-badge no">Unavailable</span>';
-                html += '<td style="' + cellStyle + '" onclick="openTrainerAssistAvailModal(\'' + a.id + '\',\'' + dateStr + '\')">' + badge + (entry.note ? '<div style="font-size:0.75rem;color:var(--gray-500);">' + escHtml(entry.note) + '</div>' : '') + '</td>';
-            } else {
-                html += '<td style="' + cellStyle + 'color:var(--gray-300);font-size:0.8rem;" onclick="openTrainerAssistAvailModal(\'' + a.id + '\',\'' + dateStr + '\')">-</td>';
-            }
-        });
-        html += '</tr>';
+        var dow = d.getDay();
+        var entries = assistantAvailCache[dateStr] || [];
+        var override = entries.find(function(e) { return e.user_id === selectedUserId; });
+        var patternAvail = pattern.indexOf(dow) >= 0;
+
+        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
+        if (override) cls += override.is_available ? ' available' : ' unavailable';
+        else if (!patternAvail) cls += ' partial'; // soft tint to indicate pattern says "off"
+        if (multiSelectMode === 'assistavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
+
+        var detail = '';
+        if (override) {
+            detail = '<div style="font-size:0.7rem;text-align:center;font-weight:600;color:' + (override.is_available ? 'var(--success)' : 'var(--danger)') + ';">' +
+                (override.is_available ? 'Available' : 'Unavailable') + '</div>';
+            if (override.note) detail += '<div style="font-size:0.6rem;color:var(--gray-500);text-align:center;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(override.note) + '</div>';
+            detail += '<div style="font-size:0.58rem;color:var(--gray-400);text-align:center;text-transform:uppercase;letter-spacing:0.4px;margin-top:1px;">override</div>';
+        } else {
+            detail = '<div style="font-size:0.65rem;text-align:center;color:var(--gray-500);">' + (patternAvail ? 'Available' : 'Off') + ' <span style="color:var(--gray-300);font-size:0.55rem;">(pattern)</span></div>';
+        }
+        html += '<div class="' + cls + '" onclick="onAssistAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
     }
-    html += '</tbody></table>';
     container.innerHTML = html;
+}
+
+// Click handler for the trainer's per-date override calendar.
+// Bulk mode (or shift+click) → toggle date in multi-select.
+// Otherwise → open the edit modal for this staff+date.
+function onAssistAvailDayClick(dateStr, event) {
+    if (event && (event.shiftKey || (bulkModeActive && multiSelectMode === 'assistavail') || (multiSelectMode === 'assistavail' && multiSelectedDays.size > 0))) {
+        multiSelectMode = 'assistavail';
+        bulkModeActive = true;
+        updateBulkToggleButtons();
+        if (multiSelectedDays.has(dateStr)) multiSelectedDays.delete(dateStr); else multiSelectedDays.add(dateStr);
+        updateMultiSelectBar();
+        renderAssistAvail();
+        return;
+    }
+    var bulkSel = document.getElementById('assistBulkSelect');
+    var userId = bulkSel ? bulkSel.value : null;
+    if (!userId) { showToast('Select a staff member first'); return; }
+    openTrainerAssistAvailModal(userId, dateStr);
 }
 function changeAssistMonth(dir) {
     assistMonth += dir;
