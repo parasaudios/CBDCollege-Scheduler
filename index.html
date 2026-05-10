@@ -143,6 +143,14 @@
         .cal-cell-staff-dots { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin-top: auto; padding-top: 4px; }
         .cal-cell-staff-dots .staff-pip { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
         .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
+
+        /* Staff list inside calendar cells (names + small colour chip) */
+        .cal-cell-staff-list { width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 4px; }
+        .cal-cell-staff-list .cal-cell-staff-row { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; line-height: 1.25; color: var(--gray-700); padding: 1px 2px; border-radius: 3px; }
+        .cal-cell-staff-list .cal-cell-staff-row.ht { font-weight: 700; color: var(--gray-800); }
+        .cal-cell-staff-list .staff-pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .cal-cell-staff-list .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
+        .cal-cell-staff-list .staff-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .cal-cell-caps { width: 100%; text-align: center; margin-top: 2px; }
         .cal-cell-caps .capped-badge { font-size: 0.55rem; padding: 1px 4px; }
 
@@ -322,6 +330,9 @@
             .cal-cell-students { font-size: 0.55rem; }
             .cal-cell-staff-dots .staff-pip { width: 6px; height: 6px; }
             .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
+            .cal-cell-staff-list .cal-cell-staff-row { font-size: 0.6rem; gap: 3px; }
+            .cal-cell-staff-list .staff-pip { width: 6px; height: 6px; }
+            .cal-cell-staff-list .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
             .hero-card { padding: 14px 16px; }
             .hero-card-date { font-size: 1.15rem; }
             .hero-card-row { gap: 16px; margin-top: 10px; }
@@ -1981,13 +1992,23 @@ function renderCalendar() {
         if (ci && ci.capped_pm) caps.push('PM');
         if (caps.length > 0) capHtml = '<div class="cal-cell-caps"><span class="capped-badge">' + caps.join('+') + '</span></div>';
 
-        // Staff dots — show all rostered (manual or computed)
-        var pips = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; }).map(function(r) {
+        // Staff names with small color chip — HTs first, then assistants
+        var rosterEntries = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; });
+        rosterEntries.sort(function(a, b) {
+            var aHT = a.day_role === 'head_trainer' ? 0 : 1;
+            var bHT = b.day_role === 'head_trainer' ? 0 : 1;
+            if (aHT !== bHT) return aHT - bHT;
+            return a.name.localeCompare(b.name);
+        });
+        var nameRows = rosterEntries.map(function(r) {
             var ht = r.day_role === 'head_trainer';
             var firstName = escHtml(r.name.split(' ')[0]);
-            return '<span class="staff-pip' + (ht ? ' ht' : '') + '" style="background:' + r.color + ';" title="' + (ht ? 'HT ' : '') + firstName + '"></span>';
+            return '<div class="cal-cell-staff-row' + (ht ? ' ht' : '') + '">' +
+                '<span class="staff-pip' + (ht ? ' ht' : '') + '" style="background:' + r.color + ';"></span>' +
+                '<span class="staff-name">' + firstName + '</span>' +
+            '</div>';
         });
-        var pipsHtml = pips.length > 0 ? '<div class="cal-cell-staff-dots">' + pips.join('') + '</div>' : '';
+        var pipsHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
 
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + timeHtml + stuHtml + capHtml + pipsHtml + '</div>';
     }
