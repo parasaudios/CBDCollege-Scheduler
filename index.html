@@ -2264,12 +2264,15 @@ async function generateAutoRosterPreview() {
 
     // HTs get filtered separately; assistants are re-sorted PER DAY using per-DOW priority.
     var allStaff = staffList.slice();
-    var hts = allStaff.filter(function(s) { return s.is_head_trainer; });
+    // HTs sorted by priority (lower = first in rotation) then name for determinism
+    var hts = allStaff.filter(function(s) { return s.is_head_trainer; }).sort(function(a, b) {
+        return ((a.priority || 100) - (b.priority || 100)) || a.name.localeCompare(b.name);
+    });
     var assistsRaw = allStaff.filter(function(s) { return !s.is_head_trainer; });
 
-    // Track HT rotation across the range — round-robin among HTs that aren't unavailable
-    var htRotation = [];
-    var htIndex = 0;
+    // HT rotation counters keyed by 'YYYY-MM-DOW'. Resets per month so the lowest-priority
+    // HT picks first on the first occurrence of each weekday/weekend in every month.
+    var htMonthlyCounters = {};
 
     var preview = [];
     var skipped = 0;
@@ -2287,12 +2290,18 @@ async function generateAutoRosterPreview() {
             continue;
         }
 
-        // Pick HT: round-robin among HTs not marked unavailable
-        var availHTs = hts.filter(function(h) { return !_isStaffMarkedUnavailable(h, ds); });
+        // Pick HT: per-DOW round-robin, reset each month. Cameron (P1) picks first on
+        // the first occurrence of each DOW in every month, then alternates with Chichi (P2),
+        // then back, etc. Sat and Sun rotate independently. Excluded/unavailable HTs are skipped.
+        var availHTs = hts.filter(function(h) {
+            return !_isStaffMarkedUnavailable(h, ds) && !_isExcludedFromDow(h, d.getDay());
+        });
         var htId = null;
         if (availHTs.length > 0) {
-            htId = availHTs[htIndex % availHTs.length].id;
-            htIndex++;
+            var ymKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getDay();
+            var counter = htMonthlyCounters[ymKey] || 0;
+            htId = availHTs[counter % availHTs.length].id;
+            htMonthlyCounters[ymKey] = counter + 1;
         }
 
         // Pick assistants: by per-DOW priority, skipping anyone explicitly excluded
@@ -3950,6 +3959,10 @@ function renderStaffPatternsEditor() {
         return;
     }
     var html = '';
+    var hasHT = rows.some(function(s) { return s.is_head_trainer; });
+    if (hasHT) {
+        html += '<div style="font-size:0.78rem;color:var(--gray-500);margin-bottom:4px;font-style:italic;">Note: Head Trainers with Sat/Sun toggled on share a rotation — auto-roster alternates them per month. The lowest-priority HT picks the 1st weekend day each month.</div>';
+    }
     rows.forEach(function(s) {
         var prof = profilesById[s.user_id];
         var dows = (prof && Array.isArray(prof.available_dows)) ? prof.available_dows : [0,1,2,3,4,5,6];
@@ -3961,7 +3974,15 @@ function renderStaffPatternsEditor() {
             '</div>' +
             '<div class="staff-pattern-toggles" style="display:flex;gap:6px;flex-wrap:wrap;">';
         [1,2,3,4,5,6,0].forEach(function(d) {
-            html += _patternToggleHtml('toggleStaffPatternDow', d, dows.indexOf(d) >= 0, false).replace('data-dow="' + d + '"', 'data-dow="' + d + '" data-user-id="' + s.user_id + '"');
+            var isWeekend = d === 0 || d === 6;
+            var isOn = dows.indexOf(d) >= 0;
+            // For HTs on weekends, decorate the toggle with a subtle "rotates" badge
+            var btnHtml = _patternToggleHtml('toggleStaffPatternDow', d, isOn, false).replace('data-dow="' + d + '"', 'data-dow="' + d + '" data-user-id="' + s.user_id + '"');
+            if (s.is_head_trainer && isWeekend && isOn) {
+                // Inject a small rotating-arrow indicator inside the button
+                btnHtml = btnHtml.replace(/(<button[^>]*>)([^<]+)/, '$1$2 ↻');
+            }
+            html += btnHtml;
         });
         html += '</div></div>';
     });
