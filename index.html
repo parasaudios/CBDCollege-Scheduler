@@ -1207,9 +1207,20 @@ function computeRosterForDate(dateStr) {
         if (ec && ((ec.students_am || 0) > 0 || (ec.students_pm || 0) > 0)) priorIndex++;
     }
 
+    // Pick HT(s):
+    //   Weekday → all available HTs are rostered (no rotation)
+    //   Weekend → rotate one HT (priority + per-month per-DOW counter)
     var entries = [];
+    var rosteredHTs = [];
     if (hts.length > 0) {
-        var ht = hts[priorIndex % hts.length];
+        var isWeekend = (dow === 0 || dow === 6);
+        if (isWeekend) {
+            rosteredHTs = [hts[priorIndex % hts.length]];
+        } else {
+            rosteredHTs = hts.slice();
+        }
+    }
+    rosteredHTs.forEach(function(ht) {
         entries.push({
             staff_id: ht.id, staff: ht,
             name: ht.name, color: ht.color,
@@ -1218,11 +1229,15 @@ function computeRosterForDate(dateStr) {
             end_time: times.pm_end || times.am_end || null,
             source: 'auto'
         });
-    }
+    });
 
-    // Pick assistants — by per-DOW priority, filter unavailable + excluded
+    // Assistants: base count from class size, reduced by extra HTs working that day.
+    // Each additional HT covers ~one assistant's worth, so:
+    //   needed = max(0, base - max(0, htCount - 1))
     var rules = settingsCache;
-    var needed = _assistantsNeededForClass(ci, rules);
+    var base = _assistantsNeededForClass(ci, rules);
+    var htCount = rosteredHTs.length;
+    var needed = Math.max(0, base - Math.max(0, htCount - 1));
     if (needed > 0) {
         var assists = staffList.filter(function(s) {
             return !s.is_head_trainer && isStaffAvailableOnDate(s, dateStr) && !_isExcludedFromDow(s, dow);
@@ -2392,24 +2407,28 @@ async function generateAutoRosterPreview() {
             continue;
         }
 
-        // Pick HT: per-DOW round-robin, reset each month. Cameron (P1) picks first on
-        // the first occurrence of each DOW in every month, then alternates with Chichi (P2),
-        // then back, etc. Sat and Sun rotate independently. Excluded/unavailable HTs are skipped.
+        // Pick HT(s):
+        //   Weekday → all available HTs are rostered (Cameron AND Chichi if both available)
+        //   Weekend → rotate one HT (priority + per-month per-DOW counter)
+        var dayDow = d.getDay();
         var availHTs = hts.filter(function(h) {
-            return !_isStaffMarkedUnavailable(h, ds) && !_isExcludedFromDow(h, d.getDay());
+            return !_isStaffMarkedUnavailable(h, ds) && !_isExcludedFromDow(h, dayDow);
         });
-        var htId = null;
+        var htIds = [];
         if (availHTs.length > 0) {
-            var ymKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getDay();
-            var counter = htMonthlyCounters[ymKey] || 0;
-            htId = availHTs[counter % availHTs.length].id;
-            htMonthlyCounters[ymKey] = counter + 1;
+            if (dayDow === 0 || dayDow === 6) {
+                var ymKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + dayDow;
+                var counter = htMonthlyCounters[ymKey] || 0;
+                htIds = [availHTs[counter % availHTs.length].id];
+                htMonthlyCounters[ymKey] = counter + 1;
+            } else {
+                htIds = availHTs.map(function(h) { return h.id; });
+            }
         }
 
-        // Pick assistants: by per-DOW priority, skipping anyone explicitly excluded
-        // from this DOW or marked unavailable for this date
-        var dayDow = d.getDay();
-        var needed = _assistantsNeededForClass(ci, rules);
+        // Assistants: base count from class size, reduced by extra HTs working that day.
+        var base = _assistantsNeededForClass(ci, rules);
+        var needed = Math.max(0, base - Math.max(0, htIds.length - 1));
         var dayAssists = assistsRaw.slice()
             .filter(function(a) { return !_isExcludedFromDow(a, dayDow); })
             .sort(function(a, b) {
@@ -2419,12 +2438,13 @@ async function generateAutoRosterPreview() {
         var picked = availableAssists.slice(0, needed);
         var pickedIds = picked.map(function(a) { return a.id; });
 
+        var htNames = htIds.map(function(id) { return (hts.find(function(h) { return h.id === id; }) || {}).name; }).filter(Boolean);
         preview.push({
             dateStr: ds,
             dateLabel: _autoRosterDayLabel(d),
             ci: ci,
-            htId: htId,
-            htName: htId ? (hts.find(function(h) { return h.id === htId; }) || {}).name : null,
+            htIds: htIds,
+            htNames: htNames,
             assistantIds: pickedIds,
             assistantNames: picked.map(function(a) { return a.name; }),
             needed: needed,
@@ -2452,7 +2472,9 @@ function _renderAutoRosterPreview() {
             return '<tr style="color:var(--gray-400);"><td>' + escHtml(p.dateLabel) + '</td><td colspan="3" style="font-style:italic;">' + escHtml(p.reason) + '</td></tr>';
         }
         var biggest = Math.max(p.ci.students_am || 0, p.ci.students_pm || 0);
-        var ht = p.htName ? '<span style="background:var(--primary);color:white;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-right:5px;">HT</span>' + escHtml(p.htName.split(' ')[0]) : '<span style="color:var(--danger);font-style:italic;">No HT available</span>';
+        var ht = (p.htNames && p.htNames.length > 0)
+            ? p.htNames.map(function(n) { return '<span style="background:var(--primary);color:white;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-right:5px;">HT</span>' + escHtml(n.split(' ')[0]); }).join(' ')
+            : '<span style="color:var(--danger);font-style:italic;">No HT available</span>';
         var assists = p.assistantNames.length > 0 ? p.assistantNames.map(function(n) { return escHtml(n.split(' ')[0]); }).join(', ') : '<span style="color:var(--gray-400);font-style:italic;">None</span>';
         if (p.shortBy > 0) assists += ' <span style="color:var(--danger);font-style:italic;">(short ' + p.shortBy + ')</span>';
         return '<tr><td>' + escHtml(p.dateLabel) + '</td><td>' + biggest + '</td><td>' + ht + '</td><td>' + assists + '</td></tr>';
@@ -2484,11 +2506,10 @@ async function applyAutoRoster() {
         var dayTimes = getEffectiveClassTimes(p.dateStr);
         // Slot times depend on the day's AM start (different starts get different slot times)
         var slotTimes = _slotTimesForAmStart(dayTimes.am_start);
-        if (p.htId) {
-            desired[p.htId + '|' + p.dateStr] = true;
-            // HTs get the day's AM start time (they cover the whole day)
-            upserts.push({ staff_id: p.htId, date: p.dateStr, status: 'available', start_time: dayTimes.am_start || null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id });
-        }
+        (p.htIds || []).forEach(function(htId) {
+            desired[htId + '|' + p.dateStr] = true;
+            upserts.push({ staff_id: htId, date: p.dateStr, status: 'available', start_time: dayTimes.am_start || null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id });
+        });
         p.assistantIds.forEach(function(aid, i) {
             desired[aid + '|' + p.dateStr] = true;
             var slotKey = String(i + 1);
