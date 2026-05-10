@@ -581,6 +581,10 @@
                 <div class="card-body">
                     <div id="priorityDowSelector" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;"></div>
                     <div id="priorityList" style="max-width:560px;display:flex;flex-direction:column;gap:6px;"></div>
+                    <label id="priorityRotateLabel" style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;color:var(--gray-700);cursor:pointer;max-width:560px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:var(--radius);background:var(--gray-50);">
+                        <input type="checkbox" id="priorityRotateChk" style="width:16px;height:16px;cursor:pointer;">
+                        <span><strong>Rotate priority each <span id="priorityRotateDayName">day</span></strong> — alternates which assistant is picked first across consecutive occurrences. Continues onwards across months.</span>
+                    </label>
                     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
                         <button class="btn btn-success" id="savePriorityBtn" onclick="savePriorityOrder()">Save This Day</button>
                         <button class="btn btn-outline btn-sm" onclick="applyPriorityToWeekdays()">Apply to Tue–Fri</button>
@@ -1182,6 +1186,35 @@ function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
 
 // Resolve a staff member's effective priority for a given date.
 // Per-DOW override takes precedence; falls back to global priority; falls back to 100.
+// 0-indexed nth occurrence of this DOW since Jan 1 of the same year. Used for assistant
+// priority rotation: rotate_dows DOWs cycle their priority list per occurrence so it
+// "continues onwards always" instead of resetting per month.
+function _annualDowIndex(dateStr) {
+    var p = dateStr.split('-');
+    var year = +p[0], month = +p[1] - 1, dayNum = +p[2];
+    var d = new Date(year, month, dayNum);
+    var dow = d.getDay();
+    var firstOfYear = new Date(year, 0, 1);
+    var firstDow = firstOfYear.getDay();
+    var daysToFirst = (dow - firstDow + 7) % 7; // days from Jan 1 to the first occurrence of dow
+    var firstOccDayOfYear = daysToFirst + 1;    // 1-indexed
+    var thisDayOfYear = Math.round((d - firstOfYear) / 86400000) + 1;
+    return Math.floor((thisDayOfYear - firstOccDayOfYear) / 7);
+}
+
+// Apply rotation to an array if the DOW is in rotate_dows. Rotates by N positions where
+// N = annual occurrence index of the date's DOW.
+function _maybeRotate(arr, dateStr) {
+    if (!arr || arr.length < 2) return arr;
+    var p = dateStr.split('-');
+    var dow = new Date(+p[0], +p[1]-1, +p[2]).getDay();
+    var rotateDows = settingsCache.rotate_dows || [];
+    if (rotateDows.indexOf(dow) < 0) return arr;
+    var idx = _annualDowIndex(dateStr);
+    var k = ((idx % arr.length) + arr.length) % arr.length;
+    return arr.slice(k).concat(arr.slice(0, k));
+}
+
 // Count weekend days (Sat or Sun) before this date in the same month.
 // Used to determine the alternating weekend rotation slot.
 function _weekendSlotIndex(dateStr) {
@@ -1295,6 +1328,8 @@ function computeRosterForDate(dateStr) {
         }).sort(function(a, b) {
             return (effectivePriority(a, dateStr) - effectivePriority(b, dateStr)) || a.name.localeCompare(b.name);
         });
+        // Rotate the priority list for DOWs configured to rotate (e.g. Sundays)
+        assists = _maybeRotate(assists, dateStr);
         var picked = assists.slice(0, needed);
         picked.forEach(function(a, i) {
             var slotKey = String(i + 1);
@@ -2322,7 +2357,8 @@ async function loadSettings(force) {
                 default_class_times: dct,
                 assistant_slot_times: r.data.assistant_slot_times || { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' },
                 assistant_slot_times_by_start: normStbs,
-                weekend_first_sat_ht_id: r.data.weekend_first_sat_ht_id || null
+                weekend_first_sat_ht_id: r.data.weekend_first_sat_ht_id || null,
+                rotate_dows: Array.isArray(r.data.rotate_dows) ? r.data.rotate_dows : []
             };
             _autoRosterRules = settingsCache;
         }
@@ -2508,6 +2544,8 @@ async function generateAutoRosterPreview() {
             .sort(function(a, b) {
                 return (effectivePriority(a, ds) - effectivePriority(b, ds)) || a.name.localeCompare(b.name);
             });
+        // Rotate the priority list for DOWs configured to rotate
+        dayAssists = _maybeRotate(dayAssists, ds);
         var availableAssists = dayAssists.filter(function(a) { return !_isStaffMarkedUnavailable(a, ds); });
         var picked = availableAssists.slice(0, needed);
         var pickedIds = picked.map(function(a) { return a.id; });
@@ -4452,7 +4490,6 @@ function renderPriorityDowSelector() {
 
 function selectPriorityDow(dow) {
     _priorityDow = dow;
-    // Snapshot priority + exclusion state for this DOW
     _priorityWorking = {};
     _priorityExcludedThisDow = new Set();
     var assists = staffList.filter(function(s) { return !s.is_head_trainer; });
@@ -4462,6 +4499,14 @@ function selectPriorityDow(dow) {
         _priorityWorking[s.id] = parseInt(v, 10);
         if (_isExcludedFromDow(s, dow)) _priorityExcludedThisDow.add(s.id);
     });
+    // Rotate-this-day checkbox state
+    var rotateChk = document.getElementById('priorityRotateChk');
+    if (rotateChk) {
+        var rd = settingsCache.rotate_dows || [];
+        rotateChk.checked = rd.indexOf(dow) >= 0;
+    }
+    var rotateName = document.getElementById('priorityRotateDayName');
+    if (rotateName) rotateName.textContent = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
     renderPriorityDowSelector();
     renderPriorityList();
 }
@@ -4599,13 +4644,33 @@ async function _commitPriorityToDows(dowList) {
     return true;
 }
 
+async function _commitRotateFlagForDows(dowList, isRotating) {
+    var current = (settingsCache.rotate_dows || []).slice();
+    dowList.forEach(function(d) {
+        if (isRotating) {
+            if (current.indexOf(d) < 0) current.push(d);
+        } else {
+            current = current.filter(function(x) { return x !== d; });
+        }
+    });
+    current.sort(function(a, b) { return a - b; });
+    var res = await sb.from('cbd_auto_roster_rules').update({ rotate_dows: current }).eq('id', 1);
+    if (res.error) { showToast('Error saving rotate flag: ' + res.error.message); return false; }
+    settingsCache.rotate_dows = current;
+    return true;
+}
+
 async function savePriorityOrder() {
     var btn = document.getElementById('savePriorityBtn');
     setLoading(btn, true);
     var ok = await _commitPriorityToDows([_priorityDow]);
+    if (ok) {
+        var rotateOn = document.getElementById('priorityRotateChk').checked;
+        await _commitRotateFlagForDows([_priorityDow], rotateOn);
+    }
     setLoading(btn, false);
     if (!ok) return;
-    selectPriorityDow(_priorityDow); // re-snapshot from fresh data
+    selectPriorityDow(_priorityDow);
     renderStaffGrid();
     showToast('Priority order saved for ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_priorityDow]);
 }
@@ -4618,7 +4683,14 @@ async function applyPriorityToWeekdays() {
     });
     if (!ok) return;
     var done = await _commitPriorityToDows([2,3,4,5]);
-    if (done) { await loadStaff({ force: true }); selectPriorityDow(_priorityDow); renderStaffGrid(); showToast('Applied to Tue–Fri'); }
+    if (done) {
+        var rotateOn = document.getElementById('priorityRotateChk').checked;
+        await _commitRotateFlagForDows([2,3,4,5], rotateOn);
+        await loadStaff({ force: true });
+        selectPriorityDow(_priorityDow);
+        renderStaffGrid();
+        showToast('Applied to Tue–Fri');
+    }
 }
 
 async function applyPriorityToAllDays() {
@@ -4629,7 +4701,14 @@ async function applyPriorityToAllDays() {
     });
     if (!ok) return;
     var done = await _commitPriorityToDows([0,1,2,3,4,5,6]);
-    if (done) { await loadStaff({ force: true }); selectPriorityDow(_priorityDow); renderStaffGrid(); showToast('Applied to all days'); }
+    if (done) {
+        var rotateOn = document.getElementById('priorityRotateChk').checked;
+        await _commitRotateFlagForDows([0,1,2,3,4,5,6], rotateOn);
+        await loadStaff({ force: true });
+        selectPriorityDow(_priorityDow);
+        renderStaffGrid();
+        showToast('Applied to all days');
+    }
 }
 
 function renderStaffGrid() {
