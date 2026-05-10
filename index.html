@@ -1176,6 +1176,114 @@ function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
 
 // Resolve a staff member's effective priority for a given date.
 // Per-DOW override takes precedence; falls back to global priority; falls back to 100.
+// Compute who would be rostered on a given date based on patterns + priorities + class info.
+// Returns array of pseudo-roster entries: { staff_id, staff (full obj), day_role, status, start_time, end_time, source: 'auto' }.
+// Used as a FALLBACK when cbd_availability has no explicit entries for the date.
+function computeRosterForDate(dateStr) {
+    var ci = getDayClass(dateStr);
+    var hasStudents = ci && ((ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0);
+    if (!hasStudents) return [];
+
+    var p = dateStr.split('-');
+    var year = +p[0], month = +p[1] - 1, dayNum = +p[2];
+    var d = new Date(year, month, dayNum);
+    var dow = d.getDay();
+    var times = getEffectiveClassTimes(dateStr);
+    var slotTimes = _slotTimesForAmStart(times.am_start);
+
+    // Pick HT — round-robin within the month, by-DOW, seeded by priority order
+    var hts = staffList.filter(function(s) {
+        return s.is_head_trainer && isStaffAvailableOnDate(s, dateStr) && !_isExcludedFromDow(s, dow);
+    }).sort(function(a, b) {
+        return ((a.priority || 100) - (b.priority || 100)) || a.name.localeCompare(b.name);
+    });
+    // Count prior occurrences of this DOW in the same month with class info — gives us the rotation index.
+    var priorIndex = 0;
+    for (var i = 1; i < dayNum; i++) {
+        var earlier = new Date(year, month, i);
+        if (earlier.getDay() !== dow) continue;
+        var ds = formatDate(earlier);
+        var ec = getDayClass(ds);
+        if (ec && ((ec.students_am || 0) > 0 || (ec.students_pm || 0) > 0)) priorIndex++;
+    }
+
+    var entries = [];
+    if (hts.length > 0) {
+        var ht = hts[priorIndex % hts.length];
+        entries.push({
+            staff_id: ht.id, staff: ht,
+            name: ht.name, color: ht.color,
+            day_role: 'head_trainer', status: 'available',
+            start_time: times.am_start || null,
+            end_time: times.pm_end || times.am_end || null,
+            source: 'auto'
+        });
+    }
+
+    // Pick assistants — by per-DOW priority, filter unavailable + excluded
+    var rules = settingsCache;
+    var needed = _assistantsNeededForClass(ci, rules);
+    if (needed > 0) {
+        var assists = staffList.filter(function(s) {
+            return !s.is_head_trainer && isStaffAvailableOnDate(s, dateStr) && !_isExcludedFromDow(s, dow);
+        }).sort(function(a, b) {
+            return (effectivePriority(a, dateStr) - effectivePriority(b, dateStr)) || a.name.localeCompare(b.name);
+        });
+        var picked = assists.slice(0, needed);
+        picked.forEach(function(a, i) {
+            var slotKey = String(i + 1);
+            var slotStart = _trimTime(slotTimes[slotKey]) || times.am_start || null;
+            entries.push({
+                staff_id: a.id, staff: a,
+                name: a.name, color: a.color,
+                day_role: 'assistant', status: 'available',
+                start_time: slotStart,
+                end_time: times.pm_end || times.am_end || null,
+                source: 'auto'
+            });
+        });
+    }
+
+    return entries;
+}
+
+// Resolver: returns explicit cbd_availability entries when they exist, otherwise computed.
+// Each entry has the fields a roster row would have, plus a `source: 'manual'|'auto'` marker.
+function getRosterForDate(dateStr) {
+    var explicit = [];
+    staffList.forEach(function(s) {
+        var e = getAvailability(s.id, dateStr);
+        if (e) {
+            explicit.push({
+                staff_id: s.id, staff: s,
+                name: s.name, color: s.color,
+                day_role: e.day_role || 'assistant',
+                status: e.status,
+                start_time: e.start_time,
+                end_time: e.end_time,
+                note: e.note,
+                source: 'manual'
+            });
+        }
+    });
+    if (explicit.length > 0) return explicit;
+    return computeRosterForDate(dateStr);
+}
+
+// Single-staff lookup. Returns a roster entry if this staff is rostered that day (manual or auto).
+function getEffectiveAvailability(staffId, dateStr) {
+    var explicit = getAvailability(staffId, dateStr);
+    if (explicit) return explicit;
+    var computed = computeRosterForDate(dateStr);
+    var match = computed.find(function(e) { return e.staff_id === staffId; });
+    return match ? {
+        staff_id: match.staff_id, date: dateStr,
+        status: match.status, day_role: match.day_role,
+        start_time: match.start_time, end_time: match.end_time,
+        _computed: true
+    } : null;
+}
+
 function effectivePriority(staff, dateStr) {
     if (!staff) return 100;
     if (dateStr && staff.priorities_by_dow) {
@@ -1685,7 +1793,7 @@ function renderTodayHero() {
     // Working today
     var working = [];
     staffList.forEach(function(s) {
-        var e = getAvailability(s.id, todayStr);
+        var e = getEffectiveAvailability(s.id, todayStr);
         if (e && (e.status === 'available' || e.status === 'partial')) {
             working.push({ name: s.name, color: s.color, isHT: e.day_role === 'head_trainer' });
         }
@@ -1730,15 +1838,14 @@ function renderCalendar() {
     for (var i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>';
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = currentYear + '-' + String(currentMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-        var entry = getAvailability(selectedStaffId, dateStr);
+        var roster = getRosterForDate(dateStr);
+        var entry = roster.find(function(r) { return r.staff_id === selectedStaffId; });
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
-        // Conflict: rostered but pattern/override says unavailable
         var selStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
         var rosterConflict = selStaff && entry && (entry.status === 'available' || entry.status === 'partial') && !isStaffAvailableOnDate(selStaff, dateStr);
         if (entry) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
-        // Day header: number + role badge
         var badgeHtml = '';
         if (entry) {
             if (entry.day_role === 'head_trainer') badgeHtml = '<span class="cal-cell-badge">HT</span>';
@@ -1746,7 +1853,6 @@ function renderCalendar() {
         }
         var dayHeader = '<div class="day-number"><span>' + day + '</span>' + badgeHtml + '</div>';
 
-        // Compact class line (time only — full info on click)
         var ci = getDayClass(dateStr);
         var rosterTimes = getEffectiveClassTimes(dateStr);
         var timeHtml = '';
@@ -1760,15 +1866,11 @@ function renderCalendar() {
         if (ci && ci.capped_pm) caps.push('PM');
         if (caps.length > 0) capHtml = '<div class="cal-cell-caps"><span class="capped-badge">' + caps.join('+') + '</span></div>';
 
-        // Staff dots — compact, color-coded
-        var pips = [];
-        staffList.forEach(function(s) {
-            var se = getAvailability(s.id, dateStr);
-            if (se && (se.status === 'available' || se.status === 'partial')) {
-                var ht = se.day_role === 'head_trainer';
-                var firstName = escHtml(s.name.split(' ')[0]);
-                pips.push('<span class="staff-pip' + (ht ? ' ht' : '') + '" style="background:' + s.color + ';" title="' + (ht ? 'HT ' : '') + firstName + '"></span>');
-            }
+        // Staff dots — show all rostered (manual or computed)
+        var pips = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; }).map(function(r) {
+            var ht = r.day_role === 'head_trainer';
+            var firstName = escHtml(r.name.split(' ')[0]);
+            return '<span class="staff-pip' + (ht ? ' ht' : '') + '" style="background:' + r.color + ';" title="' + (ht ? 'HT ' : '') + firstName + '"></span>';
         });
         var pipsHtml = pips.length > 0 ? '<div class="cal-cell-staff-dots">' + pips.join('') + '</div>' : '';
 
@@ -2998,13 +3100,11 @@ function renderOverview() {
     for (var i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>';
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-        var entries = [];
-        staffList.forEach(function(s) {
-            var e = getAvailability(s.id, dateStr);
-            if (e) {
-                var showUnavail = (e.status === 'available' || e.status === 'partial') && !isStaffAvailableOnDate(s, dateStr);
-                entries.push({ name: s.name, color: s.color, status: showUnavail ? 'unavailable' : e.status, day_role: e.day_role || 'assistant' });
-            }
+        var roster = getRosterForDate(dateStr);
+        var entries = roster.map(function(r) {
+            var staffObj = r.staff || staffList.find(function(s) { return s.id === r.staff_id; });
+            var showUnavail = (r.status === 'available' || r.status === 'partial') && staffObj && !isStaffAvailableOnDate(staffObj, dateStr);
+            return { name: r.name, color: r.color, status: showUnavail ? 'unavailable' : r.status, day_role: r.day_role || 'assistant' };
         });
         var ci = getDayClass(dateStr);
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
@@ -3680,7 +3780,7 @@ function renderMyRoster() {
     for (var i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>';
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = myRosterYear + '-' + String(myRosterMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-        var entry = getAvailability(myStaffMember.id, dateStr);
+        var entry = getEffectiveAvailability(myStaffMember.id, dateStr);
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
         if (entry && (entry.status === 'available' || entry.status === 'partial')) cls += ' ' + entry.status;
@@ -3760,14 +3860,10 @@ function _shiftSection(label, dateLabel, dateStr, ci, entry, others, isToday) {
 }
 
 function _gatherOthers(dateStr, excludeStaffId) {
-    var others = [];
-    staffList.forEach(function(s) {
-        if (s.id === excludeStaffId) return;
-        var se = getAvailability(s.id, dateStr);
-        if (se && (se.status === 'available' || se.status === 'partial')) {
-            others.push({ name: s.name, color: s.color, isHT: se.day_role === 'head_trainer' });
-        }
-    });
+    var roster = getRosterForDate(dateStr);
+    var others = roster
+        .filter(function(r) { return r.staff_id !== excludeStaffId && (r.status === 'available' || r.status === 'partial'); })
+        .map(function(r) { return { name: r.name, color: r.color, isHT: r.day_role === 'head_trainer' }; });
     others.sort(function(a, b) { return (b.isHT ? 1 : 0) - (a.isHT ? 1 : 0); });
     return others;
 }
@@ -3780,7 +3876,7 @@ async function renderNextShiftHero() {
     var dayName = function(d) { return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; };
 
     // Today's data
-    var todayEntry = getAvailability(myStaffMember.id, todayStr);
+    var todayEntry = getEffectiveAvailability(myStaffMember.id, todayStr);
     var todayClass = getDayClass(todayStr);
     var todayLabel = dayName(todayDate) + ', ' + todayDate.getDate() + ' ' + MONTH_NAMES[todayDate.getMonth()];
 
@@ -4971,18 +5067,12 @@ async function openDayDetail(dateStr) {
     var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
     document.getElementById('dayDetailTitle').textContent = dayName + ', ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1] + ' ' + p[0];
 
-    // Gather all roster entries for this date
-    var rostered = [];
-    staffList.forEach(function(s) {
-        var e = getAvailability(s.id, dateStr);
-        if (e && (e.status === 'available' || e.status === 'partial')) {
-            rostered.push({ name: s.name, day_role: e.day_role || 'assistant', color: s.color, status: e.status, start_time: e.start_time, end_time: e.end_time, note: e.note });
-        }
-    });
-
-    // Find head trainers and assistants based on day_role from availability
+    // Gather roster entries — explicit cbd_availability if any, otherwise computed from patterns.
+    var roster = getRosterForDate(dateStr);
+    var rostered = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; });
     var trainers = rostered.filter(function(r) { return r.day_role === 'head_trainer'; });
     var assistants = rostered.filter(function(r) { return r.day_role !== 'head_trainer'; });
+    var rosterIsAuto = rostered.length > 0 && rostered.every(function(r) { return r.source === 'auto'; });
 
     // Get class info from day_classes table
     var classInfo = getDayClass(dateStr);
@@ -5019,6 +5109,7 @@ async function openDayDetail(dateStr) {
     // Read-only staff list (auto-rostered — no manual toggles)
     if (rostered.length > 0) {
         html += '<div class="detail-section">';
+        if (rosterIsAuto) html += '<div style="font-size:0.75rem;color:var(--gray-500);font-style:italic;margin-bottom:8px;">Showing the auto-roster based on patterns + priorities. Not yet committed to the database — use Auto-roster (Schedule → Team) to lock in.</div>';
         html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
         if (trainers.length > 0) {
             trainers.forEach(function(t) {
@@ -5044,7 +5135,7 @@ async function openDayDetail(dateStr) {
         }
         html += '</div>';
     } else {
-        html += '<div class="detail-section"><div class="detail-no-data">No one is rostered for this day. Use Auto-roster (Schedule → Team) to fill from availability.</div></div>';
+        html += '<div class="detail-section"><div class="detail-no-data">No staff would be rostered for this day. Check student counts and weekly availability patterns.</div></div>';
     }
 
     // Assistant availability submitted
