@@ -553,7 +553,7 @@
             </div>
 
             <div class="card" style="margin-top:14px;">
-                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size. The bigger of AM and PM student counts is used.</div></div></div>
+                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size, and which Head Trainer kicks off the weekend rotation.</div></div></div>
                 <div class="card-body">
                     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;">
                         <label style="display:flex;align-items:center;gap:8px;">Need 1 assistant when class &ge;
@@ -562,6 +562,12 @@
                         <label style="display:flex;align-items:center;gap:8px;">Need 2 assistants when class &ge;
                             <input type="number" class="form-control" id="settingsRule2" min="1" style="width:80px;">
                         </label>
+                    </div>
+                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:14px;">
+                        <label style="display:flex;align-items:center;gap:8px;">Who works the first Saturday of each month?
+                            <select class="form-control" id="settingsFirstSatHt" style="width:auto;min-width:160px;"></select>
+                        </label>
+                        <span style="font-size:0.78rem;color:var(--gray-500);">The other Head Trainer takes that weekend's Sunday. Each subsequent weekend swaps.</span>
                     </div>
                     <button class="btn btn-success" id="saveRulesBtn" onclick="saveRosterRulesFromSettings()" style="margin-top:14px;">Save Rules</button>
                 </div>
@@ -1176,6 +1182,50 @@ function isTrainer() { return isActualTrainer() && !viewAsAssistant; }
 
 // Resolve a staff member's effective priority for a given date.
 // Per-DOW override takes precedence; falls back to global priority; falls back to 100.
+// Count weekend days (Sat or Sun) before this date in the same month.
+// Used to determine the alternating weekend rotation slot.
+function _weekendSlotIndex(dateStr) {
+    var p = dateStr.split('-');
+    var year = +p[0], month = +p[1] - 1, dayNum = +p[2];
+    var d = new Date(year, month, dayNum);
+    var dow = d.getDay();
+    if (dow !== 0 && dow !== 6) return -1;
+    var count = 0;
+    for (var i = 1; i < dayNum; i++) {
+        var ed = new Date(year, month, i);
+        if (ed.getDay() === 0 || ed.getDay() === 6) count++;
+    }
+    return count;
+}
+
+// Pick the HT for a weekend day under the alternating rotation:
+//   Weekend 1 (slot 0,1): A=Sat, B=Sun
+//   Weekend 2 (slot 2,3): B=Sat, A=Sun (swap)
+//   Weekend 3 (slot 4,5): A=Sat, B=Sun (swap back)
+//   ...
+// "A" is the HT configured as the first-Sat HT (or first by priority if none configured).
+// `availHTs` is sorted by priority. Returns one HT or null.
+function _pickHTForWeekend(availHTs, dateStr) {
+    if (!availHTs || availHTs.length === 0) return null;
+    if (availHTs.length === 1) return availHTs[0];
+
+    var firstSatId = settingsCache.weekend_first_sat_ht_id || (availHTs[0] && availHTs[0].id);
+    var htA = availHTs.find(function(h) { return h.id === firstSatId; }) || availHTs[0];
+    var htB = availHTs.find(function(h) { return h !== htA; }) || htA;
+
+    var slotIndex = _weekendSlotIndex(dateStr);
+    if (slotIndex < 0) return htA;
+    var p = dateStr.split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var isSat = d.getDay() === 6;
+    var weekendNum = Math.floor(slotIndex / 2);
+
+    var aPicks;
+    if (weekendNum % 2 === 0) aPicks = isSat;       // even weekends: A=Sat, B=Sun
+    else aPicks = !isSat;                            // odd weekends: swap
+    return aPicks ? htA : htB;
+}
+
 // Compute who would be rostered on a given date based on patterns + priorities + class info.
 // Returns array of pseudo-roster entries: { staff_id, staff (full obj), day_role, status, start_time, end_time, source: 'auto' }.
 // Used as a FALLBACK when cbd_availability has no explicit entries for the date.
@@ -1209,13 +1259,14 @@ function computeRosterForDate(dateStr) {
 
     // Pick HT(s):
     //   Weekday → all available HTs are rostered (no rotation)
-    //   Weekend → rotate one HT (priority + per-month per-DOW counter)
+    //   Weekend → alternating rotation: HT A does Sat one weekend & Sun the next; HT B does the opposite.
     var entries = [];
     var rosteredHTs = [];
     if (hts.length > 0) {
         var isWeekend = (dow === 0 || dow === 6);
         if (isWeekend) {
-            rosteredHTs = [hts[priorIndex % hts.length]];
+            var picked = _pickHTForWeekend(hts, dateStr);
+            if (picked) rosteredHTs = [picked];
         } else {
             rosteredHTs = hts.slice();
         }
@@ -2096,6 +2147,18 @@ function renderSettingsCardsInClasses() {
 
     document.getElementById('settingsRule1').value = settingsCache.min_students_for_one_assistant;
     document.getElementById('settingsRule2').value = settingsCache.min_students_for_two_assistants;
+
+    // First Saturday HT dropdown
+    var firstSatSel = document.getElementById('settingsFirstSatHt');
+    if (firstSatSel) {
+        var hts = staffList.filter(function(s) { return s.is_head_trainer; }).sort(function(a, b) {
+            return ((a.priority || 100) - (b.priority || 100)) || a.name.localeCompare(b.name);
+        });
+        var current = settingsCache.weekend_first_sat_ht_id || (hts[0] && hts[0].id) || '';
+        firstSatSel.innerHTML = hts.map(function(h) {
+            return '<option value="' + h.id + '"' + (h.id === current ? ' selected' : '') + '>' + escHtml(h.name) + '</option>';
+        }).join('');
+    }
 }
 
 async function saveSlotTimes() {
@@ -2162,13 +2225,25 @@ async function saveRosterRulesFromSettings() {
     var r2 = parseInt(document.getElementById('settingsRule2').value, 10);
     if (isNaN(r1) || isNaN(r2) || r1 < 1 || r2 < 1) { showToast('Invalid rule values'); return; }
     if (r2 < r1) { showToast('Two-assistant threshold must be >= one-assistant threshold'); return; }
+    var firstSatSel = document.getElementById('settingsFirstSatHt');
+    var firstSatId = firstSatSel ? (firstSatSel.value || null) : null;
     var btn = document.getElementById('saveRulesBtn');
     setLoading(btn, true);
-    var res = await sb.from('cbd_auto_roster_rules').update({ min_students_for_one_assistant: r1, min_students_for_two_assistants: r2, updated_by: currentUser.id, updated_at: new Date().toISOString() }).eq('id', 1);
+    var res = await sb.from('cbd_auto_roster_rules').update({
+        min_students_for_one_assistant: r1,
+        min_students_for_two_assistants: r2,
+        weekend_first_sat_ht_id: firstSatId,
+        updated_by: currentUser.id,
+        updated_at: new Date().toISOString()
+    }).eq('id', 1);
     setLoading(btn, false);
     if (res.error) { showToast('Error: ' + res.error.message); return; }
     settingsCache.min_students_for_one_assistant = r1;
     settingsCache.min_students_for_two_assistants = r2;
+    settingsCache.weekend_first_sat_ht_id = firstSatId;
+    // If we're on the Schedule tab, the rotation may have shifted — refresh
+    if (currentTab === 'roster') refreshTrainerUI();
+    if (currentTab === 'overview') renderOverview();
     showToast('Rules saved');
 }
 
@@ -2246,7 +2321,8 @@ async function loadSettings(force) {
                 min_students_for_two_assistants: r.data.min_students_for_two_assistants,
                 default_class_times: dct,
                 assistant_slot_times: r.data.assistant_slot_times || { '1': '08:30', '2': '09:00', '3': '09:30', '4': '10:00' },
-                assistant_slot_times_by_start: normStbs
+                assistant_slot_times_by_start: normStbs,
+                weekend_first_sat_ht_id: r.data.weekend_first_sat_ht_id || null
             };
             _autoRosterRules = settingsCache;
         }
@@ -2408,8 +2484,8 @@ async function generateAutoRosterPreview() {
         }
 
         // Pick HT(s):
-        //   Weekday → all available HTs are rostered (Cameron AND Chichi if both available)
-        //   Weekend → rotate one HT (priority + per-month per-DOW counter)
+        //   Weekday → all available HTs are rostered
+        //   Weekend → alternating rotation (Cameron Sat / Chichi Sun, swapped next weekend, etc.)
         var dayDow = d.getDay();
         var availHTs = hts.filter(function(h) {
             return !_isStaffMarkedUnavailable(h, ds) && !_isExcludedFromDow(h, dayDow);
@@ -2417,10 +2493,8 @@ async function generateAutoRosterPreview() {
         var htIds = [];
         if (availHTs.length > 0) {
             if (dayDow === 0 || dayDow === 6) {
-                var ymKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + dayDow;
-                var counter = htMonthlyCounters[ymKey] || 0;
-                htIds = [availHTs[counter % availHTs.length].id];
-                htMonthlyCounters[ymKey] = counter + 1;
+                var pickedHT = _pickHTForWeekend(availHTs, ds);
+                if (pickedHT) htIds = [pickedHT.id];
             } else {
                 htIds = availHTs.map(function(h) { return h.id; });
             }
