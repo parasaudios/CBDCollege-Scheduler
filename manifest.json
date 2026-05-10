@@ -7,7 +7,7 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
-  "orientation": "any",
+  "orientation": "natural",
   "background_color": "#f9fafb",
   "theme_color": "#2563eb",
   "categories": ["productivity", "business"],
