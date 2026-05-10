@@ -134,25 +134,35 @@
         .calendar-day.skeleton { background: var(--gray-50); border-color: var(--gray-100); cursor: default; }
         .skel-bar { display: inline-block; background: linear-gradient(90deg, var(--gray-200) 0%, var(--gray-100) 50%, var(--gray-200) 100%); height: 10px; border-radius: 3px; animation: skel-shimmer 1.4s ease-in-out infinite; }
 
-        /* Calendar cell content — simplified for clarity */
-        .calendar-day .day-number { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-        .cal-cell-badge { background: var(--primary); color: white; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.3px; }
+        /* Calendar cell content — readable, scannable */
+        .calendar-day { padding: 6px 8px; }
+        .calendar-day .day-number { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 0.95rem; font-weight: 700; color: var(--gray-800); }
+        .calendar-day.today .day-number { color: var(--primary); }
+        .cal-cell-badge { background: var(--primary); color: white; padding: 2px 7px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
         .cal-cell-badge.assistant { background: var(--gray-400); }
-        .cal-cell-time { width: 100%; text-align: center; margin-top: 4px; font-weight: 600; color: var(--gray-700); font-size: 0.78rem; }
-        .cal-cell-students { width: 100%; text-align: center; color: var(--gray-500); font-size: 0.7rem; margin-top: 1px; }
-        .cal-cell-staff-dots { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin-top: auto; padding-top: 4px; }
-        .cal-cell-staff-dots .staff-pip { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-        .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
 
-        /* Staff list inside calendar cells (names + small colour chip) */
-        .cal-cell-staff-list { width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 4px; }
-        .cal-cell-staff-list .cal-cell-staff-row { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; line-height: 1.25; color: var(--gray-700); padding: 1px 2px; border-radius: 3px; }
-        .cal-cell-staff-list .cal-cell-staff-row.ht { font-weight: 700; color: var(--gray-800); }
+        /* Class info block */
+        .cal-cell-class-info { width: 100%; text-align: center; margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(0,0,0,0.08); }
+        .cal-cell-class-info .time { font-weight: 600; color: var(--gray-800); font-size: 0.82rem; letter-spacing: 0.2px; }
+        .cal-cell-class-info .students { color: var(--gray-600); font-size: 0.72rem; margin-top: 2px; }
+        .cal-cell-class-info .students .num { font-weight: 700; color: var(--gray-700); }
+        .cal-cell-class-info .caps { margin-top: 3px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+
+        /* Staff list */
+        .cal-cell-staff-list { width: 100%; display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+        .cal-cell-staff-list .cal-cell-staff-row { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; line-height: 1.25; color: var(--gray-700); padding: 1px 0; }
+        .cal-cell-staff-list .cal-cell-staff-row.ht { font-weight: 700; color: var(--gray-900); }
         .cal-cell-staff-list .staff-pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .cal-cell-staff-list .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
         .cal-cell-staff-list .staff-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .cal-cell-caps { width: 100%; text-align: center; margin-top: 2px; }
-        .cal-cell-caps .capped-badge { font-size: 0.55rem; padding: 1px 4px; }
+        .cal-cell-caps .capped-badge { font-size: 0.58rem; padding: 1px 5px; }
+        /* Legacy classes kept so other render paths don't break */
+        .cal-cell-time { width: 100%; text-align: center; margin-top: 4px; font-weight: 600; color: var(--gray-800); font-size: 0.82rem; }
+        .cal-cell-students { width: 100%; text-align: center; color: var(--gray-600); font-size: 0.72rem; margin-top: 2px; }
+        .cal-cell-staff-dots { width: 100%; display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin-top: auto; padding-top: 4px; }
+        .cal-cell-staff-dots .staff-pip { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 2px var(--primary); }
 
         /* Today snapshot / Next shift hero card */
         .hero-card { background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%); color: white; border-radius: 12px; padding: 18px 22px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
@@ -330,9 +340,11 @@
             .cal-cell-students { font-size: 0.55rem; }
             .cal-cell-staff-dots .staff-pip { width: 6px; height: 6px; }
             .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
-            .cal-cell-staff-list .cal-cell-staff-row { font-size: 0.6rem; gap: 3px; }
+            .cal-cell-staff-list .cal-cell-staff-row { font-size: 0.65rem; gap: 4px; }
             .cal-cell-staff-list .staff-pip { width: 6px; height: 6px; }
             .cal-cell-staff-list .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
+            .cal-cell-class-info .time { font-size: 0.7rem; }
+            .cal-cell-class-info .students { font-size: 0.62rem; }
             .hero-card { padding: 14px 16px; }
             .hero-card-date { font-size: 1.15rem; }
             .hero-card-row { gap: 16px; margin-top: 10px; }
@@ -1979,18 +1991,19 @@ function renderCalendar() {
         }
         var dayHeader = '<div class="day-number"><span>' + day + '</span>' + badgeHtml + '</div>';
 
-        var ci = getDayClass(dateStr);
+        var info = getEffectiveClassInfo(dateStr);
         var rosterTimes = getEffectiveClassTimes(dateStr);
-        var timeHtml = '';
         var rosterRange = getClassDayRange(dateStr);
-        if (rosterRange && (rosterTimes.am_start || rosterTimes.pm_start)) timeHtml = '<div class="cal-cell-time">' + rosterRange + '</div>';
-        var stuHtml = '';
-        if (ci && (ci.students_am || ci.students_pm)) stuHtml = '<div class="cal-cell-students">' + (ci.students_am||0) + '·' + (ci.students_pm||0) + '</div>';
-        var capHtml = '';
+        var classInfoParts = [];
+        if (rosterRange && (rosterTimes.am_start || rosterTimes.pm_start)) classInfoParts.push('<div class="time">' + rosterRange + '</div>');
+        if ((info.students_am || 0) > 0 || (info.students_pm || 0) > 0) {
+            classInfoParts.push('<div class="students">AM <span class="num">' + (info.students_am||0) + '</span> · PM <span class="num">' + (info.students_pm||0) + '</span></div>');
+        }
         var caps = [];
-        if (ci && ci.capped_am) caps.push('AM');
-        if (ci && ci.capped_pm) caps.push('PM');
-        if (caps.length > 0) capHtml = '<div class="cal-cell-caps"><span class="capped-badge">' + caps.join('+') + '</span></div>';
+        if (info.capped_am) caps.push('AM');
+        if (info.capped_pm) caps.push('PM');
+        if (caps.length > 0) classInfoParts.push('<div class="caps"><span class="capped-badge">' + caps.join(' & ') + ' CAP</span></div>');
+        var classBlockHtml = classInfoParts.length > 0 ? '<div class="cal-cell-class-info">' + classInfoParts.join('') + '</div>' : '';
 
         // Staff names with small color chip — HTs first, then assistants
         var rosterEntries = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; });
@@ -2008,9 +2021,9 @@ function renderCalendar() {
                 '<span class="staff-name">' + firstName + '</span>' +
             '</div>';
         });
-        var pipsHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
+        var staffHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
 
-        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + timeHtml + stuHtml + capHtml + pipsHtml + '</div>';
+        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + '</div>';
     }
     grid.innerHTML = html;
 }
