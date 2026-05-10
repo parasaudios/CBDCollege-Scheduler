@@ -4409,9 +4409,19 @@ function renderPriorityList() {
     if (!container) return;
     var DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-    var allAssists = staffList.filter(function(s) { return !s.is_head_trainer; }).slice();
+    // Only show assistants whose weekly availability pattern includes this DOW.
+    // Staff whose pattern says they don't work this day are filtered out entirely.
+    var allAssists = staffList.filter(function(s) {
+        if (s.is_head_trainer) return false;
+        var dows = _availableDowsForStaff(s);
+        return dows.indexOf(_priorityDow) >= 0;
+    }).slice();
     if (allAssists.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding:24px;"><div>No assistants — add staff members and unset their "Eligible Head Trainer" flag to manage priority.</div></div>';
+        var DOW_FULL_LOCAL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        container.innerHTML = '<div class="empty-state" style="padding:24px;color:var(--gray-500);">' +
+            '<div>No assistants are available on ' + DOW_FULL_LOCAL[_priorityDow] + '.</div>' +
+            '<div style="font-size:0.82rem;margin-top:6px;">Update their weekly availability pattern in Staff → Availability to include this day.</div>' +
+            '</div>';
         return;
     }
 
@@ -4463,7 +4473,12 @@ function renderPriorityList() {
 }
 
 function movePriority(staffId, delta) {
-    var visible = staffList.filter(function(s) { return !s.is_head_trainer && !_priorityExcludedThisDow.has(s.id); }).slice();
+    var visible = staffList.filter(function(s) {
+        if (s.is_head_trainer) return false;
+        if (_priorityExcludedThisDow.has(s.id)) return false;
+        var dows = _availableDowsForStaff(s);
+        return dows.indexOf(_priorityDow) >= 0;
+    }).slice();
     visible.sort(function(a, b) {
         return ((_priorityWorking[a.id] != null ? _priorityWorking[a.id] : 100) - (_priorityWorking[b.id] != null ? _priorityWorking[b.id] : 100)) || a.name.localeCompare(b.name);
     });
