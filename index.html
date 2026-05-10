@@ -462,10 +462,20 @@
 
         <!-- TRAINER: Assistant Availability Tab -->
         <div id="tab-assistavail" class="tab-content" style="display:none;">
+            <div class="card" style="margin-bottom:14px;">
+                <div class="card-header">
+                    <h2>Weekly Availability Patterns</h2>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Each staff member's default weekly availability. Click any toggle to flip; Save when you're done.</div>
+                </div>
+                <div class="card-body">
+                    <div id="staffPatternsEditor" style="display:flex;flex-direction:column;gap:10px;"></div>
+                    <button class="btn btn-success" id="saveStaffPatternsBtn" onclick="saveStaffPatterns()" style="margin-top:14px;">Save All Pattern Changes</button>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-header">
-                    <h2>Assistant Availability</h2>
-                    <div style="font-size:0.8rem;color:var(--gray-500);">Click cells to edit. Use bulk controls below to set multiple days.</div>
+                    <h2>One-off Date Overrides</h2>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Use this only for specific dates that differ from a staff member's weekly pattern. Otherwise edit the pattern above.</div>
                 </div>
                 <div class="card-body">
                     <div class="calendar-controls">
@@ -627,10 +637,20 @@
 
         <!-- ASSISTANT: My Availability Tab -->
         <div id="tab-myavail" class="tab-content" style="display:none;">
+            <div class="card" style="margin-bottom:14px;">
+                <div class="card-header">
+                    <h2>My Weekly Availability</h2>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Set the days you're typically available. Click each day to toggle.</div>
+                </div>
+                <div class="card-body">
+                    <div id="myPatternEditor" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+                    <button class="btn btn-success" id="saveMyPatternBtn" onclick="saveMyPattern()">Save Weekly Pattern</button>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-header">
-                    <h2>My Availability</h2>
-                    <div style="font-size:0.8rem;color:var(--gray-500);">Let trainers know when you can work. Click dates or use bulk select below.</div>
+                    <h2>One-off Date Overrides</h2>
+                    <div style="font-size:0.8rem;color:var(--gray-500);">Use this only if a specific date differs from your weekly pattern (e.g. a single doctor's appointment). Otherwise edit the pattern above.</div>
                 </div>
                 <div class="card-body">
                     <div class="calendar-controls">
@@ -1236,9 +1256,32 @@ function setLoading(el, loading) {
 }
 async function getProfiles(forceRefresh) {
     if (profilesCache && !forceRefresh) return profilesCache;
-    var res = await sb.from('cbd_profiles').select('id, full_name, role');
+    var res = await sb.from('cbd_profiles').select('id, full_name, role, available_dows');
     profilesCache = res.data || [];
     return profilesCache;
+}
+
+// Resolve the available_dows pattern for a staff member.
+// Returns array of DOWs the staff is available on (default all 7).
+function _availableDowsForStaff(staff) {
+    if (!staff || !staff.user_id) return [0,1,2,3,4,5,6];
+    var prof = (profilesCache || []).find(function(p) { return p.id === staff.user_id; });
+    if (prof && Array.isArray(prof.available_dows)) return prof.available_dows;
+    return [0,1,2,3,4,5,6];
+}
+
+// Resolve whether a staff member is available on a specific date.
+// 1. Per-date override in cbd_assistant_availability wins (if set).
+// 2. Otherwise check the weekly pattern (profile.available_dows).
+function isStaffAvailableOnDate(staff, dateStr) {
+    if (!staff || !staff.user_id) return true; // no linked account → can't check; assume available
+    // Per-date explicit override
+    var entries = assistantAvailCache[dateStr] || [];
+    var entry = entries.find(function(e) { return e.user_id === staff.user_id; });
+    if (entry) return !!entry.is_available;
+    // Fallback: weekly pattern
+    var dow = new Date(dateStr + 'T00:00:00').getDay();
+    return _availableDowsForStaff(staff).indexOf(dow) >= 0;
 }
 
 // ============ Auth ============
@@ -1550,6 +1593,7 @@ function switchTab(tab) {
             return loadMonth('classes', classesMonth, classesYear);
         }).then(renderClassesCalendar);
     } else if (tab === 'assistavail') {
+        renderStaffPatternsEditor();
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
     } else if (tab === 'staff') {
         renderStaffGrid();
@@ -1560,6 +1604,7 @@ function switchTab(tab) {
         renderRosterSkeleton('myRosterGrid');
         loadMonth('myroster', myRosterMonth, myRosterYear).then(renderMyRoster);
     } else if (tab === 'myavail') {
+        renderMyPatternEditor();
         loadMonth('myavail', myAvailMonth, myAvailYear).then(renderMyAvail);
     }
 }
@@ -1688,11 +1733,9 @@ function renderCalendar() {
         var entry = getAvailability(selectedStaffId, dateStr);
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
-        // Check if staff submitted unavailable assistant availability but is rostered
+        // Conflict: rostered but pattern/override says unavailable
         var selStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
-        var rosterDayAssist = assistantAvailCache[dateStr] || [];
-        var selAssistEntry = (selStaff && selStaff.user_id) ? rosterDayAssist.find(function(a) { return a.user_id === selStaff.user_id; }) : null;
-        var rosterConflict = selAssistEntry && !selAssistEntry.is_available && entry && (entry.status === 'available' || entry.status === 'partial');
+        var rosterConflict = selStaff && entry && (entry.status === 'available' || entry.status === 'partial') && !isStaffAvailableOnDate(selStaff, dateStr);
         if (entry) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         // Day header: number + role badge
@@ -2195,9 +2238,7 @@ function _assistantsNeededForClass(ci, rules) {
 
 function _isStaffMarkedUnavailable(staff, dateStr) {
     if (!staff.user_id) return false;
-    var entries = assistantAvailCache[dateStr] || [];
-    var match = entries.find(function(e) { return e.user_id === staff.user_id; });
-    return !!(match && !match.is_available);
+    return !isStaffAvailableOnDate(staff, dateStr);
 }
 
 async function generateAutoRosterPreview() {
@@ -2949,12 +2990,10 @@ function renderOverview() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = overviewYear + '-' + String(overviewMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entries = [];
-        var dayAssist = assistantAvailCache[dateStr] || [];
         staffList.forEach(function(s) {
             var e = getAvailability(s.id, dateStr);
             if (e) {
-                var assistEntry = s.user_id ? dayAssist.find(function(a) { return a.user_id === s.user_id; }) : null;
-                var showUnavail = assistEntry && !assistEntry.is_available && (e.status === 'available' || e.status === 'partial');
+                var showUnavail = (e.status === 'available' || e.status === 'partial') && !isStaffAvailableOnDate(s, dateStr);
                 entries.push({ name: s.name, color: s.color, status: showUnavail ? 'unavailable' : e.status, day_role: e.day_role || 'assistant' });
             }
         });
@@ -3844,6 +3883,142 @@ function selectMyAvail(el) {
     if (el.dataset.val === 'true') el.classList.add('selected-available');
     else el.classList.add('selected-unavailable');
 }
+// ============ Weekly Availability Pattern editors ============
+function _patternToggleHtml(prefix, dow, isOn, disabled) {
+    var labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var bg = isOn ? 'var(--success)' : 'var(--gray-100)';
+    var color = isOn ? 'white' : 'var(--gray-500)';
+    var border = isOn ? 'var(--success)' : 'var(--gray-200)';
+    var dis = disabled ? 'cursor:not-allowed;opacity:0.55;' : 'cursor:pointer;';
+    var onclick = disabled ? '' : 'onclick="' + prefix + '(' + dow + ', this)"';
+    return '<button type="button" class="pattern-toggle" data-dow="' + dow + '" data-on="' + (isOn ? '1' : '0') + '" ' + onclick +
+        ' style="' + dis + 'border:1px solid ' + border + ';background:' + bg + ';color:' + color + ';padding:8px 14px;border-radius:999px;font-weight:600;font-size:0.85rem;min-width:62px;">' +
+        labels[dow] + '</button>';
+}
+
+function renderMyPatternEditor() {
+    var container = document.getElementById('myPatternEditor');
+    if (!container) return;
+    var dows = (currentProfile && Array.isArray(currentProfile.available_dows)) ? currentProfile.available_dows : [0,1,2,3,4,5,6];
+    var html = '';
+    [1,2,3,4,5,6,0].forEach(function(d) {
+        html += _patternToggleHtml('toggleMyPatternDow', d, dows.indexOf(d) >= 0, viewAsAssistant);
+    });
+    container.innerHTML = html;
+}
+
+function toggleMyPatternDow(dow, btn) {
+    var on = btn.dataset.on === '1';
+    btn.dataset.on = on ? '0' : '1';
+    var nowOn = !on;
+    btn.style.background = nowOn ? 'var(--success)' : 'var(--gray-100)';
+    btn.style.color = nowOn ? 'white' : 'var(--gray-500)';
+    btn.style.borderColor = nowOn ? 'var(--success)' : 'var(--gray-200)';
+}
+
+async function saveMyPattern() {
+    if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
+    var btn = document.getElementById('saveMyPatternBtn');
+    var dows = [];
+    document.querySelectorAll('#myPatternEditor .pattern-toggle').forEach(function(b) {
+        if (b.dataset.on === '1') dows.push(parseInt(b.dataset.dow, 10));
+    });
+    dows.sort(function(a,b) { return a - b; });
+    setLoading(btn, true);
+    var res = await sb.from('cbd_profiles').update({ available_dows: dows }).eq('id', currentUser.id);
+    setLoading(btn, false);
+    if (res.error) { showToast('Error: ' + res.error.message); return; }
+    if (currentProfile) currentProfile.available_dows = dows;
+    if (profilesCache) {
+        var p = profilesCache.find(function(x){ return x.id === currentUser.id; });
+        if (p) p.available_dows = dows;
+    }
+    showToast('Weekly pattern saved');
+}
+
+function renderStaffPatternsEditor() {
+    var container = document.getElementById('staffPatternsEditor');
+    if (!container) return;
+    var profilesById = {};
+    (profilesCache || []).forEach(function(p) { profilesById[p.id] = p; });
+    // Show all staff with linked accounts
+    var rows = staffList.filter(function(s) { return s.user_id; }).slice().sort(function(a,b) {
+        return ((a.priority||100) - (b.priority||100)) || a.name.localeCompare(b.name);
+    });
+    if (rows.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:18px;color:var(--gray-500);">No staff with linked user accounts. Link accounts in Manage Staff to set their availability pattern.</div>';
+        return;
+    }
+    var html = '';
+    rows.forEach(function(s) {
+        var prof = profilesById[s.user_id];
+        var dows = (prof && Array.isArray(prof.available_dows)) ? prof.available_dows : [0,1,2,3,4,5,6];
+        var htBadge = s.is_head_trainer ? '<span style="background:var(--primary);color:white;padding:2px 6px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;">HT</span>' : '';
+        html += '<div data-user-id="' + s.user_id + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius);background:white;flex-wrap:wrap;">' +
+            '<div style="min-width:140px;display:flex;align-items:center;gap:8px;">' +
+                '<span style="width:14px;height:14px;border-radius:50%;background:' + s.color + ';"></span>' +
+                '<span style="font-weight:600;">' + escHtml(s.name) + '</span>' + htBadge +
+            '</div>' +
+            '<div class="staff-pattern-toggles" style="display:flex;gap:6px;flex-wrap:wrap;">';
+        [1,2,3,4,5,6,0].forEach(function(d) {
+            html += _patternToggleHtml('toggleStaffPatternDow', d, dows.indexOf(d) >= 0, false).replace('data-dow="' + d + '"', 'data-dow="' + d + '" data-user-id="' + s.user_id + '"');
+        });
+        html += '</div></div>';
+    });
+    container.innerHTML = html;
+}
+
+function toggleStaffPatternDow(dow, btn) {
+    var on = btn.dataset.on === '1';
+    btn.dataset.on = on ? '0' : '1';
+    var nowOn = !on;
+    btn.style.background = nowOn ? 'var(--success)' : 'var(--gray-100)';
+    btn.style.color = nowOn ? 'white' : 'var(--gray-500)';
+    btn.style.borderColor = nowOn ? 'var(--success)' : 'var(--gray-200)';
+}
+
+async function saveStaffPatterns() {
+    var btn = document.getElementById('saveStaffPatternsBtn');
+    setLoading(btn, true);
+    // Collect per-user dows from the UI
+    var byUser = {};
+    document.querySelectorAll('#staffPatternsEditor [data-user-id]').forEach(function(row) {
+        var uid = row.dataset.userId;
+        if (!uid || row.classList.contains('pattern-toggle')) return; // skip toggles, only row containers
+    });
+    // Iterate row containers (top-level rows have data-user-id and contain .staff-pattern-toggles inside)
+    var rows = document.querySelectorAll('#staffPatternsEditor > div[data-user-id]');
+    rows.forEach(function(row) {
+        var uid = row.dataset.userId;
+        var dows = [];
+        row.querySelectorAll('.pattern-toggle').forEach(function(b) {
+            if (b.dataset.on === '1') dows.push(parseInt(b.dataset.dow, 10));
+        });
+        dows.sort(function(a,b) { return a - b; });
+        byUser[uid] = dows;
+    });
+
+    // Diff vs current cache to know which need updating
+    var profilesById = {};
+    (profilesCache || []).forEach(function(p) { profilesById[p.id] = p; });
+    var changes = 0;
+    for (var uid in byUser) {
+        var newDows = byUser[uid];
+        var prof = profilesById[uid];
+        var oldDows = (prof && Array.isArray(prof.available_dows)) ? prof.available_dows.slice().sort(function(a,b){return a-b;}) : null;
+        var same = oldDows && oldDows.length === newDows.length && oldDows.every(function(v, i) { return v === newDows[i]; });
+        if (!same) {
+            var res = await sb.from('cbd_profiles').update({ available_dows: newDows }).eq('id', uid);
+            if (res.error) { setLoading(btn, false); showToast('Error: ' + res.error.message); return; }
+            if (prof) prof.available_dows = newDows;
+            changes++;
+        }
+    }
+    setLoading(btn, false);
+    if (changes === 0) showToast('No changes to save');
+    else showToast('Saved patterns for ' + changes + ' staff');
+}
+
 async function saveMyAvailability() {
     if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
     if (!myAvailSelectedDay) return;
