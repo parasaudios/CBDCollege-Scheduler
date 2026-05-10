@@ -5016,62 +5016,35 @@ async function openDayDetail(dateStr) {
     }
     html += '</div>';
 
-    if (isTrainer()) {
-        // Trainers get clickable staff toggles to roster/un-roster
-        var rosteredIds = {};
-        staffList.forEach(function(s) {
-            var e = getAvailability(s.id, dateStr);
-            if (e && (e.status === 'available' || e.status === 'partial')) rosteredIds[s.id] = e;
-        });
-
+    // Read-only staff list (auto-rostered — no manual toggles)
+    if (rostered.length > 0) {
         html += '<div class="detail-section">';
-        html += '<h4>Staff Roster</h4>';
-        html += '<div id="dayDetailStaffToggles" data-date="' + dateStr + '" style="display:flex;flex-direction:column;gap:6px;">';
-        staffList.forEach(function(s) {
-            var isOn = !!rosteredIds[s.id];
-            var entry = rosteredIds[s.id];
-            var roleLabel = (entry && entry.day_role === 'head_trainer') ? ' (HT)' : '';
-            var staffStartTime = (entry && entry.start_time) ? entry.start_time.slice(0,5) : '';
-            html += '<div class="staff-toggle-item' + (isOn ? ' active' : '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);border:1px solid ' + (isOn ? 'var(--success)' : 'var(--gray-200)') + ';background:' + (isOn ? 'var(--success-light)' : 'white') + ';transition:all 0.15s;">' +
-                '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">' +
-                '<input type="checkbox" data-staff-id="' + s.id + '" ' + (isOn ? 'checked' : '') + ' style="width:18px;height:18px;cursor:pointer;" onchange="toggleStaffRosterStyle(this)">' +
-                '<div class="detail-staff-dot" style="background:' + s.color + '"></div>' +
-                '<span style="font-weight:500;font-size:0.9rem;">' + escHtml(s.name) + roleLabel + '</span>' +
-                '</label>' +
-                '<input type="time" class="staff-start-time" data-staff-id="' + s.id + '" value="' + staffStartTime + '" style="width:100px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:0.8rem;" placeholder="Start">' +
-                '</div>';
-        });
+        html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
+        if (trainers.length > 0) {
+            trainers.forEach(function(t) {
+                var startTag = t.start_time ? ' <span style="color:var(--gray-500);font-size:0.78rem;font-weight:400;margin-left:6px;">starts ' + t.start_time.slice(0,5) + '</span>' : '';
+                html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + t.color + '"></div><div><div class="detail-staff-name">' + escHtml(t.name) + startTag + '</div></div></div>';
+            });
+        } else {
+            html += '<div class="detail-no-data">No head trainer rostered</div>';
+        }
         html += '</div>';
+        html += '<div class="detail-section">';
+        html += '<h4>Assistants Rostered</h4>';
+        if (assistants.length > 0) {
+            assistants.forEach(function(a) {
+                var statusBadge = a.status === 'available' ? '<span class="avail-badge yes" style="margin-left:auto;">Rostered</span>' : '<span class="avail-badge" style="margin-left:auto;background:var(--warning-light);color:#92400e;">Partial</span>';
+                var startTag = a.start_time ? ' <span style="color:var(--gray-500);font-size:0.78rem;font-weight:400;margin-left:6px;">starts ' + a.start_time.slice(0,5) + '</span>' : '';
+                html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + a.color + '"></div><div><div class="detail-staff-name">' + escHtml(a.name) + startTag + '</div>' +
+                    (a.note ? '<div class="detail-staff-role">' + escHtml(a.note) + '</div>' : '') +
+                    '</div>' + statusBadge + '</div>';
+            });
+        } else {
+            html += '<div class="detail-no-data">No assistants rostered</div>';
+        }
         html += '</div>';
     } else {
-        // Non-trainers see read-only list
-        if (rostered.length > 0) {
-            html += '<div class="detail-section">';
-            html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
-            if (trainers.length > 0) {
-                trainers.forEach(function(t) {
-                    html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + t.color + '"></div><div><div class="detail-staff-name">' + escHtml(t.name) + '</div></div></div>';
-                });
-            } else {
-                html += '<div class="detail-no-data">No head trainer rostered</div>';
-            }
-            html += '</div>';
-            html += '<div class="detail-section">';
-            html += '<h4>Assistants Rostered</h4>';
-            if (assistants.length > 0) {
-                assistants.forEach(function(a) {
-                    var statusBadge = a.status === 'available' ? '<span class="avail-badge yes" style="margin-left:auto;">Rostered</span>' : '<span class="avail-badge" style="margin-left:auto;background:var(--warning-light);color:#92400e;">Partial</span>';
-                    html += '<div class="detail-staff-item"><div class="detail-staff-dot" style="background:' + a.color + '"></div><div><div class="detail-staff-name">' + escHtml(a.name) + '</div>' +
-                        (a.note ? '<div class="detail-staff-role">' + escHtml(a.note) + '</div>' : '') +
-                        '</div>' + statusBadge + '</div>';
-                });
-            } else {
-                html += '<div class="detail-no-data">No assistants rostered</div>';
-            }
-            html += '</div>';
-        } else {
-            html += '<div class="detail-section"><div class="detail-no-data">No one is rostered for this day.</div></div>';
-        }
+        html += '<div class="detail-section"><div class="detail-no-data">No one is rostered for this day. Use Auto-roster (Schedule → Team) to fill from availability.</div></div>';
     }
 
     // Assistant availability submitted
