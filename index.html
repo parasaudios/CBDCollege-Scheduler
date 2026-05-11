@@ -157,6 +157,9 @@
         .calendar-day.skeleton { background: var(--gray-50); border-color: var(--gray-100); cursor: default; }
         .skel-bar { display: inline-block; background: linear-gradient(90deg, var(--gray-200) 0%, var(--gray-100) 50%, var(--gray-200) 100%); height: 10px; border-radius: 3px; animation: skel-shimmer 1.4s ease-in-out infinite; }
 
+        /* Mobile compact status indicator — hidden on desktop, shown on small screens */
+        .cal-cell-mobile-status { display: none; }
+
         /* Calendar cell content — readable, scannable */
         .calendar-day { padding: 6px 8px; }
         .calendar-day .day-number { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 0.95rem; font-weight: 700; color: var(--gray-800); }
@@ -354,20 +357,56 @@
             .month-nav { gap: 6px; }
             .month-label { font-size: 0.95rem; min-width: 130px; }
             .btn-icon { width: 32px; height: 32px; }
-            .calendar-grid { gap: 1px; }
-            .calendar-day-header { padding: 4px 2px; font-size: 0.7rem; }
-            .calendar-day { aspect-ratio: auto; min-height: 48px; padding: 2px; border-radius: 4px; }
-            .calendar-day .day-number { font-size: 0.8rem; }
-            .cal-cell-badge { font-size: 0.5rem; padding: 0 3px; }
-            .cal-cell-time { font-size: 0.6rem; }
-            .cal-cell-students { font-size: 0.55rem; }
-            .cal-cell-staff-dots .staff-pip { width: 6px; height: 6px; }
-            .cal-cell-staff-dots .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
-            .cal-cell-staff-list .cal-cell-staff-row { font-size: 0.65rem; gap: 4px; }
-            .cal-cell-staff-list .staff-pip { width: 6px; height: 6px; }
-            .cal-cell-staff-list .staff-pip.ht { box-shadow: 0 0 0 1.5px var(--primary); }
-            .cal-cell-class-info .time { font-size: 0.7rem; }
-            .cal-cell-class-info .students { font-size: 0.62rem; }
+
+            /* Mobile calendar: compact 7-column grid that fits viewport width.
+               Cells show only essentials; tap to open the day-detail modal. */
+            .calendar-grid { gap: 2px; width: 100%; }
+            .calendar-day-header { padding: 4px 1px; font-size: 0.62rem; letter-spacing: 0; }
+            .calendar-day {
+                aspect-ratio: 1;
+                min-height: 0;
+                padding: 4px 2px;
+                border-radius: 6px;
+                font-size: 0.8rem;
+                justify-content: flex-start;
+                overflow: hidden;
+            }
+            .calendar-day .day-number { font-size: 0.85rem; font-weight: 700; margin-bottom: 0; }
+            .calendar-day.today::before { font-size: 0.42rem; padding: 0 5px; top: -6px; letter-spacing: 0.3px; }
+
+            /* Hide verbose content; replaced with a single compact status indicator. */
+            .calendar-day .cal-cell-class-info,
+            .calendar-day .cal-cell-staff-list,
+            .calendar-day .cal-cell-staff-dots,
+            .calendar-day .cal-cell-time,
+            .calendar-day .cal-cell-students,
+            .calendar-day .cal-cell-caps,
+            .calendar-day .overview-day-staff,
+            .calendar-day .assistavail-detail { display: none; }
+
+            /* Compact mobile indicator: small dot, badge, or rostered tick — set per render */
+            .calendar-day .cal-cell-mobile-status {
+                display: flex;
+                margin-top: auto;
+                width: 100%;
+                align-items: center;
+                justify-content: center;
+                gap: 3px;
+                font-size: 0.62rem;
+                font-weight: 600;
+                line-height: 1;
+                padding: 2px 0;
+            }
+            .cal-cell-mobile-status .pip { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+            .cal-cell-mobile-status .check { color: var(--success); font-size: 0.95rem; line-height: 1; }
+            .cal-cell-mobile-status .badge { background: var(--primary); color: white; padding: 1px 5px; border-radius: 3px; font-size: 0.55rem; letter-spacing: 0.3px; }
+            .cal-cell-mobile-status .ht-badge { background: var(--primary); }
+            .cal-cell-mobile-status .ast-badge { background: var(--gray-400); }
+            .cal-cell-mobile-status .count { color: var(--gray-600); font-size: 0.62rem; }
+
+            /* Tap-friendly cell on hover-less devices */
+            .calendar-day:hover { transform: none; box-shadow: none; }
+            .calendar-day:active { transform: scale(0.97); }
             .hero-card { padding: 14px 16px; }
             .hero-card-date { font-size: 1.15rem; }
             .hero-card-row { gap: 16px; margin-top: 10px; }
@@ -2046,7 +2085,18 @@ function renderCalendar() {
         });
         var staffHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
 
-        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + '</div>';
+        // Mobile-only compact indicator: a single line showing the selected staff's role + count of others
+        var mobileStatusHtml = '';
+        if (entry) {
+            var roleClass = entry.day_role === 'head_trainer' ? 'ht-badge' : 'ast-badge';
+            var roleText = entry.day_role === 'head_trainer' ? 'HT' : 'AST';
+            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="badge ' + roleClass + '">' + roleText + '</span>' +
+                (rosterEntries.length > 1 ? '<span class="count">+' + (rosterEntries.length - 1) + '</span>' : '') + '</div>';
+        } else if (rosterEntries.length > 0) {
+            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="count">' + rosterEntries.length + ' on</span></div>';
+        }
+
+        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + mobileStatusHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -3350,7 +3400,11 @@ function renderOverview() {
             if (ci && ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + '</div>';
+        // Mobile-only status: total count of rostered staff
+        var mobileStatusHtml = entries.length > 0
+            ? '<div class="cal-cell-mobile-status"><span class="count">' + entries.length + ' on</span></div>'
+            : '';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + mobileStatusHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -3497,7 +3551,13 @@ function renderClassesCalendar() {
             detail += '<div style="color:var(--gray-400);font-style:italic;font-size:0.7rem;margin-top:2px;">no students set</div>';
         }
         detail += '</div>';
-        html += '<div class="' + cls + '" onclick="openClassEdit(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + '</div>';
+        // Mobile-only status: total students for the day
+        var mobileStatusHtml = '';
+        if (hasNumbers) {
+            var totalStudents = Math.max(info.students_am || 0, info.students_pm || 0);
+            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="count">' + totalStudents + '</span>' + (info.capped_am || info.capped_pm ? '<span class="badge" style="background:var(--danger);padding:0 4px;">CAP</span>' : '') + '</div>';
+        }
+        html += '<div class="' + cls + '" onclick="openClassEdit(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + mobileStatusHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -3911,16 +3971,21 @@ async function renderAssistAvail() {
         else if (!patternAvail) cls += ' partial'; // soft tint to indicate pattern says "off"
         if (multiSelectMode === 'assistavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
 
-        var detail = '';
+        var detail = '<div class="assistavail-detail">';
         if (override) {
-            detail = '<div style="font-size:0.7rem;text-align:center;font-weight:600;color:' + (override.is_available ? 'var(--success)' : 'var(--danger)') + ';">' +
+            detail += '<div style="font-size:0.7rem;text-align:center;font-weight:600;color:' + (override.is_available ? 'var(--success)' : 'var(--danger)') + ';">' +
                 (override.is_available ? 'Available' : 'Unavailable') + '</div>';
             if (override.note) detail += '<div style="font-size:0.6rem;color:var(--gray-500);text-align:center;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(override.note) + '</div>';
             detail += '<div style="font-size:0.58rem;color:var(--gray-400);text-align:center;text-transform:uppercase;letter-spacing:0.4px;margin-top:1px;">override</div>';
         } else {
-            detail = '<div style="font-size:0.65rem;text-align:center;color:var(--gray-500);">' + (patternAvail ? 'Available' : 'Off') + ' <span style="color:var(--gray-300);font-size:0.55rem;">(pattern)</span></div>';
+            detail += '<div style="font-size:0.65rem;text-align:center;color:var(--gray-500);">' + (patternAvail ? 'Available' : 'Off') + ' <span style="color:var(--gray-300);font-size:0.55rem;">(pattern)</span></div>';
         }
-        html += '<div class="' + cls + '" onclick="onAssistAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
+        detail += '</div>';
+        // Mobile-only compact indicator
+        var mStatusColor = override ? (override.is_available ? 'var(--success)' : 'var(--danger)') : (patternAvail ? 'var(--gray-500)' : 'var(--gray-300)');
+        var mStatusText = override ? (override.is_available ? '✓' : '✗') : (patternAvail ? '·' : '');
+        var mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="check" style="color:' + mStatusColor + ';font-size:0.9rem;">' + mStatusText + '</span></div>';
+        html += '<div class="' + cls + '" onclick="onAssistAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + mobileStatusHtml + '</div>';
     }
     container.innerHTML = html;
 }
@@ -4051,7 +4116,13 @@ function renderMyRoster() {
             }
         }
 
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + timeHtml + '</div>';
+        // Mobile-only status: a green check if rostered, otherwise nothing
+        var mobileStatusHtml = '';
+        if (entry && (entry.status === 'available' || entry.status === 'partial')) {
+            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="check">&#10003;</span></div>';
+        }
+
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + timeHtml + mobileStatusHtml + '</div>';
     }
     grid.innerHTML = html;
 }
