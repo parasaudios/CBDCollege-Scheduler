@@ -372,7 +372,9 @@
         .bulk-day-buttons .btn-weekdays.active { background: var(--primary); color: white; border-color: var(--primary); }
 
         .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
-        .toast { background: var(--gray-800); color: white; padding: 12px 20px; border-radius: var(--radius); font-size: 0.875rem; box-shadow: var(--shadow-lg); animation: slideIn 0.3s ease; max-width: 360px; }
+        .toast { background: #1f2937; color: #ffffff; padding: 12px 20px; border-radius: var(--radius); font-size: 0.875rem; box-shadow: var(--shadow-lg); animation: slideIn 0.3s ease; max-width: 360px; border: 1px solid rgba(255,255,255,0.08); }
+        [data-theme="dark"] .toast { background: #0f1320; border-color: rgba(255,255,255,0.12); }
+        @media (prefers-color-scheme: dark) { :root:not([data-theme]) .toast { background: #0f1320; border-color: rgba(255,255,255,0.12); } }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
         .empty-state { text-align: center; padding: 48px 20px; color: var(--gray-400); }
