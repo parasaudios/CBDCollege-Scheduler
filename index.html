@@ -363,6 +363,18 @@
         .bc-grid td.bc-cap input { width: 16px; height: 16px; cursor: pointer; }
         .bc-grid .bc-date-cell { white-space: nowrap; font-weight: 600; color: var(--gray-700); }
         .bc-grid .bc-dow-cell { color: var(--gray-500); font-size: 0.78rem; text-transform: uppercase; }
+
+        /* Default Class Times grid — desktop: 7-column table-like layout */
+        .dow-header-row { display: grid; grid-template-columns: 60px 1fr 1fr 80px 80px 60px 60px; gap: 8px; align-items: center; font-size: 0.72rem; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; padding: 0 8px 4px; }
+        .dow-row { display: grid; grid-template-columns: 60px 1fr 1fr 80px 80px 60px 60px; gap: 8px; align-items: center; padding: 8px; border-radius: var(--radius); background: var(--gray-50); }
+        .dow-row.weekend { background: var(--primary-light); }
+        .dow-row .dow-name { font-weight: 600; color: var(--gray-700); }
+        .dow-row .dow-field { display: flex; gap: 4px; align-items: center; }
+        .dow-row .dow-field input[type="time"] { width: 100%; padding: 4px 6px; font-size: 0.85rem; }
+        .dow-row .dow-sep { color: var(--gray-400); font-size: 0.75rem; }
+        .dow-row .dow-num input[type="number"] { width: 100%; padding: 4px 6px; font-size: 0.85rem; text-align: center; }
+        .dow-row .dow-cap { display: flex; justify-content: center; cursor: pointer; }
+        .dow-row .dow-cap input { width: 18px; height: 18px; cursor: pointer; }
         .bulk-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .bulk-panel-header h4 { font-size: 0.85rem; font-weight: 600; color: var(--gray-700); margin: 0; }
         .bulk-panel-hint { font-size: 0.75rem; color: var(--gray-500); margin-bottom: 10px; }
@@ -437,10 +449,50 @@
             /* Trim the wordy Enable Push button on small screens — keep the bell icon */
             #enablePushBtn { font-size: 0; padding: 4px 8px; }
             #enablePushBtn::before { content: '\01F514'; font-size: 0.95rem; }
-            /* Default Class Times grid has 7 columns and wide time inputs — let it scroll
-               horizontally inside its card instead of stretching the page. */
-            #dowDefaultsGrid { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
-            #dowDefaultsGrid > div { min-width: 640px; }
+            /* Default Class Times — on phones, stack each day as a labeled card so nothing
+               needs horizontal scrolling. Column header row is hidden because each field
+               carries its own label via data-label. */
+            .dow-header-row { display: none; }
+            .dow-row {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px 12px;
+                padding: 12px;
+                row-gap: 10px;
+                position: relative;
+                padding-top: 36px;
+            }
+            .dow-row .dow-name {
+                position: absolute;
+                top: 8px;
+                left: 12px;
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: var(--primary);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .dow-row .dow-field,
+            .dow-row .dow-num,
+            .dow-row .dow-cap {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 4px;
+            }
+            .dow-row .dow-field { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+            .dow-row .dow-field::before,
+            .dow-row .dow-num::before,
+            .dow-row .dow-cap::before {
+                content: attr(data-label);
+                font-size: 0.68rem;
+                font-weight: 600;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+            }
+            .dow-row .dow-field::before { flex-basis: 64px; flex-shrink: 0; }
+            .dow-row .dow-cap { align-items: flex-start; justify-content: flex-start; }
+            .dow-row .dow-cap input { width: 22px; height: 22px; }
             /* Modals never wider than viewport */
             .modal { max-width: calc(100vw - 24px); }
             /* Tables/wide content that lacks an explicit scroll wrapper — fall back to allowing
@@ -3910,29 +3962,30 @@ function renderDowDefaultsGrid() {
     if (!container) return;
     var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     var dows = [1,2,3,4,5,6,0];
-    var html = '<div style="display:grid;grid-template-columns:60px 1fr 1fr 80px 80px 60px 60px;gap:8px;align-items:center;font-size:0.72rem;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.4px;font-weight:600;padding:0 8px 4px;">' +
+    // Column headers — visible on desktop, hidden on mobile (the stacked cards self-label).
+    var html = '<div class="dow-header-row">' +
         '<span>Day</span><span>AM Class</span><span>PM Class</span><span style="text-align:center;">Students AM</span><span style="text-align:center;">Students PM</span><span style="text-align:center;">Cap AM</span><span style="text-align:center;">Cap PM</span>' +
         '</div>';
     for (var i = 0; i < 7; i++) {
         var dow = dows[i];
         var def = (settingsCache.default_class_times || {})[String(dow)] || {};
         var isWeekend = dow === 0 || dow === 6;
-        html += '<div data-dow="' + dow + '" style="display:grid;grid-template-columns:60px 1fr 1fr 80px 80px 60px 60px;gap:8px;align-items:center;padding:8px;border-radius:var(--radius);' + (isWeekend ? 'background:var(--primary-light);' : 'background:var(--gray-50);') + '">' +
-            '<span style="font-weight:600;color:var(--gray-700);">' + labels[i] + '</span>' +
-            '<div style="display:flex;gap:4px;align-items:center;">' +
-                '<input type="time" class="form-control dow-am-start" data-dow="' + dow + '" value="' + (def.am_start || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
-                '<span style="color:var(--gray-400);font-size:0.75rem;">to</span>' +
-                '<input type="time" class="form-control dow-am-end" data-dow="' + dow + '" value="' + (def.am_end || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+        html += '<div class="dow-row' + (isWeekend ? ' weekend' : '') + '" data-dow="' + dow + '">' +
+            '<span class="dow-name">' + labels[i] + '</span>' +
+            '<div class="dow-field" data-label="AM Class">' +
+                '<input type="time" class="form-control dow-am-start" data-dow="' + dow + '" value="' + (def.am_start || '') + '">' +
+                '<span class="dow-sep">to</span>' +
+                '<input type="time" class="form-control dow-am-end" data-dow="' + dow + '" value="' + (def.am_end || '') + '">' +
             '</div>' +
-            '<div style="display:flex;gap:4px;align-items:center;">' +
-                '<input type="time" class="form-control dow-pm-start" data-dow="' + dow + '" value="' + (def.pm_start || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
-                '<span style="color:var(--gray-400);font-size:0.75rem;">to</span>' +
-                '<input type="time" class="form-control dow-pm-end" data-dow="' + dow + '" value="' + (def.pm_end || '') + '" style="width:100%;padding:4px 6px;font-size:0.85rem;">' +
+            '<div class="dow-field" data-label="PM Class">' +
+                '<input type="time" class="form-control dow-pm-start" data-dow="' + dow + '" value="' + (def.pm_start || '') + '">' +
+                '<span class="dow-sep">to</span>' +
+                '<input type="time" class="form-control dow-pm-end" data-dow="' + dow + '" value="' + (def.pm_end || '') + '">' +
             '</div>' +
-            '<input type="number" min="0" class="form-control dow-students-am" data-dow="' + dow + '" value="' + (def.students_am || 0) + '" style="padding:4px 6px;font-size:0.85rem;text-align:center;">' +
-            '<input type="number" min="0" class="form-control dow-students-pm" data-dow="' + dow + '" value="' + (def.students_pm || 0) + '" style="padding:4px 6px;font-size:0.85rem;text-align:center;">' +
-            '<label style="display:flex;justify-content:center;cursor:pointer;"><input type="checkbox" class="dow-capped-am" data-dow="' + dow + '"' + (def.capped_am ? ' checked' : '') + ' style="width:18px;height:18px;cursor:pointer;"></label>' +
-            '<label style="display:flex;justify-content:center;cursor:pointer;"><input type="checkbox" class="dow-capped-pm" data-dow="' + dow + '"' + (def.capped_pm ? ' checked' : '') + ' style="width:18px;height:18px;cursor:pointer;"></label>' +
+            '<div class="dow-num" data-label="Students AM"><input type="number" min="0" class="form-control dow-students-am" data-dow="' + dow + '" value="' + (def.students_am || 0) + '"></div>' +
+            '<div class="dow-num" data-label="Students PM"><input type="number" min="0" class="form-control dow-students-pm" data-dow="' + dow + '" value="' + (def.students_pm || 0) + '"></div>' +
+            '<label class="dow-cap" data-label="Cap AM"><input type="checkbox" class="dow-capped-am" data-dow="' + dow + '"' + (def.capped_am ? ' checked' : '') + '></label>' +
+            '<label class="dow-cap" data-label="Cap PM"><input type="checkbox" class="dow-capped-pm" data-dow="' + dow + '"' + (def.capped_pm ? ' checked' : '') + '></label>' +
         '</div>';
     }
     container.innerHTML = html;
