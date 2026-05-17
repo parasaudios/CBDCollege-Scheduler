@@ -247,6 +247,10 @@
 
         /* Mobile compact status indicator — hidden on desktop, shown on small screens */
         .cal-cell-mobile-status { display: none; }
+        /* My Roster: big check / cross to denote rostered status */
+        .myroster-status-icon { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; line-height: 1; font-weight: 700; }
+        .myroster-status-icon.check { color: var(--success); text-shadow: 0 1px 2px rgba(22,163,74,0.18); }
+        .myroster-status-icon.cross { color: var(--danger); text-shadow: 0 1px 2px rgba(220,38,38,0.18); }
 
         /* Calendar cell content — readable, scannable */
         .calendar-day { padding: 6px 8px; }
@@ -489,6 +493,9 @@
             }
             .cal-cell-mobile-status .pip { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
             .cal-cell-mobile-status .check { color: var(--success); font-size: 0.95rem; line-height: 1; }
+            .cal-cell-mobile-status .cross { color: var(--danger); font-size: 0.95rem; line-height: 1; font-weight: 700; }
+            /* On mobile, scale the desktop myroster icon down so it fits the small cell */
+            .calendar-day .myroster-status-icon { font-size: 1.3rem; }
             .cal-cell-mobile-status .badge { background: var(--primary); color: white; padding: 1px 5px; border-radius: 3px; font-size: 0.55rem; letter-spacing: 0.3px; }
             .cal-cell-mobile-status .ht-badge { background: var(--primary); }
             .cal-cell-mobile-status .ast-badge { background: var(--gray-400); }
@@ -4533,34 +4540,26 @@ function renderMyRoster() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = myRosterYear + '-' + String(myRosterMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entry = getEffectiveAvailability(myStaffMember.id, dateStr);
+        var dayClass = getDayClass(dateStr);
+        var isRostered = !!(entry && (entry.status === 'available' || entry.status === 'partial'));
+        var hasClass = !!dayClass;
+
         var cls = 'calendar-day';
         if (dateStr === todayStr) cls += ' today';
-        if (entry && (entry.status === 'available' || entry.status === 'partial')) cls += ' ' + entry.status;
+        if (isRostered) cls += ' available';
+        else if (hasClass) cls += ' unavailable';
 
-        // Day header: number + role badge if rostered
-        var badgeHtml = '';
-        if (entry && (entry.status === 'available' || entry.status === 'partial')) {
-            badgeHtml = entry.day_role === 'head_trainer' ? '<span class="cal-cell-badge">HT</span>' : '<span class="cal-cell-badge assistant">AST</span>';
-        }
-        var dayHeader = '<div class="day-number"><span>' + day + '</span>' + badgeHtml + '</div>';
+        var dayHeader = '<div class="day-number"><span>' + day + '</span></div>';
 
-        // Compact: class time only if rostered
-        var timeHtml = '';
-        if (entry && (entry.status === 'available' || entry.status === 'partial')) {
-            var myRange = getClassDayRange(dateStr);
-            if (myRange) timeHtml = '<div class="cal-cell-time">' + myRange + '</div>';
-            if (entry.start_time) {
-                timeHtml += '<div class="cal-cell-students" style="color:var(--primary);font-weight:600;">You: ' + entry.start_time.slice(0,5) + '</div>';
-            }
+        // Single status icon, scales to fit on mobile via CSS: check if rostered, cross if class scheduled but not rostered, nothing if no class
+        var iconHtml = '';
+        if (isRostered) {
+            iconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
+        } else if (hasClass) {
+            iconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
         }
 
-        // Mobile-only status: a green check if rostered, otherwise nothing
-        var mobileStatusHtml = '';
-        if (entry && (entry.status === 'available' || entry.status === 'partial')) {
-            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="check">&#10003;</span></div>';
-        }
-
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + timeHtml + mobileStatusHtml + '</div>';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + iconHtml + '</div>';
     }
     grid.innerHTML = html;
 }
