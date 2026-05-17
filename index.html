@@ -437,6 +437,15 @@
             /* Trim the wordy Enable Push button on small screens — keep the bell icon */
             #enablePushBtn { font-size: 0; padding: 4px 8px; }
             #enablePushBtn::before { content: '\01F514'; font-size: 0.95rem; }
+            /* Default Class Times grid has 7 columns and wide time inputs — let it scroll
+               horizontally inside its card instead of stretching the page. */
+            #dowDefaultsGrid { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+            #dowDefaultsGrid > div { min-width: 640px; }
+            /* Modals never wider than viewport */
+            .modal { max-width: calc(100vw - 24px); }
+            /* Tables/wide content that lacks an explicit scroll wrapper — fall back to allowing
+               horizontal scroll on their immediate parent card body. */
+            .card-body > table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
             .tabs { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; margin-bottom: 16px; }
             .tab { padding: 7px 12px; font-size: 0.78rem; flex-shrink: 0; white-space: nowrap; }
