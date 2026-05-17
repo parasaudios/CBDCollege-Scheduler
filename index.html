@@ -575,6 +575,7 @@
                     <span id="notifBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--danger);color:white;border-radius:999px;font-size:0.6rem;font-weight:700;min-width:16px;height:16px;padding:0 4px;align-items:center;justify-content:center;">0</span>
                 </button>
                 <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="openExportModal()">Export PDF</button>
+                <button class="btn btn-ghost btn-sm" id="enablePushBtn" style="display:none;" onclick="enablePushFromUserGesture()" title="Enable mobile push notifications">&#128276; Enable Push</button>
                 <button class="btn btn-ghost btn-sm" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle theme"><span id="themeToggleIcon">&#9790;</span></button>
                 <button class="btn btn-ghost btn-sm" onclick="handleLogout()">Sign Out</button>
             </div>
@@ -1795,6 +1796,16 @@ function showApp() {
         // Best-effort audit-log retention (90 days). Idempotent. Trainer-callable.
         sb.rpc('cbd_prune_audit_log').then(function(){}).catch(function(){});
     }
+    // Push notifications: every signed-in user can receive them (configured per-account).
+    // If already granted, silently (re-)register the subscription so it survives endpoint rotation.
+    // Otherwise, surface the Enable Push button so the user can opt in via a real gesture.
+    if (typeof pushSupported === 'function' && pushSupported()) {
+        if (Notification.permission === 'granted') {
+            ensurePushSubscription();
+        } else {
+            _refreshPushButton();
+        }
+    }
 }
 
 function buildTabs() {
@@ -2551,6 +2562,17 @@ async function emitNotification(opts) {
             data: opts.data || {}
         });
     } catch (e) { console.warn('notification emit failed:', e); }
+    // Fan out an OS-level Web Push to all subscribed devices (fire-and-forget).
+    try {
+        sb.functions.invoke('send-push', {
+            body: {
+                title: opts.title,
+                body: opts.message,
+                data: opts.data || {},
+                tag: 'cbd-' + (opts.type || 'notif')
+            }
+        }).catch(function(){});
+    } catch (e) { /* ignore */ }
 }
 
 // ============ Import Roster (Excel / OCR) ============
@@ -5869,8 +5891,92 @@ function requestNotificationPermission() {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
         // Ask only once per session, subtly
-        Notification.requestPermission();
+        Notification.requestPermission().then(function(p) { if (p === 'granted') ensurePushSubscription(); });
+    } else if (Notification.permission === 'granted') {
+        ensurePushSubscription();
     }
+}
+
+// ============ Web Push (real OS-level notifications) ============
+var VAPID_PUBLIC_KEY = 'BOq4okrC4EwgMwh5zzCF31ehBsZ_pwsndfyilQ1F7G8riKJ3qnb0eiCoNug0v54Rs1hlUbVErmCG4AJuLrn-Oqc';
+
+function pushSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+function _urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = atob(base64);
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+}
+
+async function _saveSubscriptionRow(sub) {
+    if (!currentUser || !sub) return;
+    var json = sub.toJSON();
+    var p256dh = json.keys && json.keys.p256dh;
+    var auth = json.keys && json.keys.auth;
+    if (!json.endpoint || !p256dh || !auth) return;
+    try {
+        await sb.from('cbd_push_subscriptions').upsert({
+            user_id: currentUser.id,
+            endpoint: json.endpoint,
+            p256dh: p256dh,
+            auth: auth,
+            user_agent: navigator.userAgent.slice(0, 240),
+            last_seen_at: new Date().toISOString()
+        }, { onConflict: 'endpoint' });
+    } catch (e) { console.warn('push sub upsert failed:', e); }
+}
+
+async function ensurePushSubscription() {
+    if (!pushSupported()) return;
+    if (Notification.permission !== 'granted') { _refreshPushButton(); return; }
+    try {
+        var reg = await navigator.serviceWorker.ready;
+        var existing = await reg.pushManager.getSubscription();
+        if (existing) {
+            await _saveSubscriptionRow(existing);
+        } else {
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+            });
+            await _saveSubscriptionRow(sub);
+        }
+    } catch (e) {
+        console.warn('ensurePushSubscription failed:', e);
+    }
+    _refreshPushButton();
+}
+
+async function enablePushFromUserGesture() {
+    if (!pushSupported()) { showToast('Push notifications not supported on this device'); return; }
+    if (isIOS() && !isStandalone()) {
+        showToast('On iPhone: install the app to your home screen first, then enable push');
+        return;
+    }
+    try {
+        var perm = await Notification.requestPermission();
+        if (perm !== 'granted') { showToast('Notifications blocked — enable in browser settings'); _refreshPushButton(); return; }
+        await ensurePushSubscription();
+        showToast('Mobile push enabled');
+    } catch (e) {
+        showToast('Could not enable push: ' + (e.message || e));
+    }
+}
+
+function _refreshPushButton() {
+    var btn = document.getElementById('enablePushBtn');
+    if (!btn) return;
+    if (!currentUser || !pushSupported()) { btn.style.display = 'none'; return; }
+    // Hide if already granted AND we likely have a sub (best-effort: just check permission)
+    var perm = Notification.permission;
+    if (perm === 'granted') { btn.style.display = 'none'; return; }
+    if (perm === 'denied') { btn.style.display = 'none'; return; }
+    btn.style.display = '';
 }
 
 // ============ Day Detail Modal ============

@@ -1,5 +1,5 @@
-// SW v4: precache Supabase + jspdf, scoped Supabase early-return, no claim()
-var CACHE_NAME = 'cbd-scheduler-v4';
+// SW v5: precache Supabase + jspdf, scoped Supabase early-return, no claim(), Web Push payload aware
+var CACHE_NAME = 'cbd-scheduler-v5';
 var CORE_ASSETS = [
   '/',
   '/index.html',
