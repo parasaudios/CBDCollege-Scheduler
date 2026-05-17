@@ -2831,15 +2831,21 @@ async function onImportImageFile(event) {
         });
 
         if (resp.error) {
-            // Try to extract the body message from the function response
             var serverMsg = '';
+            var attempts = null;
             try {
                 if (resp.error.context && typeof resp.error.context.json === 'function') {
                     var ctx = await resp.error.context.json();
-                    serverMsg = ctx && ctx.error ? ctx.error : '';
+                    serverMsg = (ctx && ctx.error) ? ctx.error : '';
+                    attempts = (ctx && ctx.attempts) ? ctx.attempts : null;
                 }
             } catch (e) {}
-            progress.textContent = 'Failed: ' + (serverMsg || resp.error.message || String(resp.error));
+            var msg = 'Failed: ' + (serverMsg || resp.error.message || String(resp.error));
+            if (attempts && attempts.length) {
+                msg += ' [models tried: ' + attempts.map(function(a){ return a.model + '=' + a.status; }).join(', ') + ']';
+            }
+            progress.textContent = msg;
+            console.error('Edge function error:', resp.error, attempts);
             return;
         }
         var days = (resp.data && resp.data.days) || [];
