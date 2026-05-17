@@ -2789,10 +2789,12 @@ function _readFileAsBase64(file) {
     });
 }
 
-// Downscale large images so we stay under Anthropic's 5MB limit while keeping legibility.
+// Downscale only if the image is genuinely too large for Anthropic's 5MB limit.
+// Keep full resolution otherwise — small numbers / names need every pixel for accurate OCR.
 async function _maybeDownscaleImage(file, maxDim) {
     return new Promise(function(resolve) {
-        if (file.size < 1.5 * 1024 * 1024) { resolve(file); return; } // small enough already
+        // Only downscale if > 4MB. Below that, send the original for maximum fidelity.
+        if (file.size < 4 * 1024 * 1024) { resolve(file); return; }
         var url = URL.createObjectURL(file);
         var img = new Image();
         img.onload = function() {
@@ -2805,7 +2807,7 @@ async function _maybeDownscaleImage(file, maxDim) {
             canvas.toBlob(function(blob) {
                 URL.revokeObjectURL(url);
                 resolve(blob || file);
-            }, 'image/jpeg', 0.85);
+            }, 'image/png', 0.95);
         };
         img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
         img.src = url;
