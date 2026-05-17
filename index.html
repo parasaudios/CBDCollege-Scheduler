@@ -137,7 +137,9 @@
             }
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { max-width: 100%; overflow-x: hidden; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-50); color: var(--gray-800); min-height: 100vh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+        img, svg, video, canvas { max-width: 100%; height: auto; }
 
         .login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, var(--primary) 50%, #3b82f6 100%); }
         .login-card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg); padding: 40px; width: 100%; max-width: 420px; margin: 20px; }
@@ -423,15 +425,18 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         @media (max-width: 768px) {
-            .container { padding: 12px; }
+            .container { padding: 12px; max-width: 100%; }
             .header { padding: 10px 12px; }
-            .header-inner { flex-direction: column; align-items: flex-start; gap: 6px; }
+            .header-inner { flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
             .header h1 { font-size: 1.1rem; }
             .header-subtitle { font-size: 0.7rem; }
-            .header-inner > div:last-child { width: 100%; justify-content: space-between; }
-            .user-info { gap: 6px; font-size: 0.8rem; }
+            .header-inner > div:last-child { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+            .user-info { gap: 6px; font-size: 0.8rem; flex-shrink: 0; }
             .user-badge { padding: 2px 8px; font-size: 0.65rem; }
             .btn-ghost { padding: 4px 8px; font-size: 0.75rem; }
+            /* Trim the wordy Enable Push button on small screens — keep the bell icon */
+            #enablePushBtn { font-size: 0; padding: 4px 8px; }
+            #enablePushBtn::before { content: '\01F514'; font-size: 0.95rem; }
 
             .tabs { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; margin-bottom: 16px; }
             .tab { padding: 7px 12px; font-size: 0.78rem; flex-shrink: 0; white-space: nowrap; }
