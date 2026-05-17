@@ -2468,12 +2468,14 @@ function switchImportMode(mode) {
 
 function openImportRoster() {
     _importParsedDays = [];
-    document.getElementById('importFileExcel').value = '';
-    document.getElementById('importFileImage').value = '';
-    document.getElementById('importImageText').value = '';
-    document.getElementById('importImageProgress').style.display = 'none';
-    document.getElementById('importPreviewContainer').innerHTML = '';
-    document.getElementById('importApplyBtn').disabled = true;
+    var fEx = document.getElementById('importFileExcel'); if (fEx) fEx.value = '';
+    var fIm = document.getElementById('importFileImage'); if (fIm) fIm.value = '';
+    var prog = document.getElementById('importImageProgress');
+    if (prog) { prog.style.display = 'none'; prog.textContent = ''; }
+    var prev = document.getElementById('importPreviewContainer');
+    if (prev) prev.innerHTML = '';
+    var apply = document.getElementById('importApplyBtn');
+    if (apply) apply.disabled = true;
     switchImportMode('excel');
     document.getElementById('importRosterModal').classList.add('active');
 }
