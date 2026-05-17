@@ -24,7 +24,6 @@
     <link rel="shortcut icon" href="icons/icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -1092,13 +1091,17 @@
             </div>
 
             <div id="importModeImage" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:10px;">Upload a photo or screenshot of the roster. OCR runs in your browser (no data leaves your device). Works best with clear, high-resolution images of printed/digital rosters.</p>
+                <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:10px;">Upload a photo or screenshot of the roster. The image is sent to a private Edge Function that uses Claude's vision model to extract the roster data. Costs about <strong>$0.02</strong> per image (paid via your Anthropic API account).</p>
                 <input type="file" id="importFileImage" accept="image/*" onchange="onImportImageFile(event)" style="margin-bottom:12px;">
                 <div id="importImageProgress" style="display:none;font-size:0.85rem;color:var(--gray-600);margin-bottom:10px;"></div>
                 <details style="margin-bottom:10px;">
-                    <summary style="cursor:pointer;font-size:0.85rem;color:var(--gray-600);">Extracted text (editable)</summary>
-                    <textarea id="importImageText" style="width:100%;min-height:200px;font-family:monospace;font-size:0.78rem;padding:8px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:6px;" placeholder="Run OCR or paste roster text here..."></textarea>
-                    <button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="parseImportText()">Re-parse from text</button>
+                    <summary style="cursor:pointer;font-size:0.78rem;color:var(--gray-500);">First-time setup: add your Anthropic API key</summary>
+                    <ol style="margin:8px 0 0 18px;padding:0;font-size:0.82rem;color:var(--gray-600);line-height:1.5;">
+                        <li>Create an API account at <code>console.anthropic.com</code> and top up a few dollars of credit.</li>
+                        <li>Generate an API key (Settings &rarr; API Keys).</li>
+                        <li>In your Supabase dashboard go to Edge Functions &rarr; <code>parse-roster-image</code> &rarr; Secrets and add <code>ANTHROPIC_API_KEY</code> = your key.</li>
+                        <li>Or via CLI: <code>supabase secrets set ANTHROPIC_API_KEY=sk-ant-...</code></li>
+                    </ol>
                 </details>
             </div>
 
@@ -2768,51 +2771,116 @@ async function applyImport() {
     showToast('Imported ' + actionable.length + ' day' + (actionable.length === 1 ? '' : 's'));
 }
 
-// ---- Image OCR via Tesseract.js (free, client-side) ----
+// ---- Image parsing via Anthropic vision (server-side Edge Function) ----
+
+function _readFileAsBase64(file) {
+    return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function() {
+            var s = String(reader.result || '');
+            // strip "data:image/png;base64," prefix
+            var comma = s.indexOf(',');
+            resolve(comma >= 0 ? s.slice(comma + 1) : s);
+        };
+        reader.onerror = function() { reject(reader.error); };
+        reader.readAsDataURL(file);
+    });
+}
+
+// Downscale large images so we stay under Anthropic's 5MB limit while keeping legibility.
+async function _maybeDownscaleImage(file, maxDim) {
+    return new Promise(function(resolve) {
+        if (file.size < 1.5 * 1024 * 1024) { resolve(file); return; } // small enough already
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function() {
+            var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            if (scale >= 1) { URL.revokeObjectURL(url); resolve(file); return; }
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(function(blob) {
+                URL.revokeObjectURL(url);
+                resolve(blob || file);
+            }, 'image/jpeg', 0.85);
+        };
+        img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+    });
+}
 
 async function onImportImageFile(event) {
     var file = event.target.files[0];
     if (!file) return;
-    if (typeof Tesseract === 'undefined') { showToast('OCR library not loaded'); return; }
     var progress = document.getElementById('importImageProgress');
-    var textarea = document.getElementById('importImageText');
     progress.style.display = '';
-    progress.textContent = 'Starting OCR…';
-    textarea.value = '';
+    progress.textContent = 'Preparing image…';
 
     try {
-        var url = URL.createObjectURL(file);
-        var result = await Tesseract.recognize(url, 'eng', {
-            logger: function(m) {
-                if (m.status && m.progress != null) {
-                    progress.textContent = m.status + ' — ' + Math.round(m.progress * 100) + '%';
-                }
-            }
-        });
-        URL.revokeObjectURL(url);
-        textarea.value = result.data.text;
-        progress.textContent = 'Done. Parsing…';
-        parseImportText();
-        progress.textContent = 'Done. Review the preview below — you can edit the extracted text and re-parse if anything is off.';
-    } catch (e) {
-        progress.textContent = 'OCR failed: ' + (e.message || e);
-    }
-}
+        var blob = await _maybeDownscaleImage(file, 2200);
+        var mediaType = blob.type || file.type || 'image/png';
+        progress.textContent = 'Sending to Claude vision (about 5–15s)…';
+        var b64 = await _readFileAsBase64(blob);
 
-// Take OCR'd text from the textarea and try to parse it like a CSV (split lines on whitespace).
-function parseImportText() {
-    var text = document.getElementById('importImageText').value || '';
-    if (!text.trim()) { _importParsedDays = []; _renderImportPreview(); return; }
-    // Split into lines, then into "columns" by 2+ whitespace runs (loose for OCR output).
-    var lines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean);
-    // Build a 2D grid; each line becomes a row, columns are best-effort splits on long whitespace.
-    var rows = lines.map(function(line) {
-        // If line has tab characters, use them; otherwise split on 2+ spaces
-        if (line.indexOf('\t') >= 0) return line.split(/\t+/);
-        return line.split(/\s{2,}/);
-    });
-    _importParsedDays = _parseRosterGrid(rows);
-    _renderImportPreview();
+        var staffPayload = staffList.map(function(s) { return { name: s.name, is_head_trainer: !!s.is_head_trainer }; });
+        var resp = await sb.functions.invoke('parse-roster-image', {
+            body: { imageBase64: b64, mediaType: mediaType, staff: staffPayload }
+        });
+
+        if (resp.error) {
+            // Try to extract the body message from the function response
+            var serverMsg = '';
+            try {
+                if (resp.error.context && typeof resp.error.context.json === 'function') {
+                    var ctx = await resp.error.context.json();
+                    serverMsg = ctx && ctx.error ? ctx.error : '';
+                }
+            } catch (e) {}
+            progress.textContent = 'Failed: ' + (serverMsg || resp.error.message || String(resp.error));
+            return;
+        }
+        var days = (resp.data && resp.data.days) || [];
+        if (!Array.isArray(days) || days.length === 0) {
+            progress.textContent = 'No days detected in the image. Try a clearer photo or a different roster format.';
+            _importParsedDays = [];
+            _renderImportPreview();
+            return;
+        }
+
+        // Map model output → _importParsedDays format
+        _importParsedDays = days.map(function(d) {
+            var entry = {
+                dateStr: d.date,
+                am_start: d.am_start || null,
+                am_end: d.am_end || null,
+                pm_start: d.pm_start || null,
+                pm_end: d.pm_end || null,
+                studentsTotal: (typeof d.students === 'number') ? d.students : (d.students ? parseInt(d.students, 10) : null),
+                htEntries: [],
+                leave: [],
+                warnings: [],
+                skip: !!d.skip,
+                reason: d.skip_reason || null
+            };
+            (d.rostered_staff_names || []).forEach(function(nm) {
+                var staff = _matchStaffByName(nm);
+                if (staff) entry.htEntries.push(staff);
+                else entry.warnings.push("Couldn't match '" + nm + "' to any staff");
+            });
+            (d.leave_staff_names || []).forEach(function(nm) {
+                var staff = _matchStaffByName(nm);
+                if (staff) entry.leave.push(staff);
+                else entry.warnings.push("Couldn't match leave name '" + nm + "'");
+            });
+            return entry;
+        }).filter(function(d) { return !!d.dateStr; });
+
+        progress.textContent = 'Parsed ' + _importParsedDays.length + ' day' + (_importParsedDays.length === 1 ? '' : 's') + '. Review the preview below.';
+        _renderImportPreview();
+    } catch (e) {
+        progress.textContent = 'Failed: ' + (e && e.message ? e.message : String(e));
+    }
 }
 
 // ============ Auto-roster ============
