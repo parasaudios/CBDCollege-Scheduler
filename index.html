@@ -534,7 +534,10 @@
             .calendar-day .day-number { font-size: 0.85rem; font-weight: 700; margin-bottom: 0; }
             .calendar-day.today::before { font-size: 0.42rem; padding: 0 5px; top: -6px; letter-spacing: 0.3px; }
 
-            /* Hide verbose content; replaced with a single compact status indicator. */
+            /* Hide verbose content; replaced with a single compact status indicator.
+               Defense-in-depth: also hide any unclassed inline content (some renderers
+               emit raw <div> children with inline styles). On mobile we only ever want
+               the day number and the optional status icon. */
             .calendar-day .cal-cell-class-info,
             .calendar-day .cal-cell-staff-list,
             .calendar-day .cal-cell-staff-dots,
@@ -543,6 +546,12 @@
             .calendar-day .cal-cell-caps,
             .calendar-day .overview-day-staff,
             .calendar-day .assistavail-detail { display: none; }
+            .calendar-day > *:not(.day-number):not(.myroster-status-icon):not(.cal-cell-mobile-status) { display: none !important; }
+            /* The pre-existing mobile-status block was used for HT/AST/count chips. Suppress
+               so only check/cross renders. */
+            .calendar-day .cal-cell-mobile-status { display: none !important; }
+            /* Hide the role badge inside the day number on mobile — keep just the number. */
+            .calendar-day .day-number .cal-cell-badge { display: none; }
 
             /* Compact mobile indicator: small dot, badge, or rostered tick — set per render */
             .calendar-day .cal-cell-mobile-status {
@@ -2300,18 +2309,19 @@ function renderCalendar() {
         });
         var staffHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
 
-        // Mobile-only compact indicator: a single line showing the selected staff's role + count of others
-        var mobileStatusHtml = '';
-        if (entry) {
-            var roleClass = entry.day_role === 'head_trainer' ? 'ht-badge' : 'ast-badge';
-            var roleText = entry.day_role === 'head_trainer' ? 'HT' : 'AST';
-            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="badge ' + roleClass + '">' + roleText + '</span>' +
-                (rosterEntries.length > 1 ? '<span class="count">+' + (rosterEntries.length - 1) + '</span>' : '') + '</div>';
-        } else if (rosterEntries.length > 0) {
-            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="count">' + rosterEntries.length + ' on</span></div>';
+        // Mobile-only status icon: check if the selected staff is rostered on this day,
+        // cross if the day has a class scheduled but they aren't on it. No icon for
+        // days with no class at all (weekend/holiday).
+        var dayHasClass = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
+        var staffIsOn = !!(entry && (entry.status === 'available' || entry.status === 'partial') && !rosterConflict);
+        var statusIconHtml = '';
+        if (staffIsOn) {
+            statusIconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
+        } else if (dayHasClass) {
+            statusIconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
         }
 
-        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + mobileStatusHtml + '</div>';
+        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + statusIconHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -3933,11 +3943,13 @@ function renderOverview() {
             if (ci && ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
-        // Mobile-only status: total count of rostered staff
-        var mobileStatusHtml = entries.length > 0
-            ? '<div class="cal-cell-mobile-status"><span class="count">' + entries.length + ' on</span></div>'
-            : '';
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + mobileStatusHtml + '</div>';
+        // Mobile-only status icon: check if anyone is rostered, cross if class day with nobody on it.
+        var hasStaffOn = entries.some(function(e){ return e.status === 'available' || e.status === 'partial'; });
+        var classDay = !!(ci && ((ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || ci.capped_am || ci.capped_pm));
+        var statusIconHtml = '';
+        if (hasStaffOn) statusIconHtml = '<div class="myroster-status-icon check" aria-label="Staff rostered">&#10003;</div>';
+        else if (classDay) statusIconHtml = '<div class="myroster-status-icon cross" aria-label="No staff rostered">&#10005;</div>';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + statusIconHtml + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -4085,13 +4097,12 @@ function renderClassesCalendar() {
             detail += '<div style="color:var(--gray-400);font-style:italic;font-size:0.7rem;margin-top:2px;">no students set</div>';
         }
         detail += '</div>';
-        // Mobile-only status: total students for the day
-        var mobileStatusHtml = '';
-        if (hasNumbers) {
-            var totalStudents = Math.max(info.students_am || 0, info.students_pm || 0);
-            mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="count">' + totalStudents + '</span>' + (info.capped_am || info.capped_pm ? '<span class="badge" style="background:var(--danger);padding:0 4px;">CAP</span>' : '') + '</div>';
-        }
-        html += '<div class="' + cls + '" onclick="openClassEdit(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + mobileStatusHtml + '</div>';
+        // Mobile-only status icon: green check if class is configured (students set or capped),
+        // red cross otherwise. All other detail is hidden on mobile via CSS and accessible by tap.
+        var statusIconHtml = hasNumbers
+            ? '<div class="myroster-status-icon check" aria-label="Class scheduled">&#10003;</div>'
+            : '<div class="myroster-status-icon cross" aria-label="No class configured">&#10005;</div>';
+        html += '<div class="' + cls + '" onclick="openClassEdit(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detail + statusIconHtml + '</div>';
     }
     grid.innerHTML = html;
 }
