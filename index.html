@@ -1094,6 +1094,7 @@
                 <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:10px;">Upload a photo or screenshot of the roster. The image is sent to a private Edge Function that uses Claude's vision model to extract the roster data. Costs about <strong>$0.02</strong> per image (paid via your Anthropic API account).</p>
                 <input type="file" id="importFileImage" accept="image/*" onchange="onImportImageFile(event)" style="margin-bottom:12px;">
                 <div id="importImageProgress" style="display:none;font-size:0.85rem;color:var(--gray-600);margin-bottom:10px;"></div>
+                <div id="importImageRawDebug"></div>
                 <details style="margin-bottom:10px;">
                     <summary style="cursor:pointer;font-size:0.78rem;color:var(--gray-500);">First-time setup: add your Anthropic API key</summary>
                     <ol style="margin:8px 0 0 18px;padding:0;font-size:0.82rem;color:var(--gray-600);line-height:1.5;">
@@ -2851,6 +2852,17 @@ async function onImportImageFile(event) {
             return;
         }
         var days = (resp.data && resp.data.days) || [];
+        var rawText = (resp.data && resp.data.raw_text) || '';
+
+        // Stash raw OCR output for debug
+        var debugContainer = document.getElementById('importImageRawDebug');
+        if (debugContainer) {
+            debugContainer.innerHTML = rawText
+                ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.78rem;color:var(--gray-500);">Raw OCR output from Claude (' + rawText.split(/\r?\n/).filter(Boolean).length + ' lines) — open if any day looks wrong</summary>' +
+                  '<textarea style="width:100%;min-height:200px;font-family:monospace;font-size:0.72rem;padding:8px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:6px;" readonly>' + escHtml(rawText) + '</textarea></details>'
+                : '';
+        }
+
         if (!Array.isArray(days) || days.length === 0) {
             progress.textContent = 'No days detected in the image. Try a clearer photo or a different roster format.';
             _importParsedDays = [];
