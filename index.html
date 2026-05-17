@@ -796,54 +796,6 @@
                     <button class="btn btn-success" id="saveDefaultsBtn" onclick="saveDefaultClassTimes()" style="margin-top:14px;">Save Defaults</button>
                 </div>
             </div>
-            <div class="card">
-                <div class="card-header" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                    <div>
-                        <h2>Classes</h2>
-                        <div style="font-size:0.85rem;color:var(--gray-500);">Click a day to edit class times, student counts, and capped status. Italic times = using defaults; bold times = manually overridden.</div>
-                    </div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <button class="btn btn-outline btn-sm" onclick="changeClassesMonth(-1)">&lsaquo;</button>
-                        <span id="classesMonthLabel" style="font-weight:600;min-width:140px;text-align:center;"></span>
-                        <button class="btn btn-outline btn-sm" onclick="changeClassesMonth(1)">&rsaquo;</button>
-                        <button class="btn btn-outline btn-sm" onclick="goToClassesToday()">Today</button>
-                        <button class="btn btn-primary btn-sm" onclick="openBulkClassEdit()">Bulk Edit</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="calendar-grid" id="classesGrid"></div>
-                </div>
-            </div>
-
-            <!-- Settings consolidated into Classes tab -->
-            <div class="card" style="margin-top:14px;">
-                <div class="card-header"><div><h2>Assistant Start Times by Slot</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Auto-rostered assistants get the start time of the slot they're picked into. Slot 1 = 1st picked, Slot 2 = 2nd, etc. If a higher-priority assistant is unavailable, the next-priority assistant takes their slot.</div></div></div>
-                <div class="card-body">
-                    <div id="slotTimesContainer" style="max-width:480px;"></div>
-                    <button class="btn btn-success" id="saveSlotTimesBtn" onclick="saveSlotTimes()" style="margin-top:14px;">Save Start Times</button>
-                </div>
-            </div>
-
-            <div class="card" style="margin-top:14px;">
-                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size, and which Head Trainer kicks off the weekend rotation.</div></div></div>
-                <div class="card-body">
-                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;">
-                        <label style="display:flex;align-items:center;gap:8px;">Need 1 assistant when class &ge;
-                            <input type="number" class="form-control" id="settingsRule1" min="1" style="width:80px;">
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;">Need 2 assistants when class &ge;
-                            <input type="number" class="form-control" id="settingsRule2" min="1" style="width:80px;">
-                        </label>
-                    </div>
-                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:14px;">
-                        <label style="display:flex;align-items:center;gap:8px;">Who works the first Saturday of each month?
-                            <select class="form-control" id="settingsFirstSatHt" style="width:auto;min-width:160px;"></select>
-                        </label>
-                        <span style="font-size:0.78rem;color:var(--gray-500);">The other Head Trainer takes that weekend's Sunday. Each subsequent weekend swaps.</span>
-                    </div>
-                    <button class="btn btn-success" id="saveRulesBtn" onclick="saveRosterRulesFromSettings()" style="margin-top:14px;">Save Rules</button>
-                </div>
-            </div>
         </div>
 
         <!-- TRAINER: Manage Staff Tab -->
@@ -872,6 +824,35 @@
                 <div class="card-body">
                     <div class="staff-grid" id="staffGrid"></div>
                     <div id="noStaffMessage" class="empty-state" style="display:none;"><div class="empty-state-icon">&#128101;</div><div>No staff members yet</div></div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;">
+                <div class="card-header"><div><h2>Assistant Start Times by Slot</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Auto-rostered assistants get the start time of the slot they're picked into. Slot 1 = 1st picked, Slot 2 = 2nd, etc. If a higher-priority assistant is unavailable, the next-priority assistant takes their slot.</div></div></div>
+                <div class="card-body">
+                    <div id="slotTimesContainer" style="max-width:480px;"></div>
+                    <button class="btn btn-success" id="saveSlotTimesBtn" onclick="saveSlotTimes()" style="margin-top:14px;">Save Start Times</button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;">
+                <div class="card-header"><div><h2>Auto-roster Rules</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">How many assistants are needed based on class size, and which Head Trainer kicks off the weekend rotation.</div></div></div>
+                <div class="card-body">
+                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;">
+                        <label style="display:flex;align-items:center;gap:8px;">Need 1 assistant when class &ge;
+                            <input type="number" class="form-control" id="settingsRule1" min="1" style="width:80px;">
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;">Need 2 assistants when class &ge;
+                            <input type="number" class="form-control" id="settingsRule2" min="1" style="width:80px;">
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:0.92rem;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:14px;">
+                        <label style="display:flex;align-items:center;gap:8px;">Who works the first Saturday of each month?
+                            <select class="form-control" id="settingsFirstSatHt" style="width:auto;min-width:160px;"></select>
+                        </label>
+                        <span style="font-size:0.78rem;color:var(--gray-500);">The other Head Trainer takes that weekend's Sunday. Each subsequent weekend swaps.</span>
+                    </div>
+                    <button class="btn btn-success" id="saveRulesBtn" onclick="saveRosterRulesFromSettings()" style="margin-top:14px;">Save Rules</button>
                 </div>
             </div>
         </div>
@@ -2118,18 +2099,16 @@ function switchTab(tab) {
         renderOverviewSkeleton();
         loadMonth('overview', overviewMonth, overviewYear).then(renderOverview);
     } else if (tab === 'classes') {
-        renderClassesSkeleton();
         loadSettings().then(function() {
-            renderSettingsCardsInClasses();
             renderDowDefaultsGrid();
-            return loadMonth('classes', classesMonth, classesYear);
-        }).then(renderClassesCalendar);
+        });
     } else if (tab === 'assistavail') {
         renderStaffPatternsEditor();
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
     } else if (tab === 'staff') {
         renderStaffGrid();
         selectPriorityDow(_priorityDow);
+        loadSettings().then(renderSettingsCardsInClasses);
     } else if (tab === 'admin') {
         loadUsers();
     } else if (tab === 'myroster') {
@@ -2499,6 +2478,7 @@ async function clearAllRosterMonth() {
 function renderSettingsTab() { return renderSettingsCardsInClasses(); }
 function renderSettingsCardsInClasses() {
     var container = document.getElementById('slotTimesContainer');
+    if (!container) return; // settings cards live on Staff tab now; bail if not in DOM
     var groups = _distinctAmStartGroups();
     var byStart = settingsCache.assistant_slot_times_by_start || {};
     var fallbackSlots = settingsCache.assistant_slot_times || {};
@@ -4057,7 +4037,9 @@ function dowDefaultsCopyMonToAll() {
 }
 
 function renderClassesCalendar() {
-    document.getElementById('classesMonthLabel').textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
+    var lbl = document.getElementById('classesMonthLabel');
+    if (!lbl) return; // calendar removed from Classes tab — keep stub for legacy callsites
+    lbl.textContent = MONTH_NAMES[classesMonth] + ' ' + classesYear;
     // Note: renderDowDefaultsGrid() is intentionally NOT called here. It populates
     // input fields from settingsCache, which would clobber any in-progress edits
     // when polling/realtime triggers a re-render. Grid is rendered once per tab
