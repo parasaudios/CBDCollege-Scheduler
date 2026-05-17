@@ -859,6 +859,32 @@
             </div>
         </div>
 
+        <!-- TRAINER: Notifications Tab -->
+        <div id="tab-notifications" class="tab-content" style="display:none;">
+            <div class="card">
+                <div class="card-header"><div><h2>Send a notification</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Pings the recipient's in-app bell and pushes to their mobile device if they've enabled it.</div></div></div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:12px;max-width:560px;">
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.85rem;font-weight:600;color:var(--gray-700);">
+                            Recipient
+                            <select id="notifComposeRecipient" class="form-control"></select>
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.85rem;font-weight:600;color:var(--gray-700);">
+                            Title
+                            <input id="notifComposeTitle" class="form-control" type="text" maxlength="120" placeholder="e.g. New roster posted">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.85rem;font-weight:600;color:var(--gray-700);">
+                            Message
+                            <textarea id="notifComposeMessage" class="form-control" rows="4" maxlength="400" placeholder="What do you want them to know?"></textarea>
+                        </label>
+                        <div>
+                            <button class="btn btn-success" id="notifComposeSendBtn" onclick="sendComposedNotification()">Send Notification</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- TRAINER: Admin Tab -->
         <div id="tab-admin" class="tab-content" style="display:none;">
             <div class="card">
@@ -1155,7 +1181,8 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" id="confirmCancel" onclick="_confirmResolve(false)">Cancel</button>
-            <button class="btn btn-success" id="confirmOk" onclick="_confirmResolve(true)">Confirm</button>
+            <button class="btn btn-outline" id="confirmSecondary" style="display:none;" onclick="_confirmResolve('secondary')"></button>
+            <button class="btn btn-success" id="confirmOk" onclick="_confirmResolve('primary')">Confirm</button>
         </div>
     </div>
 </div>
@@ -1431,6 +1458,9 @@ function closeModal(id) { document.getElementById(id).classList.remove('active')
 
 // Styled confirm modal — returns a Promise that resolves to true/false
 var _confirmPending = null;
+// showConfirm — returns a promise.
+//   - With no secondaryText: resolves true/false (backward compatible).
+//   - With opts.secondaryText: resolves 'primary' | 'secondary' | false.
 function showConfirm(opts) {
     opts = opts || {};
     var title = opts.title || 'Are you sure?';
@@ -1444,12 +1474,28 @@ function showConfirm(opts) {
     var okBtn = document.getElementById('confirmOk');
     okBtn.textContent = okText;
     okBtn.className = 'btn ' + okStyle;
+    var secBtn = document.getElementById('confirmSecondary');
+    if (opts.secondaryText) {
+        secBtn.style.display = '';
+        secBtn.textContent = opts.secondaryText;
+    } else {
+        secBtn.style.display = 'none';
+    }
     document.getElementById('confirmModal').classList.add('active');
-    return new Promise(function(resolve) { _confirmPending = resolve; });
+    return new Promise(function(resolve) { _confirmPending = resolve; _confirmHasSecondary = !!opts.secondaryText; });
 }
-function _confirmResolve(yes) {
+var _confirmHasSecondary = false;
+function _confirmResolve(value) {
     document.getElementById('confirmModal').classList.remove('active');
-    if (_confirmPending) { var r = _confirmPending; _confirmPending = null; r(yes); }
+    if (!_confirmPending) return;
+    var r = _confirmPending; _confirmPending = null;
+    // Back-compat: when no secondary was offered, primary -> true, cancel -> false.
+    if (!_confirmHasSecondary) {
+        if (value === 'primary') return r(true);
+        if (value === 'secondary') return r(true); // shouldn't happen, treat as primary
+        return r(false);
+    }
+    r(value); // 'primary' | 'secondary' | false
 }
 var viewAsAssistant = false;
 function isActualTrainer() { return currentProfile && currentProfile.role === 'trainer'; }
@@ -1842,15 +1888,17 @@ function showApp() {
     document.getElementById('userRole').className = 'user-badge ' + currentProfile.role;
     document.getElementById('headerSub').textContent = isTrainer() ? 'Manage team schedules and rosters' : 'View your roster and submit availability';
     document.getElementById('viewAsBtn').style.display = isActualTrainer() ? '' : 'none';
-    document.getElementById('notifBellBtn').style.display = isActualTrainer() ? '' : 'none';
+    // Bell shown to everyone; assistants get targeted notifications + broadcasts via RLS.
+    document.getElementById('notifBellBtn').style.display = '';
     if (typeof _refreshInstallButton === 'function') _refreshInstallButton();
     buildTabs();
     loadAllData();
     setupRealtime();
     startDataPolling();
+    // Notifications: load + poll for any signed-in user (RLS filters to targeted + broadcast rows).
+    loadNotifications({ silent: true }).then(startNotifPolling);
+    setTimeout(requestNotificationPermission, 2000);
     if (isActualTrainer()) {
-        loadNotifications({ silent: true }).then(startNotifPolling);
-        setTimeout(requestNotificationPermission, 2000);
         // Best-effort audit-log retention (90 days). Idempotent. Trainer-callable.
         sb.rpc('cbd_prune_audit_log').then(function(){}).catch(function(){});
     }
@@ -1872,6 +1920,7 @@ function buildTabs() {
         tabsEl.innerHTML = '<button class="tab active" data-tab="schedule" onclick="switchTab(\'schedule\')">Schedule</button>' +
             '<button class="tab" data-tab="classes" onclick="switchTab(\'classes\')">Classes</button>' +
             '<button class="tab" data-tab="people" onclick="switchTab(\'people\')">Staff</button>' +
+            '<button class="tab" data-tab="notifications" onclick="switchTab(\'notifications\')">Notifications</button>' +
             '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>';
         document.getElementById('exportBtn').style.display = '';
     } else {
@@ -2113,6 +2162,8 @@ function switchTab(tab) {
         loadSettings().then(renderSettingsCardsInClasses);
     } else if (tab === 'admin') {
         loadUsers();
+    } else if (tab === 'notifications') {
+        renderNotificationsTab();
     } else if (tab === 'myroster') {
         renderRosterSkeleton('myRosterGrid');
         loadMonth('myroster', myRosterMonth, myRosterYear).then(renderMyRoster);
@@ -2448,6 +2499,15 @@ async function bulkSetAvailability(status) {
     var result = await sb.from('cbd_availability').upsert(upserts, { onConflict: 'staff_id,date' });
     if (result.error) { showToast('Failed to save roster: ' + result.error.message); return; }
     showToast(count + ' days updated');
+    var targetStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
+    if (targetStaff) {
+        var statusLabel = status === 'available' ? 'rostered on' : status === 'partial' ? 'partially rostered' : 'unrostered';
+        notifyStaffOfRosterChange(targetStaff.user_id, {
+            title: 'Your roster was updated',
+            message: count + ' day' + (count === 1 ? '' : 's') + ' — ' + statusLabel,
+            data: { staff_id: selectedStaffId, dates: Array.from(multiSelectedDays), status: status }
+        });
+    }
     await loadAvailabilityForMonth(currentMonth, currentYear); clearMultiSelect(); updateSummary();
 }
 
@@ -2457,6 +2517,14 @@ async function bulkClearAvailability() {
     var result = await sb.from('cbd_availability').delete().eq('staff_id', selectedStaffId).in('date', dates);
     if (result.error) { showToast('Failed to clear days: ' + result.error.message); return; }
     dates.forEach(function(d) { if (availabilityCache[selectedStaffId]) delete availabilityCache[selectedStaffId][d]; });
+    var targetStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
+    if (targetStaff) {
+        notifyStaffOfRosterChange(targetStaff.user_id, {
+            title: 'Your roster was updated',
+            message: dates.length + ' day' + (dates.length === 1 ? '' : 's') + ' cleared',
+            data: { staff_id: selectedStaffId, dates: dates, action: 'cleared' }
+        });
+    }
     showToast(dates.length + ' days cleared'); clearMultiSelect(); updateSummary();
 }
 
@@ -2551,13 +2619,15 @@ async function saveSlotTimes() {
     var detail = '<ul style="margin:6px 0 0 16px;padding:0;max-height:240px;overflow:auto;">' + changes.map(function(c) {
         return '<li>' + escHtml(c.amStart) + ' · Slot ' + c.slot + ': ' + (c.from || '—') + ' &rarr; ' + (c.to || '—') + '</li>';
     }).join('') + '</ul>';
-    var ok = await showConfirm({
-        title: 'Confirm assistant start time changes',
-        body: 'This will change the auto-roster start times for one or more class-start groups. All assistants will be notified.',
+    var choice = await showConfirm({
+        title: 'Save assistant start times?',
+        body: 'You can save quietly or save and push a notification to all assistants.',
         detail: detail,
-        okText: 'Save & Notify'
+        okText: 'Save & Notify',
+        secondaryText: 'Save only'
     });
-    if (!ok) return;
+    if (!choice) return;
+    var shouldNotify = (choice === 'primary');
 
     // Merge new groups into the stored map (preserve any AM starts not currently shown — they remain inert until an AM start matches them again)
     var mergedByStart = Object.assign({}, currentByStart, newByStart);
@@ -2572,14 +2642,18 @@ async function saveSlotTimes() {
     if (res.error) { showToast('Error: ' + res.error.message); return; }
     settingsCache.assistant_slot_times_by_start = mergedByStart;
 
-    var groups = Array.from(new Set(changes.map(function(c) { return c.amStart; }))).join(', ');
-    await emitNotification({
-        type: 'start_time_changed',
-        title: 'Assistant start times updated',
-        message: 'Slot times changed for class-start group(s): ' + groups,
-        data: { changes: changes }
-    });
-    showToast('Saved · all assistants notified');
+    if (shouldNotify) {
+        var groups = Array.from(new Set(changes.map(function(c) { return c.amStart; }))).join(', ');
+        await emitNotification({
+            type: 'start_time_changed',
+            title: 'Assistant start times updated',
+            message: 'Slot times changed for class-start group(s): ' + groups,
+            data: { changes: changes }
+        });
+        showToast('Saved · all assistants notified');
+    } else {
+        showToast('Saved');
+    }
     renderSettingsCardsInClasses();
 }
 
@@ -2590,6 +2664,16 @@ async function saveRosterRulesFromSettings() {
     if (r2 < r1) { showToast('Two-assistant threshold must be >= one-assistant threshold'); return; }
     var firstSatSel = document.getElementById('settingsFirstSatHt');
     var firstSatId = firstSatSel ? (firstSatSel.value || null) : null;
+
+    var choice = await showConfirm({
+        title: 'Save auto-roster rules?',
+        body: 'These rules govern how many assistants are auto-rostered and who works the first Saturday of the month.',
+        okText: 'Save & Notify',
+        secondaryText: 'Save only'
+    });
+    if (!choice) return;
+    var shouldNotify = (choice === 'primary');
+
     var btn = document.getElementById('saveRulesBtn');
     setLoading(btn, true);
     var res = await sb.from('cbd_auto_roster_rules').update({
@@ -2604,32 +2688,108 @@ async function saveRosterRulesFromSettings() {
     settingsCache.min_students_for_one_assistant = r1;
     settingsCache.min_students_for_two_assistants = r2;
     settingsCache.weekend_first_sat_ht_id = firstSatId;
+    if (shouldNotify) {
+        await emitNotification({
+            type: 'rules_changed',
+            title: 'Auto-roster rules updated',
+            message: 'Need 1 assistant ≥ ' + r1 + ' · Need 2 assistants ≥ ' + r2,
+            data: { rule1: r1, rule2: r2 }
+        });
+    }
     // If we're on the Schedule tab, the rotation may have shifted — refresh
     if (currentTab === 'roster') refreshTrainerUI();
     if (currentTab === 'overview') renderOverview();
-    showToast('Rules saved');
+    showToast(shouldNotify ? 'Rules saved · all staff notified' : 'Rules saved');
 }
 
-// Notification emitter helper — writes a row directly so all trainers see it via realtime/poll
+// ============ Notifications Tab (trainer compose) ============
+function renderNotificationsTab() {
+    var sel = document.getElementById('notifComposeRecipient');
+    if (!sel) return;
+    var opts = '<option value="">All staff (broadcast)</option>';
+    // Sort staff alphabetically; only include those linked to a user account (so the push can target someone).
+    var linked = staffList.filter(function(s) { return !!s.user_id; }).slice().sort(function(a, b) { return a.name.localeCompare(b.name); });
+    linked.forEach(function(s) {
+        opts += '<option value="' + escHtml(s.user_id) + '">' + escHtml(s.name) + '</option>';
+    });
+    sel.innerHTML = opts;
+}
+
+async function sendComposedNotification() {
+    var sel = document.getElementById('notifComposeRecipient');
+    var titleInp = document.getElementById('notifComposeTitle');
+    var msgInp = document.getElementById('notifComposeMessage');
+    var btn = document.getElementById('notifComposeSendBtn');
+    var targetUserId = sel.value || null;
+    var title = (titleInp.value || '').trim();
+    var message = (msgInp.value || '').trim();
+    if (!title) { showToast('Title is required'); return; }
+    if (!message) { showToast('Message is required'); return; }
+
+    var recipientLabel = targetUserId
+        ? (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].textContent) || 'staff member'
+        : 'all staff';
+    var ok = await showConfirm({
+        title: 'Send this notification?',
+        body: 'Sending to: ' + recipientLabel,
+        detail: '<div style="background:var(--surface-2);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:10px;margin-top:6px;"><div style="font-weight:600;margin-bottom:4px;">' + escHtml(title) + '</div><div style="white-space:pre-wrap;font-size:0.88rem;color:var(--text-secondary);">' + escHtml(message) + '</div></div>',
+        okText: 'Send'
+    });
+    if (!ok) return;
+
+    setLoading(btn, true);
+    await emitNotification({
+        type: 'manual_announcement',
+        title: title,
+        message: message,
+        data: { sent_by: currentUser.id },
+        target_user_id: targetUserId
+    });
+    setLoading(btn, false);
+    titleInp.value = '';
+    msgInp.value = '';
+    showToast('Notification sent to ' + recipientLabel);
+}
+
+// Targeted notification helper — fire a per-user push when a trainer changes that staff member's
+// availability or roster. No-op for unlinked staff (no user_id) or when the trainer is editing themselves.
+async function notifyStaffOfRosterChange(targetUserId, opts) {
+    if (!targetUserId) return;
+    if (currentUser && targetUserId === currentUser.id) return;
+    opts = opts || {};
+    return emitNotification({
+        type: opts.type || 'roster_changed',
+        title: opts.title || 'Your roster was updated',
+        message: opts.message || '',
+        data: opts.data || {},
+        target_user_id: targetUserId
+    });
+}
+
+// Notification emitter helper — writes a row directly so all trainers see it via realtime/poll.
+// opts.target_user_id (optional): when set, only that user receives the in-app notif + push.
+//   When omitted, the row is a broadcast and every device receives the push.
 async function emitNotification(opts) {
+    var row = {
+        type: opts.type,
+        title: opts.title,
+        message: opts.message,
+        data: opts.data || {}
+    };
+    if (opts.target_user_id) row.target_user_id = opts.target_user_id;
     try {
-        await sb.from('cbd_notifications').insert({
-            type: opts.type,
-            title: opts.title,
-            message: opts.message,
-            data: opts.data || {}
-        });
+        await sb.from('cbd_notifications').insert(row);
     } catch (e) { console.warn('notification emit failed:', e); }
-    // Fan out an OS-level Web Push to all subscribed devices (fire-and-forget).
+    // Fan out an OS-level Web Push (fire-and-forget). Send-push filters by target_user_id when set.
     try {
-        sb.functions.invoke('send-push', {
-            body: {
-                title: opts.title,
-                body: opts.message,
-                data: opts.data || {},
-                tag: 'cbd-' + (opts.type || 'notif')
-            }
-        }).catch(function(){});
+        var pushBody = {
+            title: opts.title,
+            body: opts.message,
+            data: opts.data || {},
+            tag: 'cbd-' + (opts.type || 'notif')
+        };
+        if (opts.target_user_id) pushBody.target_user_id = opts.target_user_id;
+        sb.functions.invoke('send-push', { body: pushBody }).catch(function(){});
     } catch (e) { /* ignore */ }
 }
 
@@ -3880,6 +4040,17 @@ async function saveDayAvailability() {
     if (result.error) { showToast('Failed to save: ' + result.error.message); return; }
     if (!availabilityCache[selectedStaffId]) availabilityCache[selectedStaffId] = {};
     availabilityCache[selectedStaffId][selectedDay] = row;
+    var savedDate = selectedDay;
+    var targetStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
+    if (targetStaff) {
+        var roleLbl = dayRole === 'head_trainer' ? 'Head Trainer' : 'Assistant';
+        var statusLbl = status === 'available' ? 'rostered on' : status === 'partial' ? 'partially rostered' : 'unrostered';
+        notifyStaffOfRosterChange(targetStaff.user_id, {
+            title: 'Your roster was updated',
+            message: savedDate + ' — ' + statusLbl + (status !== 'unavailable' ? ' as ' + roleLbl : ''),
+            data: { staff_id: selectedStaffId, date: savedDate, status: status, day_role: dayRole }
+        });
+    }
     closeModal('dayModal'); selectedDay = null; renderCalendar(); updateSummary(); showToast('Roster saved');
 }
 
@@ -3888,6 +4059,15 @@ async function removeAvailability() {
     var result = await sb.from('cbd_availability').delete().eq('staff_id', selectedStaffId).eq('date', selectedDay);
     if (result.error) { showToast('Failed to remove entry: ' + result.error.message); return; }
     if (availabilityCache[selectedStaffId]) delete availabilityCache[selectedStaffId][selectedDay];
+    var clearedDate = selectedDay;
+    var targetStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
+    if (targetStaff) {
+        notifyStaffOfRosterChange(targetStaff.user_id, {
+            title: 'Your roster was updated',
+            message: clearedDate + ' — roster entry removed',
+            data: { staff_id: selectedStaffId, date: clearedDate, action: 'removed' }
+        });
+    }
     closeModal('dayModal'); selectedDay = null; renderCalendar(); updateSummary(); showToast('Roster entry removed');
 }
 
@@ -4120,13 +4300,15 @@ async function saveDefaultClassTimes() {
     }
     if (diff.length === 0) { showToast('No changes to save'); return; }
 
-    var ok = await showConfirm({
-        title: 'Confirm default class time changes',
-        body: 'These defaults apply to each day-of-week going forward, except dates with manually-set times. All staff will be notified.',
+    var choice = await showConfirm({
+        title: 'Save default class times?',
+        body: 'These defaults apply to each day-of-week going forward, except dates with manually-set times.',
         detail: '<ul style="margin:6px 0 0 16px;padding:0;max-height:240px;overflow:auto;">' + diff.map(function(d){ return '<li>' + escHtml(d) + '</li>'; }).join('') + '</ul>',
-        okText: 'Save & Notify'
+        okText: 'Save & Notify',
+        secondaryText: 'Save only'
     });
-    if (!ok) return;
+    if (!choice) return;
+    var shouldNotify = (choice === 'primary');
 
     var btn = document.getElementById('saveDefaultsBtn');
     setLoading(btn, true);
@@ -4138,16 +4320,18 @@ async function saveDefaultClassTimes() {
     setLoading(btn, false);
     if (res.error) { showToast('Error: ' + res.error.message); return; }
     settingsCache.default_class_times = newDct;
-    await emitNotification({
-        type: 'default_class_times_changed',
-        title: 'Default class times updated',
-        message: diff.length + ' day-of-week defaults changed',
-        data: { changes: diff }
-    });
+    if (shouldNotify) {
+        await emitNotification({
+            type: 'default_class_times_changed',
+            title: 'Default class times updated',
+            message: diff.length + ' day-of-week defaults changed',
+            data: { changes: diff }
+        });
+    }
     if (currentTab === 'classes') { renderDowDefaultsGrid(); renderSettingsCardsInClasses(); renderClassesCalendar(); }
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
-    showToast('Defaults saved · all staff notified');
+    showToast(shouldNotify ? 'Defaults saved · all staff notified' : 'Defaults saved');
 }
 
 function changeClassesMonth(dir) {
@@ -4592,6 +4776,12 @@ async function saveTrainerAssistAvail() {
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     closeModal('trainerAssistAvailModal');
     showToast('Availability saved');
+    notifyStaffOfRosterChange(trainerAssistEditUserId, {
+        type: 'availability_changed_by_trainer',
+        title: 'Your availability was updated',
+        message: trainerAssistEditDate + ' — set to ' + (isAvail ? 'Available' : 'Not available'),
+        data: { date: trainerAssistEditDate, is_available: isAvail, note: note }
+    });
     await loadAssistantAvailForMonth(assistMonth, assistYear);
     renderAssistAvail();
 }
@@ -4601,6 +4791,12 @@ async function clearTrainerAssistAvail() {
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     closeModal('trainerAssistAvailModal');
     showToast('Availability cleared');
+    notifyStaffOfRosterChange(trainerAssistEditUserId, {
+        type: 'availability_changed_by_trainer',
+        title: 'Your availability was updated',
+        message: trainerAssistEditDate + ' — cleared',
+        data: { date: trainerAssistEditDate, action: 'cleared' }
+    });
     await loadAssistantAvailForMonth(assistMonth, assistYear);
     renderAssistAvail();
 }
@@ -5654,7 +5850,7 @@ async function setupRealtime() {
             handleNewNotification(payload.new);
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cbd_notification_reads' }, function() {
-            if (isActualTrainer()) loadNotifications();
+            if (currentUser) loadNotifications();
         })
         .subscribe(function(status, err) {
             console.log('[realtime]', status, err || '');
@@ -5797,13 +5993,11 @@ async function loadNotifications(opts) {
 
 function startNotifPolling() {
     if (notifPollTimer) clearInterval(notifPollTimer);
-    // Poll every 15s while the tab is visible
     notifPollTimer = setInterval(function() {
-        if (document.visibilityState === 'visible' && isActualTrainer()) loadNotifications();
+        if (document.visibilityState === 'visible' && currentUser) loadNotifications();
     }, 15000);
-    // Refresh immediately when the tab becomes visible
     document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible' && isActualTrainer()) loadNotifications();
+        if (document.visibilityState === 'visible' && currentUser) loadNotifications();
     });
 }
 
@@ -5846,7 +6040,8 @@ function stopNotifPolling() {
 function renderNotifBadge() {
     var badge = document.getElementById('notifBadge');
     var bell = document.getElementById('notifBellBtn');
-    if (!isActualTrainer()) { bell.style.display = 'none'; return; }
+    // Bell is visible to anyone signed in; assistants will see targeted notifications + broadcasts here.
+    if (!currentUser) { bell.style.display = 'none'; return; }
     bell.style.display = '';
     var unread = notifications.filter(function(n) { return !notifReads[n.id]; }).length;
     if (unread > 0) {
@@ -5921,7 +6116,9 @@ async function markAllNotificationsRead() {
 }
 
 function handleNewNotification(row) {
-    if (!isActualTrainer()) return;
+    if (!currentUser) return;
+    // Realtime delivers all inserts; ignore rows targeted at someone else.
+    if (row.target_user_id && row.target_user_id !== currentUser.id && !isActualTrainer()) return;
     // Dedupe against polling — if already seen, skip alerts
     if (notifLastSeenIds[row.id]) return;
     notifLastSeenIds[row.id] = true;
