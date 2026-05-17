@@ -24,13 +24,15 @@
     <link rel="shortcut icon" href="icons/icon-192.png">
     <script>
         // Apply persisted theme ASAP (before any paint) to avoid flash.
+        // Default to dark when no preference is saved.
         (function(){
             try {
                 var t = localStorage.getItem('cbd_theme');
-                if (t === 'dark' || t === 'light') {
-                    document.documentElement.setAttribute('data-theme', t);
-                }
-            } catch(e) {}
+                if (t !== 'dark' && t !== 'light') t = 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch(e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
         })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
