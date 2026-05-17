@@ -2776,6 +2776,78 @@ async function applyImport() {
 
 // ---- Image parsing via Anthropic vision (server-side Edge Function) ----
 
+// Re-parse the (editable) raw OCR text and rebuild the preview client-side.
+function reparseOcrText() {
+    var ta = document.getElementById('importImageRawText');
+    if (!ta) return;
+    var text = ta.value || '';
+    var lines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l && l.indexOf('|') >= 0; });
+    var parsed = [];
+    lines.forEach(function(line) {
+        var parts = line.split('|').map(function(p) { return p.trim(); });
+        if (parts.length < 5) return;
+        var headerText = parts[0], amText = parts[1], pmText = parts[2], t2Text = parts[3], studentsText = parts[4];
+        // Parse the date header (e.g. "MONDAY 18 May 2026" → "2026-05-18")
+        var dateStr = (function(s) {
+            var m = s.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+            if (!m) return null;
+            var day = parseInt(m[1], 10);
+            var mn = m[2].toLowerCase().slice(0,3);
+            var monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+            var month = monthNames.indexOf(mn);
+            if (month < 0) return null;
+            var year = parseInt(m[3], 10);
+            return year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+        })(headerText);
+        if (!dateStr) return;
+        var am = _parseSessionCell(amText);
+        var pm = _parseSessionCell(pmText);
+        var t2 = _parseSessionCell(t2Text);
+        var students = parseInt(String(studentsText || '').replace(/[^0-9]/g, ''), 10);
+        if (isNaN(students)) students = null;
+        var entry = {
+            dateStr: dateStr,
+            am_start: am.start || null,
+            am_end: am.end || null,
+            pm_start: pm.start || null,
+            pm_end: pm.end || null,
+            studentsTotal: students,
+            htEntries: [],
+            leave: [],
+            warnings: [],
+            skip: false,
+            reason: null
+        };
+        if (am.skip && pm.skip) {
+            entry.skip = true;
+            entry.reason = am.reason || pm.reason || 'no class';
+        } else {
+            [am, pm, t2].forEach(function(slot) {
+                if (!slot.name) return;
+                var staff = _matchStaffByName(slot.name);
+                if (!staff) {
+                    entry.warnings.push("Couldn't match '" + slot.name + "' to any staff");
+                    return;
+                }
+                if (slot.leave) {
+                    if (!entry.leave.some(function(s) { return s.id === staff.id; })) entry.leave.push(staff);
+                } else {
+                    if (!entry.htEntries.some(function(s) { return s.id === staff.id; })) entry.htEntries.push(staff);
+                }
+            });
+            // Remove anyone in leave from htEntries
+            entry.htEntries = entry.htEntries.filter(function(s) {
+                return !entry.leave.some(function(l) { return l.id === s.id; });
+            });
+        }
+        parsed.push(entry);
+    });
+    _importParsedDays = parsed;
+    _renderImportPreview();
+    showToast('Re-parsed ' + parsed.length + ' day' + (parsed.length === 1 ? '' : 's'));
+}
+
+
 function _readFileAsBase64(file) {
     return new Promise(function(resolve, reject) {
         var reader = new FileReader();
@@ -2854,13 +2926,21 @@ async function onImportImageFile(event) {
         var days = (resp.data && resp.data.days) || [];
         var rawText = (resp.data && resp.data.raw_text) || '';
 
-        // Stash raw OCR output for debug
+        // Stash raw OCR output and let the user edit + re-parse it.
         var debugContainer = document.getElementById('importImageRawDebug');
         if (debugContainer) {
-            debugContainer.innerHTML = rawText
-                ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.78rem;color:var(--gray-500);">Raw OCR output from Claude (' + rawText.split(/\r?\n/).filter(Boolean).length + ' lines) — open if any day looks wrong</summary>' +
-                  '<textarea style="width:100%;min-height:200px;font-family:monospace;font-size:0.72rem;padding:8px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:6px;" readonly>' + escHtml(rawText) + '</textarea></details>'
-                : '';
+            if (rawText) {
+                var lineCount = rawText.split(/\r?\n/).filter(Boolean).length;
+                debugContainer.innerHTML = '<details open style="margin-top:8px;">' +
+                    '<summary style="cursor:pointer;font-size:0.82rem;color:var(--gray-700);font-weight:600;">OCR text — ' + lineCount + ' lines parsed. <span style="color:var(--gray-500);font-weight:400;">If any line is wrong, edit it here and click Re-parse.</span></summary>' +
+                    '<textarea id="importImageRawText" style="width:100%;min-height:220px;font-family:monospace;font-size:0.78rem;padding:8px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:6px;">' + escHtml(rawText) + '</textarea>' +
+                    '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap;">' +
+                        '<button class="btn btn-outline btn-sm" onclick="reparseOcrText()">Re-parse from edited text</button>' +
+                        '<span style="font-size:0.78rem;color:var(--gray-500);">Format: <code>DATE | AM_CELL | PM_CELL | T2_CELL | STUDENTS</code></span>' +
+                    '</div></details>';
+            } else {
+                debugContainer.innerHTML = '';
+            }
         }
 
         if (!Array.isArray(days) || days.length === 0) {
