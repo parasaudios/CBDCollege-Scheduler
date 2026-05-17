@@ -23,6 +23,8 @@
     <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
     <link rel="shortcut icon" href="icons/icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -548,6 +550,7 @@
                         </div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;">
                             <button class="btn btn-outline btn-sm" onclick="goToOverviewToday()">Today</button>
+                            <button class="btn btn-outline btn-sm" onclick="openImportRoster()">Import Roster</button>
                             <button class="btn btn-outline btn-sm" onclick="openAutoRoster()">Auto-roster</button>
                             <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
                         </div>
@@ -1073,6 +1076,41 @@
 </div>
 
 <!-- Auto-roster Modal -->
+<!-- Import Roster Modal -->
+<div class="modal-overlay" id="importRosterModal">
+    <div class="modal" style="max-width:900px;">
+        <div class="modal-header"><h3>Import Roster</h3><button class="btn btn-icon btn-outline" onclick="closeModal('importRosterModal')">&times;</button></div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:1px solid var(--gray-200);padding-bottom:8px;">
+                <button class="sub-tab active" id="importTabExcel" onclick="switchImportMode('excel')">Excel / CSV</button>
+                <button class="sub-tab" id="importTabImage" onclick="switchImportMode('image')">Image (OCR)</button>
+            </div>
+
+            <div id="importModeExcel">
+                <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:10px;">Upload your roster spreadsheet. Expected layout: 7 day columns with these labelled rows per week — <code>ABS 3 hrs am</code>, <code>ABS 2 hrs Art</code>, <code>Trainer 2</code>, <code>Total # of students</code>.</p>
+                <input type="file" id="importFileExcel" accept=".xlsx,.xls,.csv" onchange="onImportExcelFile(event)" style="margin-bottom:12px;">
+            </div>
+
+            <div id="importModeImage" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:10px;">Upload a photo or screenshot of the roster. OCR runs in your browser (no data leaves your device). Works best with clear, high-resolution images of printed/digital rosters.</p>
+                <input type="file" id="importFileImage" accept="image/*" onchange="onImportImageFile(event)" style="margin-bottom:12px;">
+                <div id="importImageProgress" style="display:none;font-size:0.85rem;color:var(--gray-600);margin-bottom:10px;"></div>
+                <details style="margin-bottom:10px;">
+                    <summary style="cursor:pointer;font-size:0.85rem;color:var(--gray-600);">Extracted text (editable)</summary>
+                    <textarea id="importImageText" style="width:100%;min-height:200px;font-family:monospace;font-size:0.78rem;padding:8px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:6px;" placeholder="Run OCR or paste roster text here..."></textarea>
+                    <button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="parseImportText()">Re-parse from text</button>
+                </details>
+            </div>
+
+            <div id="importPreviewContainer" style="margin-top:12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('importRosterModal')">Cancel</button>
+            <button class="btn btn-success" id="importApplyBtn" onclick="applyImport()" disabled>Apply to Roster</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="autoRosterModal">
     <div class="modal" style="max-width:760px;">
         <div class="modal-header"><h3>Auto-roster from Availability</h3><button class="btn btn-icon btn-outline" onclick="closeModal('autoRosterModal')">&times;</button></div>
@@ -2413,6 +2451,368 @@ async function emitNotification(opts) {
             data: opts.data || {}
         });
     } catch (e) { console.warn('notification emit failed:', e); }
+}
+
+// ============ Import Roster (Excel / OCR) ============
+var _importParsedDays = []; // [{ dateStr, am_start, am_end, pm_start, pm_end, students, htIds:[], leaveStaffIds:[], skip:true, warning, raw:{...} }]
+
+function switchImportMode(mode) {
+    document.getElementById('importTabExcel').classList.toggle('active', mode === 'excel');
+    document.getElementById('importTabImage').classList.toggle('active', mode === 'image');
+    document.getElementById('importModeExcel').style.display = mode === 'excel' ? '' : 'none';
+    document.getElementById('importModeImage').style.display = mode === 'image' ? '' : 'none';
+}
+
+function openImportRoster() {
+    _importParsedDays = [];
+    document.getElementById('importFileExcel').value = '';
+    document.getElementById('importFileImage').value = '';
+    document.getElementById('importImageText').value = '';
+    document.getElementById('importImageProgress').style.display = 'none';
+    document.getElementById('importPreviewContainer').innerHTML = '';
+    document.getElementById('importApplyBtn').disabled = true;
+    switchImportMode('excel');
+    document.getElementById('importRosterModal').classList.add('active');
+}
+
+// --- Cell value parsing helpers ---
+
+// Resolve a name string ('Chi Chi', 'CHICHI') to a staff record (case + space insensitive).
+function _matchStaffByName(raw) {
+    if (!raw) return null;
+    var norm = String(raw).toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
+    if (!norm) return null;
+    return staffList.find(function(s) {
+        var ns = (s.name || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z]/g, '');
+        return ns === norm || ns.indexOf(norm) === 0 || norm.indexOf(ns) === 0;
+    }) || null;
+}
+
+// Parse a time fragment like '8am', '12pm', '1pm' → 'HH:MM'
+function _parseTimeToken(tok) {
+    if (!tok) return null;
+    var m = String(tok).trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+    if (!m) return null;
+    var h = parseInt(m[1], 10);
+    var min = m[2] ? parseInt(m[2], 10) : 0;
+    var ampm = m[3];
+    if (ampm === 'pm' && h < 12) h += 12;
+    if (ampm === 'am' && h === 12) h = 0;
+    return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+}
+
+// Parse a session cell like 'Chi Chi 8am - 11am' or 'Cameron away' or 'Public holiday'.
+// Returns { name?, start?, end?, leave?, away?, skip? } where skip=true means treat the whole day as no-class.
+function _parseSessionCell(text) {
+    if (text == null) return {};
+    var s = String(text).trim();
+    if (!s) return {};
+    var lower = s.toLowerCase();
+    if (/^(public holiday|no classes?|holiday)$/i.test(s)) return { skip: true, reason: s };
+    // Leave / away patterns: "Chi Chi Leave", "Cameron away", "Chi Chi off"
+    var leaveMatch = s.match(/^(.+?)\s+(leave|away|off|sick)$/i);
+    if (leaveMatch) return { name: leaveMatch[1].trim(), leave: true };
+    // Name + time range pattern: "Chi Chi 8am - 11am" or "Cameron 12pm-2pm"
+    var timeMatch = s.match(/^(.+?)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*[-–]\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*$/i);
+    if (timeMatch) return { name: timeMatch[1].trim(), start: _parseTimeToken(timeMatch[2]), end: _parseTimeToken(timeMatch[3]) };
+    // Just a name (Trainer 2 column with no time)
+    return { name: s };
+}
+
+// Parse a date header like 'MONDAY 18 May 2026' or '18 May 2026'.
+function _parseDateHeader(text) {
+    if (text == null) return null;
+    var s = String(text).trim();
+    var m = s.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (!m) {
+        // Try Date object directly
+        var d = new Date(s);
+        if (!isNaN(d.getTime())) return formatDate(d);
+        return null;
+    }
+    var day = parseInt(m[1], 10);
+    var monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    var mn = m[2].toLowerCase().slice(0, 3);
+    var month = monthNames.indexOf(mn);
+    var year = parseInt(m[3], 10);
+    if (month < 0) return null;
+    return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+// ---- Excel parser ----
+
+async function onImportExcelFile(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    try {
+        var buf = await file.arrayBuffer();
+        var wb = XLSX.read(buf, { type: 'array' });
+        var sheet = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        _importParsedDays = _parseRosterGrid(rows);
+        _renderImportPreview();
+    } catch (e) {
+        showToast('Could not read file: ' + e.message);
+    }
+}
+
+// Find week-blocks in the 2D grid and extract days.
+// Looks for rows whose first non-empty cell matches "ABS 3 hrs am" etc.; the row immediately above is the date header.
+function _parseRosterGrid(rows) {
+    var days = []; // accumulating result
+    var labelRe = /^(abs.*am|abs.*art|trainer\s*2|total.*students?)/i;
+
+    for (var r = 0; r < rows.length; r++) {
+        var row = rows[r] || [];
+        var label = String(row[0] || '').trim().toLowerCase();
+        if (!/^abs\b.*\bam\b/.test(label)) continue; // anchor: AM session row starts a week-block
+
+        // Walk upward to find the date header row (most recent row that contains a date in any column)
+        var headerRow = null;
+        for (var rh = r - 1; rh >= Math.max(0, r - 3); rh--) {
+            var candidate = rows[rh] || [];
+            for (var ch = 1; ch < candidate.length; ch++) {
+                if (_parseDateHeader(candidate[ch])) { headerRow = candidate; break; }
+            }
+            if (headerRow) break;
+        }
+        if (!headerRow) continue;
+
+        // Rows r..r+3 are: ABS am, ABS art, Trainer 2, Total students
+        var amRow = rows[r] || [];
+        var artRow = rows[r + 1] || [];
+        var t2Row = rows[r + 2] || [];
+        var totalRow = rows[r + 3] || [];
+        // Some sheets put Trainer 2 / Total in any order — detect by label
+        for (var k = r + 1; k <= r + 3 && k < rows.length; k++) {
+            var lbl = String((rows[k] || [])[0] || '').toLowerCase();
+            if (/art\b|pm/.test(lbl)) artRow = rows[k];
+            else if (/trainer\s*2/.test(lbl)) t2Row = rows[k];
+            else if (/total/.test(lbl)) totalRow = rows[k];
+        }
+
+        for (var col = 1; col < headerRow.length; col++) {
+            var dateStr = _parseDateHeader(headerRow[col]);
+            if (!dateStr) continue;
+            var dayObj = { dateStr: dateStr, warnings: [] };
+
+            var am = _parseSessionCell(amRow[col]);
+            var pm = _parseSessionCell(artRow[col]);
+            var t2 = _parseSessionCell(t2Row[col]);
+            var stuRaw = String(totalRow[col] || '').trim();
+            var students = parseInt(stuRaw, 10);
+            dayObj.studentsTotal = isNaN(students) ? null : students;
+
+            if ((am.skip && pm.skip) || /public holiday|no class/i.test(stuRaw)) {
+                dayObj.skip = true;
+                dayObj.reason = am.reason || pm.reason || stuRaw;
+                days.push(dayObj);
+                continue;
+            }
+
+            dayObj.am_start = am.start || null;
+            dayObj.am_end = am.end || null;
+            dayObj.pm_start = pm.start || null;
+            dayObj.pm_end = pm.end || null;
+
+            // Build roster + leave lists
+            dayObj.htEntries = [];
+            dayObj.leave = [];
+            var seen = {};
+            [am, pm, t2].forEach(function(slot) {
+                if (!slot.name) return;
+                var staff = _matchStaffByName(slot.name);
+                if (!staff) {
+                    dayObj.warnings.push("Couldn't match '" + slot.name + "' to any staff");
+                    return;
+                }
+                if (slot.leave) {
+                    if (!seen['leave:' + staff.id]) { dayObj.leave.push(staff); seen['leave:' + staff.id] = true; }
+                } else {
+                    if (!seen['ht:' + staff.id]) { dayObj.htEntries.push(staff); seen['ht:' + staff.id] = true; }
+                }
+            });
+            days.push(dayObj);
+        }
+    }
+    return days;
+}
+
+function _renderImportPreview() {
+    var container = document.getElementById('importPreviewContainer');
+    if (_importParsedDays.length === 0) {
+        container.innerHTML = '<div style="font-size:0.85rem;color:var(--gray-500);font-style:italic;">No rows detected. Check the file matches the expected layout.</div>';
+        document.getElementById('importApplyBtn').disabled = true;
+        return;
+    }
+    var rows = _importParsedDays.map(function(d) {
+        var p = d.dateStr.split('-');
+        var dt = new Date(+p[0], +p[1]-1, +p[2]);
+        var dowLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()] + ' ' + (+p[2]) + ' ' + MONTH_NAMES[+p[1]-1].slice(0,3);
+        if (d.skip) {
+            return '<tr style="color:var(--gray-400);"><td>' + escHtml(dowLabel) + '</td><td colspan="4" style="font-style:italic;">Skip — ' + escHtml(d.reason || 'no class') + '</td></tr>';
+        }
+        var times = (d.am_start && d.am_end ? d.am_start + '-' + d.am_end : '–') + ' / ' + (d.pm_start && d.pm_end ? d.pm_start + '-' + d.pm_end : '–');
+        var hts = (d.htEntries || []).map(function(s) { return escHtml(s.name); }).join(', ') || '<span style="color:var(--gray-400);">none</span>';
+        var leave = (d.leave || []).length > 0 ? '<span style="color:var(--danger);">' + (d.leave || []).map(function(s){ return escHtml(s.name) + ' off'; }).join(', ') + '</span>' : '';
+        var warn = (d.warnings || []).length > 0 ? '<div style="color:var(--warning);font-size:0.72rem;margin-top:2px;">' + (d.warnings || []).map(escHtml).join('; ') + '</div>' : '';
+        return '<tr><td>' + escHtml(dowLabel) + '</td><td>' + times + '</td><td>' + (d.studentsTotal != null ? d.studentsTotal : '–') + '</td><td>' + hts + (leave ? '<br>' + leave : '') + warn + '</td></tr>';
+    }).join('');
+    container.innerHTML = '<div style="margin-bottom:6px;font-size:0.85rem;color:var(--gray-700);font-weight:600;">' + _importParsedDays.length + ' days detected</div>' +
+        '<div style="max-height:42vh;overflow:auto;border:1px solid var(--gray-200);border-radius:var(--radius);">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">' +
+            '<thead style="position:sticky;top:0;background:var(--gray-50);"><tr>' +
+                '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Day</th>' +
+                '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">AM / PM Times</th>' +
+                '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Students</th>' +
+                '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Rostered</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody>' +
+        '</table></div>';
+    document.querySelectorAll('#importPreviewContainer tbody td').forEach(function(td) { td.style.padding = '6px 10px'; td.style.borderBottom = '1px solid var(--gray-100)'; td.style.verticalAlign = 'top'; });
+    document.getElementById('importApplyBtn').disabled = _importParsedDays.filter(function(d){ return !d.skip; }).length === 0;
+}
+
+async function applyImport() {
+    var actionable = _importParsedDays.filter(function(d) { return !d.skip; });
+    if (actionable.length === 0) { showToast('Nothing to apply'); return; }
+
+    var ok = await showConfirm({
+        title: 'Apply imported roster?',
+        body: actionable.length + ' day' + (actionable.length === 1 ? '' : 's') + ' will be written to the database, overwriting any existing roster + class info for those dates.',
+        okText: 'Apply',
+        danger: false
+    });
+    if (!ok) return;
+
+    var btn = document.getElementById('importApplyBtn');
+    setLoading(btn, true);
+
+    // Build upserts
+    var classUpserts = [];
+    var rosterUpserts = [];
+    var leaveUpserts = [];
+    var datesTouched = [];
+
+    actionable.forEach(function(d) {
+        datesTouched.push(d.dateStr);
+        classUpserts.push({
+            date: d.dateStr,
+            am_start_time: d.am_start || null,
+            am_end_time: d.am_end || null,
+            pm_start_time: d.pm_start || null,
+            pm_end_time: d.pm_end || null,
+            students_am: d.studentsTotal || 0,
+            students_pm: d.studentsTotal || 0,
+            capped_am: false,
+            capped_pm: false,
+            times_manually_set: !!(d.am_start || d.am_end || d.pm_start || d.pm_end),
+            updated_by: currentUser.id
+        });
+        (d.htEntries || []).forEach(function(staff) {
+            rosterUpserts.push({
+                staff_id: staff.id, date: d.dateStr,
+                status: 'available', day_role: 'head_trainer',
+                start_time: d.am_start || null, end_time: d.pm_end || d.am_end || null,
+                note: '', created_by: currentUser.id
+            });
+        });
+        (d.leave || []).forEach(function(staff) {
+            if (staff.user_id) {
+                leaveUpserts.push({
+                    user_id: staff.user_id, date: d.dateStr,
+                    is_available: false, note: 'imported: leave'
+                });
+            }
+        });
+    });
+
+    try {
+        // Clear existing roster entries for the date range
+        var minDate = datesTouched.slice().sort()[0];
+        var maxDate = datesTouched.slice().sort().slice(-1)[0];
+        var delRes = await sb.from('cbd_availability').delete().gte('date', minDate).lte('date', maxDate);
+        if (delRes.error) throw delRes.error;
+
+        // Batch upserts
+        for (var i = 0; i < classUpserts.length; i += 50) {
+            var batch = classUpserts.slice(i, i + 50);
+            var r = await sb.from('cbd_day_classes').upsert(batch, { onConflict: 'date' });
+            if (r.error) throw r.error;
+        }
+        for (var i = 0; i < rosterUpserts.length; i += 50) {
+            var batch = rosterUpserts.slice(i, i + 50);
+            var r = await sb.from('cbd_availability').upsert(batch, { onConflict: 'staff_id,date' });
+            if (r.error) throw r.error;
+        }
+        if (leaveUpserts.length > 0) {
+            for (var i = 0; i < leaveUpserts.length; i += 50) {
+                var batch = leaveUpserts.slice(i, i + 50);
+                var r = await sb.from('cbd_assistant_availability').upsert(batch, { onConflict: 'user_id,date' });
+                if (r.error) throw r.error;
+            }
+        }
+    } catch (e) {
+        setLoading(btn, false);
+        showToast('Import failed: ' + (e.message || e));
+        return;
+    }
+
+    setLoading(btn, false);
+    closeModal('importRosterModal');
+    invalidateAllMonths('staff_avail');
+    invalidateAllMonths('day_classes');
+    await loadMonth('overview', overviewMonth, overviewYear, { force: true });
+    if (currentTab === 'overview') renderOverview();
+    if (currentTab === 'roster') refreshTrainerUI();
+    if (currentTab === 'classes') renderClassesCalendar();
+    showToast('Imported ' + actionable.length + ' day' + (actionable.length === 1 ? '' : 's'));
+}
+
+// ---- Image OCR via Tesseract.js (free, client-side) ----
+
+async function onImportImageFile(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    if (typeof Tesseract === 'undefined') { showToast('OCR library not loaded'); return; }
+    var progress = document.getElementById('importImageProgress');
+    var textarea = document.getElementById('importImageText');
+    progress.style.display = '';
+    progress.textContent = 'Starting OCR…';
+    textarea.value = '';
+
+    try {
+        var url = URL.createObjectURL(file);
+        var result = await Tesseract.recognize(url, 'eng', {
+            logger: function(m) {
+                if (m.status && m.progress != null) {
+                    progress.textContent = m.status + ' — ' + Math.round(m.progress * 100) + '%';
+                }
+            }
+        });
+        URL.revokeObjectURL(url);
+        textarea.value = result.data.text;
+        progress.textContent = 'Done. Parsing…';
+        parseImportText();
+        progress.textContent = 'Done. Review the preview below — you can edit the extracted text and re-parse if anything is off.';
+    } catch (e) {
+        progress.textContent = 'OCR failed: ' + (e.message || e);
+    }
+}
+
+// Take OCR'd text from the textarea and try to parse it like a CSV (split lines on whitespace).
+function parseImportText() {
+    var text = document.getElementById('importImageText').value || '';
+    if (!text.trim()) { _importParsedDays = []; _renderImportPreview(); return; }
+    // Split into lines, then into "columns" by 2+ whitespace runs (loose for OCR output).
+    var lines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean);
+    // Build a 2D grid; each line becomes a row, columns are best-effort splits on long whitespace.
+    var rows = lines.map(function(line) {
+        // If line has tab characters, use them; otherwise split on 2+ spaces
+        if (line.indexOf('\t') >= 0) return line.split(/\t+/);
+        return line.split(/\s{2,}/);
+    });
+    _importParsedDays = _parseRosterGrid(rows);
+    _renderImportPreview();
 }
 
 // ============ Auto-roster ============
