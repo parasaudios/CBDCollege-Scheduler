@@ -8,7 +8,7 @@
 <body>
 
 <div class="no-print-banner no-print">
-    <strong>Tip:</strong> When you're ready, press <span class="kbd">Ctrl</span>+<span class="kbd">P</span> and choose <strong>Save as PDF</strong>. Tick <em>Background graphics</em> in the print dialog so the dark theme and color callouts come through.
+    <strong>To make this into a PDF:</strong> press <span class="kbd">Ctrl</span>+<span class="kbd">P</span> and choose <strong>Save as PDF</strong>. In the print options, switch on <em>Background graphics</em> so the colours print correctly.
 </div>
 
 <!-- ============ COVER ============ -->
@@ -17,75 +17,74 @@
     <h1>CBD College Staff Scheduler</h1>
     <div class="subtitle">Trainer &amp; Admin Guide</div>
     <div class="meta">
-        Complete reference for every function available to trainers and administrators in the CBD College scheduling app — including class setup, roster management, staff administration, and notifications. Every section shows both <strong>desktop</strong> and <strong>mobile</strong> views.
+        A plain-English walkthrough of every screen and button trainers and admins use. Each step shows what it looks like on a <strong>computer</strong> and on a <strong>phone</strong>.
     </div>
 </section>
 
 <!-- ============ TOC ============ -->
 <section class="toc">
-    <h2>Contents</h2>
+    <h2>What's inside</h2>
     <ol>
-        <li>Getting in &mdash; signing in, theme, mobile install</li>
-        <li>Reading the app &mdash; tabs, navigation, daily indicators</li>
-        <li>The Schedule tab &mdash; per-staff rostering</li>
-        <li>The Schedule &gt; Team view &mdash; whole-team overview</li>
-        <li>The Classes tab &mdash; default class times</li>
-        <li>The Staff tab &mdash; managing people</li>
-        <li>The Staff tab &mdash; availability sub-tab + auto-roster settings</li>
-        <li>The Notifications tab &mdash; broadcasting and targeted messages</li>
-        <li>The Admin tab &mdash; user accounts</li>
-        <li>Day-detail modal &mdash; per-day inspection</li>
-        <li>Importing a roster from Excel/CSV</li>
-        <li>Auto-rostering from availability</li>
-        <li>Exporting a PDF roster</li>
-        <li>Notifications &mdash; in-app + mobile push</li>
-        <li>Viewing the app as an assistant</li>
-        <li>Troubleshooting</li>
+        <li>Signing in &amp; getting around</li>
+        <li>How to read the calendar</li>
+        <li>Rostering one staff member at a time</li>
+        <li>Seeing who's working &mdash; the Team view</li>
+        <li>Setting your weekly class times</li>
+        <li>Adding, editing &amp; removing staff</li>
+        <li>Setting pick order, start times &amp; rules</li>
+        <li>Sending a message to staff</li>
+        <li>Creating user accounts</li>
+        <li>Looking up one day's details</li>
+        <li>Loading a roster from an Excel file</li>
+        <li>Letting the app fill in the roster for you</li>
+        <li>Saving a roster as a PDF</li>
+        <li>Notifications &mdash; what's sent and when</li>
+        <li>Previewing what an assistant sees</li>
+        <li>If something isn't working</li>
     </ol>
 </section>
 
 <!-- ============ 1. GETTING IN ============ -->
-<h2 class="section"><span class="num">01</span>Getting in</h2>
-<p class="lead">Open the app at <strong>cbdcollege-scheduler.pages.dev</strong>. The first screen is the sign-in form.</p>
+<h2 class="section"><span class="num">01</span>Signing in &amp; getting around</h2>
+<p class="lead">Open the website <strong>cbdcollege-scheduler.pages.dev</strong> in any browser (Chrome, Safari, Edge — all work). The first thing you see is a sign-in box.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Sign-in screen</figcaption><img src="screenshots/login-desktop.png" alt="Login desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Sign-in</figcaption><img src="screenshots/login-mobile.png" alt="Login mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Sign-in screen</figcaption><img src="screenshots/login-desktop.png" alt="Login desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Sign-in</figcaption><img src="screenshots/login-mobile.png" alt="Login mobile"></figure>
 </div>
 
-<h3>Sign in</h3>
+<h3>How to sign in</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Type your email or name in the first field.</td></tr>
+    <tr><td class="num">1</td><td>Type your email or your name in the first box.</td></tr>
     <tr><td class="num">2</td><td>Type your password.</td></tr>
-    <tr><td class="num">3</td><td>Tap <span class="btn-mock primary">Sign In</span>.</td></tr>
+    <tr><td class="num">3</td><td>Tap the blue <span class="btn-mock primary">Sign In</span> button.</td></tr>
 </table>
-<p>If the password is wrong, a red banner appears beneath the form explaining the error. Trainer/admin accounts are created from the <strong>Admin</strong> tab once you're inside.</p>
+<p>If you got the password wrong, a red message will appear telling you so. You can try again straight away.</p>
 
-<h3>Sign out</h3>
-<p>Top-right of the header: <span class="btn-mock ghost">Sign Out</span>. Clears the session and returns to the login screen.</p>
+<h3>How to sign out</h3>
+<p>Look for the <span class="btn-mock ghost">Sign Out</span> button in the top bar. Tap it to log out.</p>
 
-<h3>Theme — Dark or Light</h3>
-<p>The 🌙 / ☀️ button in the header toggles dark mode. New visitors see dark mode by default; your preference is saved and survives sign-outs.</p>
+<h3>Switching the colours (dark / light)</h3>
+<p>The moon 🌙 or sun ☀️ button at the top of the screen swaps between dark mode and light mode. Pick whichever's easier on your eyes — your choice is saved for next time.</p>
 
-<h3>The app header</h3>
-<p>The same header is always visible. Top to bottom on mobile, left-to-right on desktop, it carries your account info, install/push controls, the bell, and the theme toggle.</p>
-
+<h3>What's in the top bar</h3>
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Header — fits on one row</figcaption><img src="screenshots/trainer-header-desktop.png" alt="Header desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Header — wraps onto two rows</figcaption><img src="screenshots/trainer-header-mobile.png" alt="Header mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Top bar fits on one row</figcaption><img src="screenshots/trainer-header-desktop.png" alt="Header desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Top bar wraps onto two rows</figcaption><img src="screenshots/trainer-header-mobile.png" alt="Header mobile"></figure>
 </div>
+<p>From left to right (or top to bottom on a phone): your name, a <strong>TRAINER</strong> badge, then buttons for previewing as an assistant, the bell for messages, exporting a PDF, enabling phone notifications, the dark/light switch, and finally Sign Out.</p>
 
-<h3>Install as an app (mobile)</h3>
-<p>On a phone, the <span class="btn-mock ghost">📱 Install</span> button appears in the header until you've installed the PWA. Tap it and follow the system prompt — on iPhone you'll see step-by-step instructions for using <em>Add to Home Screen</em>.</p>
+<h3>Saving the app to your phone</h3>
+<p>On a phone you'll see an <span class="btn-mock ghost">📱 Install</span> button in the top bar. Tap it and follow the prompts — this puts a CBD Scheduler icon on your home screen so it opens like a normal app instead of a website. <strong>iPhone users:</strong> the screen will show step-by-step pictures for adding the icon.</p>
 
-<h3>Enable mobile push notifications</h3>
-<p>Tap the <span class="btn-mock ghost">🔔 Enable Push</span> chip in the header. Grant the system prompt. You'll receive a real OS notification for every roster change, even when the app is closed.</p>
-<div class="callout warn"><strong>iPhone only</strong> On iOS, push notifications only work after you've installed the PWA to your home screen. Tap Install first, open the installed app from the home screen, then tap Enable Push.</div>
+<h3>Turning on phone notifications</h3>
+<p>Tap the bell-with-text button <span class="btn-mock ghost">🔔 Enable Push</span> in the top bar. Your phone will ask if you want to allow notifications — say yes. After that, your phone will buzz any time a roster changes, even when you don't have the app open.</p>
+<div class="callout warn"><strong>iPhone owners</strong> You have to save the app to your home screen first (the Install step above), then open it from the home-screen icon. Notifications won't arrive if you only use it through Safari.</div>
 
 <!-- ============ 2. READING THE APP ============ -->
-<h2 class="section"><span class="num">02</span>Reading the app</h2>
+<h2 class="section"><span class="num">02</span>How to read the calendar</h2>
 
-<h3>The main tabs</h3>
+<h3>The five sections</h3>
 <div class="legend-row">
     <span class="tab-mock active">Schedule</span>
     <span class="tab-mock">Classes</span>
@@ -93,358 +92,350 @@
     <span class="tab-mock">Notifications</span>
     <span class="tab-mock">Admin</span>
 </div>
-<p><strong>Schedule</strong> and <strong>Staff</strong> each contain two sub-views, shown as pill buttons under the main strip when you click them:</p>
+<p><strong>Schedule</strong> and <strong>Staff</strong> each open into two views — the buttons for those appear just under the main row when you tap them:</p>
 <ul>
-    <li><strong>Schedule → Per-staff</strong> + <strong>Team</strong></li>
-    <li><strong>Staff → Manage Staff</strong> + <strong>Availability</strong></li>
+    <li>Schedule splits into <em>Per-staff</em> (one person at a time) and <em>Team</em> (everyone).</li>
+    <li>Staff splits into <em>Manage Staff</em> (add / edit people) and <em>Availability</em> (override when someone can work).</li>
 </ul>
 
-<h3>Calendar indicators</h3>
-<p>Every calendar in the app uses the same visual language for each day cell:</p>
+<h3>What the symbols on each day mean</h3>
 <div class="legend-row">
-    <span class="item"><span class="ic check">✓</span> Rostered / class configured</span>
-    <span class="item"><span class="ic cross">✕</span> Class day but not rostered / not configured</span>
-    <span class="item"><span class="dot blue"></span> Today (blue ring + TODAY pill)</span>
-    <span class="item"><span class="dot green"></span> Selected for multi-edit</span>
+    <span class="item"><span class="ic check">✓</span> Green tick = rostered / set up</span>
+    <span class="item"><span class="ic cross">✕</span> Red cross = a class is on but you're not</span>
+    <span class="item"><span class="dot blue"></span> Blue ring = today</span>
+    <span class="item"><span class="dot green"></span> Blue outline = you've selected it</span>
 </div>
-<p>On <strong>desktop</strong>, cells show the day number plus rich detail — class times, student counts, staff initials, role badges. On <strong>mobile</strong>, cells collapse to just the day number plus a green check or red cross to keep everything readable on a small screen. Tap any cell to open the full detail modal.</p>
+<p>On a <strong>computer</strong>, each day shows lots of detail — times, student counts, who's working. On a <strong>phone</strong>, the days shrink down to just the number and a green tick or red cross so they fit. Tap any day to see the full details in a popup.</p>
 
 <!-- ============ 3. SCHEDULE TAB ============ -->
-<h2 class="section"><span class="num">03</span>Schedule &mdash; Per-staff view</h2>
-<p class="lead">Manually roster a specific staff member on or off individual days.</p>
+<h2 class="section"><span class="num">03</span>Rostering one staff member at a time</h2>
+<p class="lead">This is where you mark a person on or off for a specific day.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Schedule → Per-staff</figcaption><img src="screenshots/trainer-schedule-perstaff-desktop.png" alt="Schedule desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Schedule → Per-staff</figcaption><img src="screenshots/trainer-schedule-perstaff-mobile.png" alt="Schedule mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Schedule → Per-staff</figcaption><img src="screenshots/trainer-schedule-perstaff-desktop.png" alt="Schedule desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Schedule → Per-staff</figcaption><img src="screenshots/trainer-schedule-perstaff-mobile.png" alt="Schedule mobile"></figure>
 </div>
 
-<h3>Pick the staff member</h3>
-<p>Use the <em>Select Staff Member</em> dropdown above the calendar. The cells refresh to show their availability for the current month.</p>
+<h3>First, pick whose roster you're editing</h3>
+<p>Use the dropdown box labelled <em>Select Staff Member</em>. The calendar will refresh to show their days.</p>
 
-<h3>Set availability for a single day</h3>
+<h3>Setting a single day</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap a day cell.</td></tr>
-    <tr><td class="num">2</td><td>The day editor modal opens. Choose <strong>Available</strong>, <strong>Partial</strong>, or <strong>Unavailable</strong>.</td></tr>
-    <tr><td class="num">3</td><td><em>Optional:</em> set a custom start/end time, role (Assistant / Head Trainer), and notes.</td></tr>
-    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
+    <tr><td class="num">1</td><td>Tap the day you want to change.</td></tr>
+    <tr><td class="num">2</td><td>A small window pops up. Pick <strong>Available</strong>, <strong>Partial</strong>, or <strong>Unavailable</strong>.</td></tr>
+    <tr><td class="num">3</td><td>If you want, also set their start and end time, whether they're the Head Trainer that day, and any notes.</td></tr>
+    <tr><td class="num">4</td><td>Tap the green <span class="btn-mock success">Save</span> button.</td></tr>
 </table>
-<p>The cell turns green (available), amber (partial), or red (unavailable). The affected staff member receives a push notification titled <em>"Your roster was updated"</em>.</p>
+<p>The day on the calendar turns green if they're available, yellow if they're partly available, or red if they can't make it. The staff member gets a notification on their phone saying their roster changed.</p>
 
-<h3>Remove a day</h3>
-<p>Open the same day modal and tap <span class="btn-mock outline">Remove</span>. The day reverts to the unset state and the staff member is notified.</p>
+<h3>Removing a day you've already set</h3>
+<p>Tap the same day, then in the popup tap <span class="btn-mock outline">Remove</span>. The day goes back to blank.</p>
 
-<h3>Roster many days at once (multi-select)</h3>
+<h3>Changing lots of days at once</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap day cells one by one — selected cells get a blue outline.</td></tr>
-    <tr><td class="num">2</td><td>A floating bar appears at the bottom with bulk actions.</td></tr>
-    <tr><td class="num">3</td><td>Choose <span class="btn-mock success">Available</span>, <span class="btn-mock outline">Partial</span>, or <span class="btn-mock danger">Unavailable</span> — or <span class="btn-mock outline">Clear</span> to wipe entries.</td></tr>
+    <tr><td class="num">1</td><td>Tap several day boxes one after another — they get a blue outline.</td></tr>
+    <tr><td class="num">2</td><td>A bar pops up at the bottom of the screen with buttons.</td></tr>
+    <tr><td class="num">3</td><td>Tap <span class="btn-mock success">Available</span>, <span class="btn-mock outline">Partial</span>, or <span class="btn-mock danger">Unavailable</span> to set them all at once — or <span class="btn-mock outline">Clear</span> to wipe them.</td></tr>
 </table>
 
-<h3>Clear all days in this month</h3>
-<p>The <span class="btn-mock outline">Clear month</span> button removes every roster entry for the selected staff in the current month. Confirms before acting.</p>
+<h3>Clearing a whole month</h3>
+<p>The <span class="btn-mock outline">Clear month</span> button removes every entry for that staff member for the month you're looking at. It asks you to confirm first.</p>
 
-<h3>Today / Next Shift hero card</h3>
-<p>Above the calendar, the blue hero card summarises today's class (times, student counts, who's rostered). It refreshes automatically as you make changes.</p>
-
-<h3>Import Roster from Excel</h3>
-<p>The <span class="btn-mock outline">Import Roster</span> button opens the Excel/CSV import wizard. <em>See Section 11 for the full walkthrough.</em></p>
-
-<h3>Auto-roster</h3>
-<p>The <span class="btn-mock outline">Auto-roster</span> button generates a roster from saved availability + priorities. <em>See Section 12.</em></p>
+<h3>The blue card at the top</h3>
+<p>Above the calendar, the blue <em>Today</em> card shows today's class times, how many students, and who's working. It updates automatically as you change things.</p>
 
 <!-- ============ 4. TEAM VIEW ============ -->
-<h2 class="section"><span class="num">04</span>Schedule &mdash; Team view</h2>
-<p class="lead">A read-only overview of who's rostered across every day in the month.</p>
+<h2 class="section"><span class="num">04</span>Seeing who's working &mdash; the Team view</h2>
+<p class="lead">A read-only month view showing everyone's roster at once.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Schedule → Team</figcaption><img src="screenshots/trainer-schedule-team-desktop.png" alt="Team desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Schedule → Team</figcaption><img src="screenshots/trainer-schedule-team-mobile.png" alt="Team mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Team view</figcaption><img src="screenshots/trainer-schedule-team-desktop.png" alt="Team desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Team view</figcaption><img src="screenshots/trainer-schedule-team-mobile.png" alt="Team mobile"></figure>
 </div>
 
-<h3>Reading a cell</h3>
-<p>Each desktop cell lists up to three rostered staff by first name and colour dot. Head Trainers show a <strong>HT</strong> badge. Student counts (AM / PM) appear beneath; <em>AM CAP</em> / <em>PM CAP</em> badges mark sessions at capacity. On mobile, each cell collapses to a single check/cross so the layout fits.</p>
+<h3>What you'll see</h3>
+<p>Each box lists up to three first names. People with an <strong>HT</strong> badge next to their name are the Head Trainer for that day. Underneath that you'll see the number of AM and PM students, and an <em>AM CAP</em> or <em>PM CAP</em> label if the class is already full.</p>
 
-<h3>Open day detail</h3>
-<p>Tap any day to open the day-detail modal — full list of rostered staff, class times, AM/PM student counts, and cap status.</p>
+<h3>To see one day's full details</h3>
+<p>Tap any day. A popup shows everyone rostered, the class times, and student numbers.</p>
 
 <!-- ============ 5. CLASSES TAB ============ -->
-<h2 class="section"><span class="num">05</span>Classes &mdash; Default class times</h2>
-<p class="lead">Set the default AM and PM class times, student counts, and capped status for each day of the week. These defaults are applied to every date unless that specific date has been manually overridden.</p>
+<h2 class="section"><span class="num">05</span>Setting your weekly class times</h2>
+<p class="lead">This is where you say what time classes normally run each day of the week — Monday's times, Tuesday's times, and so on. The app uses these for every date going forward unless you change a specific date by hand.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Default Class Times grid</figcaption><img src="screenshots/trainer-classes-defaults-desktop.png" alt="Classes desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> One card per day</figcaption><img src="screenshots/trainer-classes-defaults-mobile.png" alt="Classes mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Default Class Times (one row per day)</figcaption><img src="screenshots/trainer-classes-defaults-desktop.png" alt="Classes desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Default Class Times (one card per day)</figcaption><img src="screenshots/trainer-classes-defaults-mobile.png" alt="Classes mobile"></figure>
 </div>
 
-<h3>Edit defaults for a single day</h3>
+<h3>How to update a day</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Find the row for the day (Mon, Tue, …).</td></tr>
-    <tr><td class="num">2</td><td>Set <strong>AM Class</strong> start and end.</td></tr>
-    <tr><td class="num">3</td><td>Set <strong>PM Class</strong> start and end.</td></tr>
-    <tr><td class="num">4</td><td>Type the expected student counts for AM and PM.</td></tr>
-    <tr><td class="num">5</td><td>Tick <strong>Cap AM</strong> / <strong>Cap PM</strong> if either session is at capacity.</td></tr>
-    <tr><td class="num">6</td><td>Tap <span class="btn-mock success">Save Defaults</span>.</td></tr>
+    <tr><td class="num">1</td><td>Find the row for the day you want (Mon, Tue, etc.).</td></tr>
+    <tr><td class="num">2</td><td>Set the AM class's start and end time.</td></tr>
+    <tr><td class="num">3</td><td>Set the PM class's start and end time.</td></tr>
+    <tr><td class="num">4</td><td>Type how many students are usually in the AM class, then the PM class.</td></tr>
+    <tr><td class="num">5</td><td>Tick the <strong>Cap AM</strong> or <strong>Cap PM</strong> box if that session is full to capacity.</td></tr>
+    <tr><td class="num">6</td><td>Tap the green <span class="btn-mock success">Save Defaults</span> button.</td></tr>
 </table>
 
-<h3>Save vs Save &amp; Notify</h3>
-<p>After Save Defaults a confirmation appears with two choices:</p>
+<h3>Save it quietly, or let staff know?</h3>
+<p>After tapping Save Defaults you'll see a confirmation with two choices:</p>
 <ul>
-    <li><span class="btn-mock outline">Save only</span> &mdash; writes the change quietly.</li>
-    <li><span class="btn-mock success">Save &amp; Notify</span> &mdash; writes the change <em>and</em> pushes a notification to every staff member.</li>
+    <li><span class="btn-mock outline">Save only</span> — saves without telling anyone.</li>
+    <li><span class="btn-mock success">Save &amp; Notify</span> — saves and sends a notification to every staff member.</li>
 </ul>
 
-<h3>Quick-copy shortcuts</h3>
+<h3>Quick shortcuts</h3>
+<p>Three buttons at the top of the section save you time:</p>
 <ul>
-    <li><span class="btn-mock outline">Copy Mon to Tue–Fri</span> — mirrors Monday's settings across weekdays.</li>
-    <li><span class="btn-mock outline">Copy Sat to Sun</span> — mirrors Saturday's settings to Sunday.</li>
+    <li><span class="btn-mock outline">Copy Mon to Tue–Fri</span> — uses Monday's times for the rest of the weekdays.</li>
+    <li><span class="btn-mock outline">Copy Sat to Sun</span> — uses Saturday's settings for Sunday too.</li>
     <li><span class="btn-mock outline">Copy Mon to all days</span> — overwrites every day with Monday's settings.</li>
 </ul>
 
 <!-- ============ 6. STAFF MANAGEMENT ============ -->
-<h2 class="section"><span class="num">06</span>Staff &mdash; Manage staff members</h2>
+<h2 class="section"><span class="num">06</span>Adding, editing &amp; removing staff</h2>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Manage Staff sub-tab</figcaption><img src="screenshots/trainer-staff-manage-desktop.png" alt="Staff manage desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Manage Staff sub-tab</figcaption><img src="screenshots/trainer-staff-manage-mobile.png" alt="Staff manage mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Staff list</figcaption><img src="screenshots/trainer-staff-manage-desktop.png" alt="Staff manage desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Staff list</figcaption><img src="screenshots/trainer-staff-manage-mobile.png" alt="Staff manage mobile"></figure>
 </div>
 
-<h3>Add a staff member</h3>
+<h3>Adding a new staff member</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap <span class="btn-mock success">+ Add Staff</span> in the Staff Members card.</td></tr>
-    <tr><td class="num">2</td><td>Enter their full name.</td></tr>
-    <tr><td class="num">3</td><td>Pick a colour (used for their dot/chip everywhere).</td></tr>
-    <tr><td class="num">4</td><td>Tick <strong>Head Trainer</strong> if they are one. HTs are excluded from the assistant priority list and are auto-rostered based on their own availability + weekend rotation.</td></tr>
-    <tr><td class="num">5</td><td>Set their priority (lower = picked first in auto-roster). Leave blank to put them at the end.</td></tr>
-    <tr><td class="num">6</td><td><em>Optional:</em> link this staff record to an existing user account so they receive notifications and can see their own roster.</td></tr>
+    <tr><td class="num">1</td><td>Tap the green <span class="btn-mock success">+ Add Staff</span> button.</td></tr>
+    <tr><td class="num">2</td><td>Type their full name.</td></tr>
+    <tr><td class="num">3</td><td>Pick a colour for them — this colour is used everywhere their name appears.</td></tr>
+    <tr><td class="num">4</td><td>Tick <strong>Head Trainer</strong> if they are one. Head Trainers are scheduled differently from assistants.</td></tr>
+    <tr><td class="num">5</td><td>Set their pick order number (lower numbers are picked first when the app fills in the roster). Leave blank to put them last.</td></tr>
+    <tr><td class="num">6</td><td>If they have an account, choose their username from the <em>Linked user</em> list so they get notifications.</td></tr>
     <tr><td class="num">7</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
 </table>
 
-<h3>Rename a staff member / edit details</h3>
+<h3>Editing or renaming someone</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>On their card, tap the <strong>pencil</strong> icon.</td></tr>
-    <tr><td class="num">2</td><td>Edit name, colour, role, priority, or linked user as needed.</td></tr>
-    <tr><td class="num">3</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
+    <tr><td class="num">1</td><td>Find their card in the list.</td></tr>
+    <tr><td class="num">2</td><td>Tap the pencil icon on their card.</td></tr>
+    <tr><td class="num">3</td><td>Change whatever you need — name, colour, role, pick order, account link.</td></tr>
+    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
 </table>
 
-<h3>Remove a staff member</h3>
+<h3>Removing a staff member</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>On their card, tap the <strong>trash</strong> icon.</td></tr>
-    <tr><td class="num">2</td><td>Confirm the deletion. <em>This also removes their roster entries — it cannot be undone from inside the app.</em></td></tr>
+    <tr><td class="num">1</td><td>Find their card and tap the trash-can icon.</td></tr>
+    <tr><td class="num">2</td><td>Confirm. <em>This removes their past roster days too, and it can't be undone.</em></td></tr>
 </table>
-<div class="callout danger"><strong>Heads up</strong> Removing a staff member deletes their availability history along with the record. If you just want to stop them being auto-rostered, set priority very high or mark them unavailable.</div>
+<div class="callout danger"><strong>Be careful</strong> Deleting someone wipes their roster history. If you just want them off future rosters, leave them in place and either mark them unavailable or give them a high pick number.</div>
 
-<h3>Link a staff record to a user account</h3>
-<p>If a staff member has a sign-in account (so they can see <em>My Roster</em>), edit their staff entry and pick their user in the <strong>Linked user</strong> dropdown. Until linked, they won't receive in-app or push notifications.</p>
+<h3>Connecting a staff member to a user account</h3>
+<p>For someone to see their own roster and get notifications, their staff record needs to be linked to their sign-in account. Edit them, choose their account from the <em>Linked user</em> list, and save.</p>
 
 <!-- ============ 7. STAFF SUPPORTING SETTINGS ============ -->
-<h2 class="section"><span class="num">07</span>Staff &mdash; Availability, priority &amp; rules</h2>
+<h2 class="section"><span class="num">07</span>Setting pick order, start times &amp; rules</h2>
 
-<h3>Availability sub-tab</h3>
-<p>Click <strong>Staff</strong> in the top nav, then choose <strong>Availability</strong> from the pill bar that appears. This view lets trainers override any individual assistant's availability for any date.</p>
+<h3>Pick Order by Day</h3>
+<p>Lower numbers get picked first when the app fills in the roster. Head Trainers aren't on this list — they're handled separately.</p>
+<table class="steps">
+    <tr><td class="num">1</td><td>At the top of the Pick Order card, tap the day you want to set (Mon, Tue, etc.).</td></tr>
+    <tr><td class="num">2</td><td>Drag people up or down, or type a number for each.</td></tr>
+    <tr><td class="num">3</td><td>Tick <strong>Rotate priority each [day]</strong> if you want two assistants to take turns being picked first.</td></tr>
+    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save This Day</span>.</td></tr>
+</table>
+<p>The two shortcut buttons let you copy the current order to the rest of the week: <span class="btn-mock outline">Apply to Tue–Fri</span> or <span class="btn-mock outline">Apply to all days</span>.</p>
+
+<h3>Overriding someone's availability</h3>
+<p>Tap <strong>Staff</strong> at the top, then <strong>Availability</strong> in the pill bar that appears underneath.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Availability sub-tab</figcaption><img src="screenshots/trainer-staff-availability-desktop.png" alt="Availability desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Availability sub-tab</figcaption><img src="screenshots/trainer-staff-availability-mobile.png" alt="Availability mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Availability override</figcaption><img src="screenshots/trainer-staff-availability-desktop.png" alt="Availability desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Availability override</figcaption><img src="screenshots/trainer-staff-availability-mobile.png" alt="Availability mobile"></figure>
 </div>
 
 <table class="steps">
     <tr><td class="num">1</td><td>Pick the assistant.</td></tr>
-    <tr><td class="num">2</td><td>Tap a day in their calendar.</td></tr>
-    <tr><td class="num">3</td><td>Set <strong>Available</strong> or <strong>Not Available</strong>, add an optional note.</td></tr>
-    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>. The assistant receives a targeted push titled <em>"Your availability was updated"</em>.</td></tr>
-    <tr><td class="num">5</td><td>To remove an override, open the same day and tap <span class="btn-mock outline">Clear</span>.</td></tr>
+    <tr><td class="num">2</td><td>Tap a day on their calendar.</td></tr>
+    <tr><td class="num">3</td><td>Choose <strong>Available</strong> or <strong>Not Available</strong>. Add a note if you like.</td></tr>
+    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>. They get a notification.</td></tr>
+    <tr><td class="num">5</td><td>To undo, open the same day and tap <span class="btn-mock outline">Clear</span>.</td></tr>
 </table>
-
-<h3>Priority Order by Day</h3>
-<p>On the Manage Staff sub-tab. Lower number = picked first when auto-rostering. Head Trainers are excluded — they're rostered based on their own availability.</p>
-<table class="steps">
-    <tr><td class="num">1</td><td>Pick a day (Mon, Tue, …) at the top of the Priority Order card.</td></tr>
-    <tr><td class="num">2</td><td>Drag assistants up/down to set the order, or type a number into each row.</td></tr>
-    <tr><td class="num">3</td><td>Tick <strong>Rotate priority each [day]</strong> if you want the top spot to alternate between two assistants each week.</td></tr>
-    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save This Day</span>.</td></tr>
-</table>
-<p>Two helpers to apply the current order quickly: <span class="btn-mock outline">Apply to Tue–Fri</span>, <span class="btn-mock outline">Apply to all days</span>.</p>
 
 <h3>Assistant Start Times by Slot</h3>
-<p>Once an assistant is auto-rostered, their start time is determined by which "slot" they were picked into — Slot 1 = first picked, Slot 2 = second, etc. The grid lets you set the start time per slot per AM-class group. Edit any value and tap <span class="btn-mock success">Save Start Times</span>; the Save / Save &amp; Notify dialog appears.</p>
+<p>When the app picks assistants automatically, the first one picked gets the "Slot 1" start time, the second one gets "Slot 2", and so on. This grid lets you set what time each slot starts. Change any time and tap <span class="btn-mock success">Save Start Times</span> — same Save or Save &amp; Notify choice as before.</p>
 
 <h3>Auto-roster Rules</h3>
+<p>Two settings here decide how many assistants the app picks:</p>
 <ul>
-    <li><strong>Need 1 assistant when class ≥ N</strong> — single-assistant threshold.</li>
-    <li><strong>Need 2 assistants when class ≥ N</strong> — second-assistant threshold (must be ≥ the first).</li>
-    <li><strong>Who works the first Saturday of each month?</strong> — picks which Head Trainer kicks off the weekend rotation; the other HT works Sunday, and they swap each subsequent weekend.</li>
+    <li><strong>Need 1 assistant when class ≥ N</strong> — the smallest class size that needs at least one assistant.</li>
+    <li><strong>Need 2 assistants when class ≥ N</strong> — the class size at which a second assistant is needed.</li>
+    <li><strong>Who works the first Saturday of each month?</strong> — pick which Head Trainer kicks off the weekend rotation. The other Head Trainer takes Sunday, and they swap each following weekend.</li>
 </ul>
-<p>Tap <span class="btn-mock success">Save Rules</span>; Save / Save &amp; Notify confirmation appears.</p>
+<p>Tap <span class="btn-mock success">Save Rules</span> — same Save or Save &amp; Notify choice.</p>
 
 <!-- ============ 8. NOTIFICATIONS TAB ============ -->
-<h2 class="section"><span class="num">08</span>Notifications tab</h2>
-<p class="lead">Compose and send arbitrary notifications to one staff member or every signed-in user.</p>
+<h2 class="section"><span class="num">08</span>Sending a message to staff</h2>
+<p class="lead">The Notifications tab lets you send a custom message — to everyone or to one specific person.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Notifications compose form</figcaption><img src="screenshots/trainer-notifications-desktop.png" alt="Notifications desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Notifications compose form</figcaption><img src="screenshots/trainer-notifications-mobile.png" alt="Notifications mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Send a notification</figcaption><img src="screenshots/trainer-notifications-desktop.png" alt="Notifications desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Send a notification</figcaption><img src="screenshots/trainer-notifications-mobile.png" alt="Notifications mobile"></figure>
 </div>
 
-<h3>Send a notification</h3>
+<h3>How to send</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap <strong>Notifications</strong> in the top tab strip.</td></tr>
-    <tr><td class="num">2</td><td>Pick a recipient from the dropdown — <em>All staff (broadcast)</em> or a specific staff member.</td></tr>
-    <tr><td class="num">3</td><td>Type a title (up to 120 chars) — e.g. <em>"New roster posted"</em>.</td></tr>
-    <tr><td class="num">4</td><td>Type the message body (up to 400 chars).</td></tr>
-    <tr><td class="num">5</td><td>Tap <span class="btn-mock success">Send Notification</span>.</td></tr>
-    <tr><td class="num">6</td><td>Confirm the preview, then tap <span class="btn-mock success">Send</span>.</td></tr>
+    <tr><td class="num">1</td><td>Tap <strong>Notifications</strong> in the top bar.</td></tr>
+    <tr><td class="num">2</td><td>Use the dropdown to choose who gets it — <em>All staff</em> or one person's name.</td></tr>
+    <tr><td class="num">3</td><td>Type a short title (like <em>"New roster posted"</em>).</td></tr>
+    <tr><td class="num">4</td><td>Type the message.</td></tr>
+    <tr><td class="num">5</td><td>Tap the green <span class="btn-mock success">Send Notification</span> button.</td></tr>
+    <tr><td class="num">6</td><td>Check the preview, then tap <span class="btn-mock success">Send</span>.</td></tr>
 </table>
-<div class="callout success"><strong>What happens</strong> The recipient(s) see the notification in the in-app bell instantly, and any subscribed devices buzz with a system push.</div>
+<div class="callout success"><strong>What happens next</strong> The people you sent to will see a number on the bell icon. If they've turned on phone notifications, their phone will also buzz.</div>
 
-<h3>Reading what you've received</h3>
-<p>The 🔔 bell in the header opens the in-app notification panel — list of recent notifications targeted to you or sent as broadcasts. Tap an item to mark it read.</p>
+<h3>Reading messages sent to you</h3>
+<p>Tap the bell 🔔 in the top bar. A list of recent messages appears. Tap any message to mark it as read.</p>
 
 <!-- ============ 9. ADMIN ============ -->
-<h2 class="section"><span class="num">09</span>Admin tab</h2>
-<p class="lead">Create, edit, and manage user accounts.</p>
+<h2 class="section"><span class="num">09</span>Creating user accounts</h2>
+<p class="lead">The Admin tab is where you add, edit, and delete login accounts.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Admin → User Accounts table</figcaption><img src="screenshots/trainer-admin-desktop.png" alt="Admin desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Admin → User Accounts</figcaption><img src="screenshots/trainer-admin-mobile.png" alt="Admin mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> User accounts</figcaption><img src="screenshots/trainer-admin-desktop.png" alt="Admin desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> User accounts</figcaption><img src="screenshots/trainer-admin-mobile.png" alt="Admin mobile"></figure>
 </div>
 
-<h3>Create a user account</h3>
+<h3>Adding a new account</h3>
 <table class="steps">
     <tr><td class="num">1</td><td>Tap <span class="btn-mock success">+ Create User</span>.</td></tr>
-    <tr><td class="num">2</td><td>Enter their email, a temporary password, and pick a role (Trainer / Assistant).</td></tr>
-    <tr><td class="num">3</td><td>Submit. The new row appears in the table; share the credentials with the user securely.</td></tr>
+    <tr><td class="num">2</td><td>Enter their email and a temporary password.</td></tr>
+    <tr><td class="num">3</td><td>Pick whether they're a Trainer or an Assistant.</td></tr>
+    <tr><td class="num">4</td><td>Save. Pass the email and temporary password on to them — they can change it later.</td></tr>
 </table>
 
-<h3>Edit a user</h3>
-<p>Tap the pencil icon in the Actions column to change role or rename. Tap the trash icon to delete the account.</p>
-<div class="callout warn"><strong>After creating a user</strong> Open the Staff tab and link the new user account to the matching staff record so they get personal roster notifications.</div>
+<h3>Editing or deleting</h3>
+<p>Each row has a pencil icon to edit the person's name or role, and a trash icon to delete the account.</p>
+<div class="callout warn"><strong>Don't forget</strong> After creating a user account, go to the Staff tab and link the new account to that person's staff entry — otherwise they won't get their notifications.</div>
 
 <!-- ============ 10. DAY DETAIL ============ -->
-<h2 class="section"><span class="num">10</span>Day-detail modal</h2>
-<p class="lead">Tapping any calendar cell — whether on Schedule, Classes, or Overview — opens the day-detail view with everything known about that date.</p>
+<h2 class="section"><span class="num">10</span>Looking up one day's details</h2>
+<p class="lead">Tap any day on any calendar to bring up everything the app knows about that day.</p>
 
 <div class="dual">
-    <figure><figcaption><span class="badge-platform">Desktop</span> Day-detail modal</figcaption><img src="screenshots/trainer-modal-day-detail-desktop.png" alt="Day detail desktop"></figure>
-    <figure><figcaption><span class="badge-platform mob">Mobile</span> Day-detail modal</figcaption><img src="screenshots/trainer-modal-day-detail-mobile.png" alt="Day detail mobile"></figure>
+    <figure><figcaption><span class="badge-platform">Computer</span> Day details popup</figcaption><img src="screenshots/trainer-modal-day-detail-desktop.png" alt="Day detail desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Phone</span> Day details popup</figcaption><img src="screenshots/trainer-modal-day-detail-mobile.png" alt="Day detail mobile"></figure>
 </div>
 
-<p>Inside you'll see the day's class times, AM/PM student counts, cap status, and the list of rostered staff with their roles and start times. Trainers can also edit class times for that specific date here, overriding the day-of-week defaults.</p>
+<p>You'll see the class times, the AM and PM student count, whether the class is full, and the names of everyone rostered (with the Head Trainer at the top). Trainers can also change the class times for that specific date from this screen, overriding the weekly default.</p>
 
 <!-- ============ 11. IMPORT ROSTER ============ -->
-<h2 class="section"><span class="num">11</span>Import a roster from Excel</h2>
-<p class="lead">Bulk-load a month's worth of class info from an Excel/CSV file produced by your existing roster process.</p>
+<h2 class="section"><span class="num">11</span>Loading a roster from an Excel file</h2>
+<p class="lead">If you already have a roster spreadsheet, the app can read it in instead of you typing each day by hand.</p>
 
-<h3>Open the import wizard</h3>
-<p>In the Schedule tab, tap <span class="btn-mock outline">Import Roster</span>. A modal opens.</p>
-
-<h3>Steps</h3>
+<h3>How to do it</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap <strong>Choose file</strong> and pick the .xlsx or .csv export.</td></tr>
-    <tr><td class="num">2</td><td>The wizard parses the file and shows a preview — one row per detected day, with the matched Head Trainer, AM/PM students, and a tick / warning per day.</td></tr>
-    <tr><td class="num">3</td><td>Review warnings. Yellow flags indicate something the parser couldn't match (e.g. an unknown trainer name).</td></tr>
-    <tr><td class="num">4</td><td>Untick any days you don't want to apply.</td></tr>
-    <tr><td class="num">5</td><td>Tap <span class="btn-mock success">Apply Import</span>. Confirms once more, then writes the days to the database.</td></tr>
+    <tr><td class="num">1</td><td>On the Schedule tab, tap <span class="btn-mock outline">Import Roster</span>.</td></tr>
+    <tr><td class="num">2</td><td>Tap <strong>Choose file</strong> and pick your .xlsx or .csv file.</td></tr>
+    <tr><td class="num">3</td><td>A preview appears, listing each day the app found. Yellow warnings show where the app couldn't match something (like a name it didn't recognise).</td></tr>
+    <tr><td class="num">4</td><td>Untick any days you don't want to load in.</td></tr>
+    <tr><td class="num">5</td><td>Tap <span class="btn-mock success">Apply Import</span>. Confirm, and the roster is saved.</td></tr>
 </table>
-<div class="callout warn"><strong>Format requirements</strong> The file must have a 7-day grid in the layout used by the existing roster spreadsheet — rows in groups of 5 with labels <em>ABS 3 hrs am</em>, <em>ABS 2 hrs Art</em>, <em>Trainer 2</em>, <em>Total # of students</em> in the first column.</div>
+<div class="callout warn"><strong>File format</strong> Your spreadsheet needs to match the layout the app expects — the one with rows labelled <em>ABS 3 hrs am</em>, <em>ABS 2 hrs Art</em>, <em>Trainer 2</em>, and <em>Total # of students</em> in the first column.</div>
 
 <!-- ============ 12. AUTO-ROSTER ============ -->
-<h2 class="section"><span class="num">12</span>Auto-roster from availability</h2>
-<p class="lead">Generate a draft roster for the visible month based on each staff member's saved availability + priority order + the auto-roster rules.</p>
+<h2 class="section"><span class="num">12</span>Letting the app fill in the roster for you</h2>
+<p class="lead">Once people have set their availability, the app can pick who works each day automatically.</p>
 
-<h3>Run auto-roster</h3>
+<h3>How to do it</h3>
 <table class="steps">
     <tr><td class="num">1</td><td>Schedule tab → tap <span class="btn-mock outline">Auto-roster</span>.</td></tr>
-    <tr><td class="num">2</td><td>The modal shows a preview of every day that would change — additions in green, removals in red.</td></tr>
-    <tr><td class="num">3</td><td>Review the changes. Untick any days you don't want to apply.</td></tr>
+    <tr><td class="num">2</td><td>A preview shows every day that would change. Green = adding someone, red = removing.</td></tr>
+    <tr><td class="num">3</td><td>Untick any days you don't want changed.</td></tr>
     <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Apply</span>.</td></tr>
 </table>
-<p>Auto-roster respects:</p>
+<p>The app respects these things when picking:</p>
 <ul>
-    <li>Per-day priority order and rotation flag (Staff tab).</li>
-    <li>Class size thresholds (Auto-roster Rules card).</li>
-    <li>Capped sessions — no assistants added to capped AM/PM.</li>
-    <li>Weekend rotation for Head Trainers.</li>
-    <li>Each staff's <em>Available</em> entries — no one is rostered on a day they marked unavailable.</li>
+    <li>The pick order you set on the Staff tab.</li>
+    <li>The class size rules (Auto-roster Rules).</li>
+    <li>Full classes — it won't add an assistant if the AM or PM is capped.</li>
+    <li>The Head Trainer weekend rotation.</li>
+    <li>Each staff member's availability — nobody is picked for a day they marked unavailable.</li>
 </ul>
 
 <!-- ============ 13. EXPORT PDF ============ -->
-<h2 class="section"><span class="num">13</span>Exporting a PDF roster</h2>
+<h2 class="section"><span class="num">13</span>Saving a roster as a PDF</h2>
 
-<h3>Steps</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap <span class="btn-mock ghost">Export PDF</span> in the header.</td></tr>
-    <tr><td class="num">2</td><td>Pick the month range (defaults to the currently visible month).</td></tr>
-    <tr><td class="num">3</td><td>Pick which staff to include (default: all).</td></tr>
-    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Export</span>. The browser downloads the PDF.</td></tr>
+    <tr><td class="num">1</td><td>Tap <span class="btn-mock ghost">Export PDF</span> in the top bar.</td></tr>
+    <tr><td class="num">2</td><td>Choose the month range (it starts on the month you're looking at).</td></tr>
+    <tr><td class="num">3</td><td>Choose which staff to include (everyone by default).</td></tr>
+    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Export</span>. The PDF saves to your computer or phone.</td></tr>
 </table>
-<p>The PDF lays out one section per month with a per-day grid showing rostered staff, times, and capacities. Suitable for printing or emailing.</p>
+<p>You can print the PDF, email it, or save it for your records.</p>
 
 <!-- ============ 14. NOTIFICATIONS DETAIL ============ -->
-<h2 class="section"><span class="num">14</span>How notifications work</h2>
+<h2 class="section"><span class="num">14</span>Notifications &mdash; what's sent and when</h2>
 
-<h3>Two layers</h3>
+<h3>Two places notifications show up</h3>
 <ol>
-    <li><strong>In-app bell</strong> — the 🔔 icon in the header shows a red unread-count badge. Click to open the recent notifications panel.</li>
-    <li><strong>Mobile push</strong> — if the user has tapped <span class="btn-mock ghost">🔔 Enable Push</span> and granted permission, their device receives a real OS-level notification (lock screen / banner / sound).</li>
+    <li><strong>The bell icon</strong> at the top of the app. A red number tells you how many you haven't read yet. Tap it to see them.</li>
+    <li><strong>Your phone's notifications</strong> — if you tapped Enable Push earlier, these arrive even when the app isn't open.</li>
 </ol>
 
 <h3>What triggers a notification</h3>
 <table class="steps">
-    <tr><th>Trigger</th><th>Recipient</th></tr>
-    <tr><td>Trainer changes a staff's roster for any day</td><td>That staff member (targeted push)</td></tr>
-    <tr><td>Trainer overrides an assistant's availability</td><td>That assistant (targeted push)</td></tr>
-    <tr><td>Default Class Times saved with "Save &amp; Notify"</td><td>All staff (broadcast)</td></tr>
-    <tr><td>Auto-roster Rules saved with "Save &amp; Notify"</td><td>All staff (broadcast)</td></tr>
-    <tr><td>Slot Times saved with "Save &amp; Notify"</td><td>All staff (broadcast)</td></tr>
-    <tr><td>Notifications tab — manual send</td><td>Chosen recipient (one or all)</td></tr>
+    <tr><th>When this happens</th><th>Who gets notified</th></tr>
+    <tr><td>You change a staff member's roster on any day</td><td>That staff member only</td></tr>
+    <tr><td>You override an assistant's availability</td><td>That assistant only</td></tr>
+    <tr><td>You save Default Class Times with "Save &amp; Notify"</td><td>Everyone</td></tr>
+    <tr><td>You save Auto-roster Rules with "Save &amp; Notify"</td><td>Everyone</td></tr>
+    <tr><td>You save Slot Times with "Save &amp; Notify"</td><td>Everyone</td></tr>
+    <tr><td>You send a message from the Notifications tab</td><td>Whoever you chose</td></tr>
 </table>
 
-<h3>If a push doesn't arrive</h3>
+<h3>If a staff member says they didn't get a notification</h3>
 <ul>
-    <li>Confirm the receiver has tapped <span class="btn-mock ghost">🔔 Enable Push</span> and granted the OS prompt.</li>
-    <li>On iPhone: the app must be installed to home screen (PWA), not viewed in Safari.</li>
-    <li>Check the recipient's account is linked to a staff record (Edit Staff → Linked user).</li>
-    <li>If the browser is blocking notifications, the user must un-block in browser settings before re-enabling.</li>
+    <li>Check their staff record is linked to a user account (Staff tab → edit them → check the Linked user field).</li>
+    <li>Ask them if they tapped the Enable Push button on their phone.</li>
+    <li>iPhone users have to install the app to their home screen first, then turn on notifications. They won't work from Safari.</li>
+    <li>The bell on their screen works either way — ask them to check that too.</li>
 </ul>
 
 <!-- ============ 15. VIEW AS ASSISTANT ============ -->
-<h2 class="section"><span class="num">15</span>View as assistant</h2>
-<p class="lead">Useful for verifying what an assistant actually sees in their account before posting a roster.</p>
+<h2 class="section"><span class="num">15</span>Previewing what an assistant sees</h2>
+<p class="lead">Sometimes you want to check what the roster looks like from a particular assistant's point of view — before sending it out.</p>
 
-<h3>Steps</h3>
 <table class="steps">
-    <tr><td class="num">1</td><td>Tap <span class="btn-mock ghost">View as Assistant</span> in the header.</td></tr>
-    <tr><td class="num">2</td><td>The tab strip switches to <em>My Roster</em> / <em>My Availability</em>, and a preview bar offers a staff selector so you can choose whose view you're previewing.</td></tr>
-    <tr><td class="num">3</td><td>Pick a staff member; the calendar shows exactly what they'd see when signed in.</td></tr>
-    <tr><td class="num">4</td><td>Tap <span class="btn-mock ghost">Back to Trainer View</span> to leave preview mode.</td></tr>
+    <tr><td class="num">1</td><td>Tap <span class="btn-mock ghost">View as Assistant</span> in the top bar.</td></tr>
+    <tr><td class="num">2</td><td>The screen switches to the assistant tabs (<em>My Roster</em> and <em>My Availability</em>) and shows a bar where you can pick which person to preview.</td></tr>
+    <tr><td class="num">3</td><td>Pick a name. The screen now shows their view exactly as they'd see it.</td></tr>
+    <tr><td class="num">4</td><td>When you're done, tap <span class="btn-mock ghost">Back to Trainer View</span> in the top bar.</td></tr>
 </table>
 
 <!-- ============ 16. TROUBLESHOOTING ============ -->
-<h2 class="section"><span class="num">16</span>Troubleshooting</h2>
+<h2 class="section"><span class="num">16</span>If something isn't working</h2>
 
-<h4>An assistant says they didn't get notified about a change</h4>
+<h4>A staff member says they didn't get a notification</h4>
 <ul>
-    <li>Confirm their staff record has a <strong>Linked user</strong>.</li>
-    <li>Confirm they've tapped <span class="btn-mock ghost">🔔 Enable Push</span> on their phone.</li>
-    <li>If iPhone, confirm they've installed the PWA via the Install button.</li>
-    <li>The in-app bell always works regardless of push status — ask them to check the 🔔 icon.</li>
+    <li>Their account needs to be linked to their staff record. Edit them on the Staff tab and check.</li>
+    <li>They need to tap the Enable Push button on their phone, and tap Allow when their phone asks.</li>
+    <li>iPhone users need to install the app to their home screen first.</li>
+    <li>Even without phone notifications, the bell icon in the app always works.</li>
 </ul>
 
 <h4>The Schedule calendar shows blank cells</h4>
 <ul>
-    <li>You probably haven't picked a staff member in the dropdown — it defaults to your own account, but a fresh install may have no selection.</li>
-    <li>If the staff member exists but has no availability records yet, every cell will be empty until you set entries (manually or by import / auto-roster).</li>
+    <li>You probably haven't picked a person from the dropdown yet.</li>
+    <li>If the person is new and has no roster days set, every cell will be empty until you add some (manually, by importing, or by running auto-roster).</li>
 </ul>
 
-<h4>Defaults aren't being applied to a specific date</h4>
-<p>A date with manually-set class times wins over the day-of-week default. To revert, open that day's class edit modal and clear the times so it falls back to the default.</p>
+<h4>The default times aren't being used for a specific date</h4>
+<p>A date you set by hand always wins over the weekly default. If you want it to use the default again, tap that date and clear the times you typed in by hand.</p>
 
-<h4>Mobile push isn't working on iPhone</h4>
-<p>iOS requires the app to be installed to the home screen <em>before</em> push will deliver. Tap <span class="btn-mock ghost">Install</span>, follow the system prompt, then open the installed app from the home screen and tap <span class="btn-mock ghost">🔔 Enable Push</span>.</p>
+<h4>Phone notifications aren't working on iPhone</h4>
+<p>iPhones only deliver app notifications after the app's been installed to the home screen. Tap the Install button, follow the steps to add the app to your home screen, then open it from the home screen icon and tap Enable Push.</p>
 
 <div class="footer-note">
     CBD College Staff Scheduler — Trainer &amp; Admin Guide<br>
-    Generated alongside the app source. For app issues, see the project repo at <code>github.com/parasaudios/CBDCollege-Scheduler</code>.
+    For app issues, see the project page at <code>github.com/parasaudios/CBDCollege-Scheduler</code>.
 </div>
 
 </body>
