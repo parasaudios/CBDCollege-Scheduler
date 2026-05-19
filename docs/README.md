@@ -1,9 +1,11 @@
 # CBD College Scheduler — User Guides
 
-Two print-ready HTML guides live in this folder:
+Two print-ready guides live in this folder. **Use the `-standalone.html` files** — they have the CSS inlined and every screenshot base64-embedded, so they work correctly when opened anywhere (file://, email attachment, USB stick, any viewer that doesn't resolve relative paths).
 
-- **`trainer-guide.html`** — for trainers and admins. Covers class setup, roster management, staff administration, auto-roster, importing, notifications, and the Admin tab. ~15 sections.
-- **`assistant-guide.html`** — for assistants. Covers signing in, installing on phone, enabling push, reading the roster, checking next shift, and setting availability. ~13 sections.
+- **`trainer-guide-standalone.html`** — for trainers and admins. ~2.2 MB. Covers class setup, roster management, staff administration, auto-roster, importing, notifications, the Admin tab.
+- **`assistant-guide-standalone.html`** — for assistants. ~1.1 MB. Covers signing in, installing on phone, enabling push, reading the roster, checking next shift, setting availability.
+
+The non-standalone versions (`trainer-guide.html` / `assistant-guide.html`) plus the loose `screenshots/` folder and `guide-style.css` are the editable source. If you change them, run `node tools/bundle-guide.js` to regenerate the standalone copies.
 
 ## How to produce the PDF
 
