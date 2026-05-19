@@ -2642,15 +2642,29 @@ async function saveSlotTimes() {
     if (res.error) { showToast('Error: ' + res.error.message); return; }
     settingsCache.assistant_slot_times_by_start = mergedByStart;
 
+    var slotNotified = 0;
     if (shouldNotify) {
-        var groups = Array.from(new Set(changes.map(function(c) { return c.amStart; }))).join(', ');
-        await emitNotification({
+        // Only notify assistants currently rostered on upcoming dates whose AM class start matches a changed group.
+        var changedStarts = Array.from(new Set(changes.map(function(c) { return c.amStart; })));
+        var affectedDates = _upcomingDatesForAmStarts(changedStarts, 90);
+        // From those dates, find rostered staff whose role is NOT head_trainer (slot times only apply to assistants).
+        var selfId = currentUser ? currentUser.id : null;
+        var userIdSet = {};
+        affectedDates.forEach(function(d) {
+            getRosterForDate(d).forEach(function(r) {
+                if (r.status !== 'available' && r.status !== 'partial') return;
+                if (r.day_role === 'head_trainer') return;
+                var s = staffList.find(function(x) { return x.id === r.staff_id; });
+                if (s && s.user_id && s.user_id !== selfId) userIdSet[s.user_id] = true;
+            });
+        });
+        slotNotified = await notifyUsers(Object.keys(userIdSet), {
             type: 'start_time_changed',
-            title: 'Assistant start times updated',
-            message: 'Slot times changed for class-start group(s): ' + groups,
+            title: 'Your start time may have changed',
+            message: 'Slot start times updated for class-start group(s): ' + changedStarts.join(', '),
             data: { changes: changes }
         });
-        showToast('Saved · all assistants notified');
+        showToast(slotNotified > 0 ? ('Saved · notified ' + slotNotified + ' assistant' + (slotNotified === 1 ? '' : 's')) : 'Saved · no upcoming roster affected');
     } else {
         showToast('Saved');
     }
@@ -2674,6 +2688,13 @@ async function saveRosterRulesFromSettings() {
     if (!choice) return;
     var shouldNotify = (choice === 'primary');
 
+    // Track what actually changed so we can target notifications appropriately
+    var prevR1 = settingsCache.min_students_for_one_assistant;
+    var prevR2 = settingsCache.min_students_for_two_assistants;
+    var prevFirstSat = settingsCache.weekend_first_sat_ht_id || null;
+    var assistantRulesChanged = (prevR1 !== r1) || (prevR2 !== r2);
+    var weekendRotationChanged = (prevFirstSat !== firstSatId);
+
     var btn = document.getElementById('saveRulesBtn');
     setLoading(btn, true);
     var res = await sb.from('cbd_auto_roster_rules').update({
@@ -2688,18 +2709,45 @@ async function saveRosterRulesFromSettings() {
     settingsCache.min_students_for_one_assistant = r1;
     settingsCache.min_students_for_two_assistants = r2;
     settingsCache.weekend_first_sat_ht_id = firstSatId;
+
+    var rulesNotified = 0;
     if (shouldNotify) {
-        await emitNotification({
+        var selfId = currentUser ? currentUser.id : null;
+        var userIdSet = {};
+        if (assistantRulesChanged) {
+            // Assistants currently rostered on any upcoming date could be added/removed by the new thresholds.
+            var upcoming = _upcomingDatesForDows([0,1,2,3,4,5,6], 60);
+            upcoming.forEach(function(d) {
+                getRosterForDate(d).forEach(function(r) {
+                    if (r.status !== 'available' && r.status !== 'partial') return;
+                    if (r.day_role === 'head_trainer') return;
+                    var s = staffList.find(function(x) { return x.id === r.staff_id; });
+                    if (s && s.user_id && s.user_id !== selfId) userIdSet[s.user_id] = true;
+                });
+            });
+        }
+        if (weekendRotationChanged) {
+            // Only the two Head Trainers are affected by which one kicks off the weekend.
+            staffList.forEach(function(s) {
+                if (!s.is_head_trainer || !s.user_id || s.user_id === selfId) return;
+                userIdSet[s.user_id] = true;
+            });
+        }
+        rulesNotified = await notifyUsers(Object.keys(userIdSet), {
             type: 'rules_changed',
             title: 'Auto-roster rules updated',
             message: 'Need 1 assistant ≥ ' + r1 + ' · Need 2 assistants ≥ ' + r2,
-            data: { rule1: r1, rule2: r2 }
+            data: { rule1: r1, rule2: r2, weekend_changed: weekendRotationChanged }
         });
     }
     // If we're on the Schedule tab, the rotation may have shifted — refresh
     if (currentTab === 'roster') refreshTrainerUI();
     if (currentTab === 'overview') renderOverview();
-    showToast(shouldNotify ? 'Rules saved · all staff notified' : 'Rules saved');
+    if (shouldNotify) {
+        showToast(rulesNotified > 0 ? ('Rules saved · notified ' + rulesNotified + ' staff') : 'Rules saved · no affected staff to notify');
+    } else {
+        showToast('Rules saved');
+    }
 }
 
 // ============ Notifications Tab (trainer compose) ============
@@ -2749,6 +2797,64 @@ async function sendComposedNotification() {
     titleInp.value = '';
     msgInp.value = '';
     showToast('Notification sent to ' + recipientLabel);
+}
+
+// ============ Smart-notify helpers ============
+// Resolve the set of user_ids who are actually rostered on one or more dates.
+// Filters out unlinked staff and the currently-signed-in trainer (so they don't ping themselves).
+function _affectedUserIdsForDates(dates) {
+    var set = {};
+    var selfId = currentUser ? currentUser.id : null;
+    (dates || []).forEach(function(d) {
+        var roster = getRosterForDate(d);
+        roster.forEach(function(r) {
+            if (r.status !== 'available' && r.status !== 'partial') return;
+            var staff = staffList.find(function(s) { return s.id === r.staff_id; });
+            if (staff && staff.user_id && staff.user_id !== selfId) set[staff.user_id] = true;
+        });
+    });
+    return Object.keys(set);
+}
+
+// Collect upcoming dates (from today through `daysAhead`) whose day-of-week is in the given set.
+// Used to fan out DOW-defaults changes to only the staff actually on upcoming affected dates.
+function _upcomingDatesForDows(dows, daysAhead) {
+    if (!dows || dows.length === 0) return [];
+    daysAhead = daysAhead || 90;
+    var todayStr = formatDate(new Date());
+    var out = [];
+    var d = new Date(todayStr + 'T00:00:00');
+    for (var i = 0; i < daysAhead; i++) {
+        var dow = d.getDay();
+        if (dows.indexOf(dow) !== -1) out.push(formatDate(d));
+        d.setDate(d.getDate() + 1);
+    }
+    return out;
+}
+
+// Collect upcoming dates whose effective AM-start matches one of the given start strings ("08:00").
+function _upcomingDatesForAmStarts(amStarts, daysAhead) {
+    if (!amStarts || amStarts.length === 0) return [];
+    daysAhead = daysAhead || 90;
+    var todayStr = formatDate(new Date());
+    var out = [];
+    var d = new Date(todayStr + 'T00:00:00');
+    for (var i = 0; i < daysAhead; i++) {
+        var ds = formatDate(d);
+        var t = getEffectiveClassTimes(ds);
+        if (t && t.am_start && amStarts.indexOf(_trimTime(t.am_start)) !== -1) out.push(ds);
+        d.setDate(d.getDate() + 1);
+    }
+    return out;
+}
+
+// Fire one targeted in-app + push notification per recipient. Falls back gracefully when no targets.
+async function notifyUsers(userIds, opts) {
+    if (!userIds || userIds.length === 0) return 0;
+    await Promise.all(userIds.map(function(uid) {
+        return emitNotification(Object.assign({}, opts, { target_user_id: uid }));
+    }));
+    return userIds.length;
 }
 
 // Targeted notification helper — fire a per-user push when a trainer changes that staff member's
@@ -4286,8 +4392,9 @@ async function saveDefaultClassTimes() {
         if (row.pm_start >= row.pm_end) { showToast(DOW_LABELS[String(d)] + ': PM start must be before PM end'); return; }
     }
 
-    // Diff vs current
+    // Diff vs current — track both the human-readable change lines and the DOW indices that changed
     var diff = [];
+    var changedDows = [];
     var current = settingsCache.default_class_times || {};
     for (var d2 = 0; d2 < 7; d2++) {
         var cur = current[String(d2)] || {};
@@ -4296,7 +4403,7 @@ async function saveDefaultClassTimes() {
         ['am_start','am_end','pm_start','pm_end'].forEach(function(k) {
             if ((cur[k] || '') !== (nxt[k] || '')) rowDiff.push(k.replace('_',' ') + ': ' + (cur[k] || '—') + ' → ' + (nxt[k] || '—'));
         });
-        if (rowDiff.length > 0) diff.push(DOW_LABELS[String(d2)] + ': ' + rowDiff.join(', '));
+        if (rowDiff.length > 0) { diff.push(DOW_LABELS[String(d2)] + ': ' + rowDiff.join(', ')); changedDows.push(d2); }
     }
     if (diff.length === 0) { showToast('No changes to save'); return; }
 
@@ -4320,18 +4427,26 @@ async function saveDefaultClassTimes() {
     setLoading(btn, false);
     if (res.error) { showToast('Error: ' + res.error.message); return; }
     settingsCache.default_class_times = newDct;
+    var notifiedCount = 0;
     if (shouldNotify) {
-        await emitNotification({
+        // Only notify staff who are actually rostered on upcoming dates whose day-of-week changed.
+        var affectedDates = _upcomingDatesForDows(changedDows, 90);
+        var affectedUsers = _affectedUserIdsForDates(affectedDates);
+        notifiedCount = await notifyUsers(affectedUsers, {
             type: 'default_class_times_changed',
-            title: 'Default class times updated',
-            message: diff.length + ' day-of-week defaults changed',
-            data: { changes: diff }
+            title: 'Class times updated for upcoming shifts',
+            message: 'Times changed for ' + changedDows.map(function(x) { return DOW_LABELS[String(x)]; }).join(', '),
+            data: { changes: diff, dows: changedDows }
         });
     }
     if (currentTab === 'classes') { renderDowDefaultsGrid(); renderSettingsCardsInClasses(); renderClassesCalendar(); }
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
-    showToast(shouldNotify ? 'Defaults saved · all staff notified' : 'Defaults saved');
+    if (shouldNotify) {
+        showToast(notifiedCount > 0 ? ('Defaults saved · notified ' + notifiedCount + ' staff') : 'Defaults saved · no upcoming roster affected');
+    } else {
+        showToast('Defaults saved');
+    }
 }
 
 function changeClassesMonth(dir) {
@@ -4433,12 +4548,13 @@ async function saveClassEdit() {
     dayClassesCache[dateStr] = row;
     closeModal('classEditModal');
 
-    // Notify if class times actually changed for this day
+    // Notify only the staff rostered on this date — nobody else is affected by a single-day change.
     var timeChanged = (prevTimes.am_start || null) !== (amStart || null) || (prevTimes.am_end || null) !== (amEnd || null)
                    || (prevTimes.pm_start || null) !== (pmStart || null) || (prevTimes.pm_end || null) !== (pmEnd || null);
     if (timeChanged && willBeManual) {
         var human = (amStart && amEnd ? 'AM ' + amStart + '–' + amEnd : '') + (pmStart && pmEnd ? ' · PM ' + pmStart + '–' + pmEnd : '');
-        emitNotification({
+        var affected = _affectedUserIdsForDates([dateStr]);
+        notifyUsers(affected, {
             type: 'class_time_changed',
             title: 'Class times changed for ' + dateStr,
             message: 'New times for ' + dateStr + ': ' + human.trim(),
