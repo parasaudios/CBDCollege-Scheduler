@@ -182,8 +182,9 @@
 <p>After tapping Save Defaults you'll see a confirmation with two choices:</p>
 <ul>
     <li><span class="btn-mock outline">Save only</span> — saves without telling anyone.</li>
-    <li><span class="btn-mock success">Save &amp; Notify</span> — saves and sends a notification to every staff member.</li>
+    <li><span class="btn-mock success">Save &amp; Notify</span> — saves and sends a notification <strong>only to the staff who are actually affected</strong> — i.e. those currently rostered on any upcoming days whose times you just changed.</li>
 </ul>
+<div class="callout"><strong>Example</strong> If you change only Wednesday's times, and only Madi and Cameron are rostered on upcoming Wednesdays, only those two get the notification. Nobody else is interrupted. After saving you'll see a toast like "Defaults saved · notified 2 staff".</div>
 
 <h3>Quick shortcuts</h3>
 <p>Three buttons at the top of the section save you time:</p>
@@ -261,6 +262,7 @@
 
 <h3>Assistant Start Times by Slot</h3>
 <p>When the app picks assistants automatically, the first one picked gets the "Slot 1" start time, the second one gets "Slot 2", and so on. This grid lets you set what time each slot starts. Change any time and tap <span class="btn-mock success">Save Start Times</span> — same Save or Save &amp; Notify choice as before.</p>
+<div class="callout"><strong>Who gets notified</strong> Only assistants rostered on upcoming dates whose class start time matches a changed slot group. E.g. if you change the 08:00-AM-class slot times, only assistants on upcoming days where the AM class starts at 08:00 are pinged.</div>
 
 <h3>Auto-roster Rules</h3>
 <p>Two settings here decide how many assistants the app picks:</p>
@@ -270,6 +272,7 @@
     <li><strong>Who works the first Saturday of each month?</strong> — pick which Head Trainer kicks off the weekend rotation. The other Head Trainer takes Sunday, and they swap each following weekend.</li>
 </ul>
 <p>Tap <span class="btn-mock success">Save Rules</span> — same Save or Save &amp; Notify choice.</p>
+<div class="callout"><strong>Who gets notified</strong> If you change the assistant-count thresholds, only assistants rostered on upcoming dates are notified (their pick spot might shift). If you change which Head Trainer kicks off the weekend, only the two Head Trainers are notified.</div>
 
 <!-- ============ 8. NOTIFICATIONS TAB ============ -->
 <h2 class="section"><span class="num">08</span>Sending a message to staff</h2>
@@ -325,6 +328,7 @@
 </div>
 
 <p>You'll see the class times, the AM and PM student count, whether the class is full, and the names of everyone rostered (with the Head Trainer at the top). Trainers can also change the class times for that specific date from this screen, overriding the weekly default.</p>
+<div class="callout"><strong>Who gets notified when you change one date's times</strong> Only the staff who are actually rostered on that day. Everyone else is left alone — no spammy "the times changed for a day I'm not even on" notifications.</div>
 
 <!-- ============ 11. IMPORT ROSTER ============ -->
 <h2 class="section"><span class="num">11</span>Loading a roster from an Excel file</h2>
@@ -381,15 +385,19 @@
 </ol>
 
 <h3>What triggers a notification</h3>
+<p>Notifications are always targeted to the staff actually affected — never a blanket message to everyone unless you choose that from the Notifications tab.</p>
 <table class="steps">
     <tr><th>When this happens</th><th>Who gets notified</th></tr>
-    <tr><td>You change a staff member's roster on any day</td><td>That staff member only</td></tr>
-    <tr><td>You override an assistant's availability</td><td>That assistant only</td></tr>
-    <tr><td>You save Default Class Times with "Save &amp; Notify"</td><td>Everyone</td></tr>
-    <tr><td>You save Auto-roster Rules with "Save &amp; Notify"</td><td>Everyone</td></tr>
-    <tr><td>You save Slot Times with "Save &amp; Notify"</td><td>Everyone</td></tr>
-    <tr><td>You send a message from the Notifications tab</td><td>Whoever you chose</td></tr>
+    <tr><td>You change one staff member's roster on a day</td><td>That staff member only</td></tr>
+    <tr><td>You override an assistant's availability for a day</td><td>That assistant only</td></tr>
+    <tr><td>You change one specific date's class times (in the day-detail popup)</td><td>Only the staff rostered on that day</td></tr>
+    <tr><td>You save Default Class Times with "Save &amp; Notify"</td><td>Only staff rostered on upcoming dates whose day-of-week you changed (next 90 days)</td></tr>
+    <tr><td>You save Slot Times with "Save &amp; Notify"</td><td>Only assistants rostered on upcoming dates whose AM start matches a changed slot group</td></tr>
+    <tr><td>You save Auto-roster Rules &mdash; assistant count thresholds</td><td>Only assistants rostered on upcoming dates (next 60 days)</td></tr>
+    <tr><td>You save Auto-roster Rules &mdash; first Saturday Head Trainer</td><td>Only the two Head Trainers</td></tr>
+    <tr><td>You send a message from the Notifications tab</td><td>Whoever you chose (one person or All staff)</td></tr>
 </table>
+<div class="callout success"><strong>Why this matters</strong> Staff only hear from the app about changes that touch them personally. Nobody gets pinged about a Tuesday-only change if they only ever work Sundays.</div>
 
 <h3>If a staff member says they didn't get a notification</h3>
 <ul>
