@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CBD College Scheduler — Assistant Guide</title>
+<link rel="stylesheet" href="guide-style.css">
+</head>
+<body>
+
+<div class="no-print-banner no-print">
+    <strong>Tip:</strong> The boxes labelled 📷 are placeholders for screenshots. Either leave them as labels or replace each <code>&lt;div class="shot"&gt;</code> with an <code>&lt;img&gt;</code> pointing at your screenshot file. When you're ready, press <span class="kbd">Ctrl</span>+<span class="kbd">P</span> and choose <strong>Save as PDF</strong>.
+</div>
+
+<!-- ============ COVER ============ -->
+<section class="cover">
+    <div class="badge">User Manual</div>
+    <h1>CBD College Staff Scheduler</h1>
+    <div class="subtitle">Assistant Guide</div>
+    <div class="meta">
+        Everything you need to know to check your roster, see your shift times, declare your availability, and stay on top of changes from the team.
+    </div>
+</section>
+
+<!-- ============ TOC ============ -->
+<section class="toc">
+    <h2>Contents</h2>
+    <ol>
+        <li>Getting in &mdash; signing in for the first time <span class="page"></span></li>
+        <li>Install the app on your phone <span class="page"></span></li>
+        <li>Turn on mobile notifications <span class="page"></span></li>
+        <li>The header &mdash; what every button does <span class="page"></span></li>
+        <li>Reading the My Roster calendar <span class="page"></span></li>
+        <li>Checking when your next shift is <span class="page"></span></li>
+        <li>What the day-detail modal shows <span class="page"></span></li>
+        <li>The My Availability tab <span class="page"></span></li>
+        <li>Setting your availability <span class="page"></span></li>
+        <li>Receiving notifications <span class="page"></span></li>
+        <li>Dark mode &amp; preferences <span class="page"></span></li>
+        <li>Signing out &amp; switching devices <span class="page"></span></li>
+        <li>Troubleshooting <span class="page"></span></li>
+    </ol>
+</section>
+
+<!-- ============ 1. GETTING IN ============ -->
+<h2 class="section"><span class="num">01</span>Getting in</h2>
+<p class="lead">A trainer will create your account and send you an email + temporary password. The app lives at <strong>cbdcollege-scheduler.pages.dev</strong>.</p>
+<div class="shot" data-caption="Sign-in screen"></div>
+
+<h3>First sign-in</h3>
+<table class="steps">
+    <tr><td class="num">1</td><td>Open the app URL in your phone's browser (or laptop).</td></tr>
+    <tr><td class="num">2</td><td>Enter the email and temporary password your trainer gave you.</td></tr>
+    <tr><td class="num">3</td><td>Tap <span class="btn-mock primary">Sign In</span>.</td></tr>
+</table>
+<div class="callout warn"><strong>Change your password</strong> Ask your trainer to reset it to something only you know — temporary passwords should not stay in use.</div>
+
+<!-- ============ 2. INSTALL ON PHONE ============ -->
+<h2 class="section"><span class="num">02</span>Install the app on your phone</h2>
+<p class="lead">Installing the app puts a CBD Scheduler icon on your home screen and unlocks mobile push notifications. Strongly recommended.</p>
+
+<h3>Android (Chrome)</h3>
+<table class="steps">
+    <tr><td class="num">1</td><td>Sign in and look at the header — you'll see a <span class="btn-mock ghost">📱 Install</span> button.</td></tr>
+    <tr><td class="num">2</td><td>Tap it.</td></tr>
+    <tr><td class="num">3</td><td>Tap <strong>Install</strong> when Chrome prompts.</td></tr>
+    <tr><td class="num">4</td><td>The app icon appears on your home screen. Open the app from there from now on.</td></tr>
+</table>
+
+<h3>iPhone (Safari)</h3>
+<table class="steps">
+    <tr><td class="num">1</td><td>Sign in. Tap the <span class="btn-mock ghost">📱 Install</span> button.</td></tr>
+    <tr><td class="num">2</td><td>An instructions modal appears. Tap the <strong>Share</strong> icon at the bottom of Safari (square with an up-arrow).</td></tr>
+    <tr><td class="num">3</td><td>Scroll the share sheet and tap <strong>Add to Home Screen</strong>.</td></tr>
+    <tr><td class="num">4</td><td>Tap <strong>Add</strong>.</td></tr>
+    <tr><td class="num">5</td><td>Open the CBD Scheduler icon from your home screen — <em>not</em> from Safari — to get the full PWA experience.</td></tr>
+</table>
+<div class="shot" data-caption="iOS Add-to-Home-Screen instructions modal"></div>
+
+<!-- ============ 3. NOTIFICATIONS ============ -->
+<h2 class="section"><span class="num">03</span>Turn on mobile notifications</h2>
+<p class="lead">So your phone buzzes when your roster changes or a trainer sends you a message.</p>
+<table class="steps">
+    <tr><td class="num">1</td><td>Open the app (on iPhone, from the home-screen icon — not Safari).</td></tr>
+    <tr><td class="num">2</td><td>Tap <span class="btn-mock ghost">🔔 Enable Push</span> in the header.</td></tr>
+    <tr><td class="num">3</td><td>Your phone shows a system prompt — tap <strong>Allow</strong>.</td></tr>
+    <tr><td class="num">4</td><td>You'll see a toast saying <em>"Mobile push enabled"</em> and the Enable Push button disappears.</td></tr>
+</table>
+<div class="shot short" data-caption="Enable Push button + system prompt"></div>
+<div class="callout success"><strong>You're set</strong> From now on, your phone receives a real OS notification whenever your roster changes, even if the app is closed.</div>
+
+<!-- ============ 4. HEADER ============ -->
+<h2 class="section"><span class="num">04</span>The header &mdash; every button explained</h2>
+<div class="shot" data-caption="Header with all buttons labelled"></div>
+<ul>
+    <li><strong>Your name + ASSISTANT badge</strong> — confirms you're signed in.</li>
+    <li><span class="btn-mock ghost">📱 Install</span> — install the PWA (mobile only; hides once installed).</li>
+    <li><span class="btn-mock ghost">🔔</span> — notification bell. Red badge = unread count. Tap to read.</li>
+    <li><span class="btn-mock ghost">🔔 Enable Push</span> — opt into mobile push notifications. Hides once you've granted permission.</li>
+    <li><span class="btn-mock ghost">🌙</span> / <span class="btn-mock ghost">☀️</span> — dark / light theme toggle.</li>
+    <li><span class="btn-mock ghost">Sign Out</span> — end your session.</li>
+</ul>
+
+<h3>The two tabs</h3>
+<div class="legend-row">
+    <span class="tab-mock active">My Roster</span>
+    <span class="tab-mock">My Availability</span>
+</div>
+<ul>
+    <li><strong>My Roster</strong> — your personal schedule. Read-only.</li>
+    <li><strong>My Availability</strong> — where you tell trainers when you can and can't work.</li>
+</ul>
+
+<!-- ============ 5. MY ROSTER ============ -->
+<h2 class="section"><span class="num">05</span>Reading the My Roster calendar</h2>
+<p class="lead">A month view of every day, with a clear icon showing whether you're rostered or not.</p>
+<div class="shot tall" data-caption="My Roster calendar"></div>
+
+<h3>What the icons mean</h3>
+<div class="legend-row">
+    <span class="item"><span class="ic check">✓</span> You're rostered that day (green tint)</span>
+    <span class="item"><span class="ic cross">✕</span> A class runs but you're not on (red tint)</span>
+    <span class="item"><span class="dot gray"></span> No class scheduled (neutral)</span>
+    <span class="item"><span class="dot blue"></span> Today (blue ring + TODAY label)</span>
+</div>
+
+<h3>Navigation</h3>
+<table class="steps">
+    <tr><td class="num">1</td><td>Use <span class="btn-mock outline">‹</span> and <span class="btn-mock outline">›</span> above the calendar to change month.</td></tr>
+    <tr><td class="num">2</td><td>Tap <span class="btn-mock outline">Today</span> to jump back to the current month.</td></tr>
+    <tr><td class="num">3</td><td>Tap any day cell to open its full detail.</td></tr>
+</table>
+
+<!-- ============ 6. NEXT SHIFT ============ -->
+<h2 class="section"><span class="num">06</span>Checking when your next shift is</h2>
+<p class="lead">Above the calendar is a blue <strong>Next Shift</strong> hero card with at-a-glance info.</p>
+<div class="shot tall" data-caption="Next Shift hero card"></div>
+
+<h3>What it shows</h3>
+<ul>
+    <li><strong>Today</strong> — date, today's class times, total students, and whether you're working today (<em>YOU'RE WORKING</em> badge) or not (<em>NOT NEEDED</em>).</li>
+    <li><strong>Next shift</strong> — when your next rostered day is (<em>Tomorrow</em>, <em>In 3 days</em>, etc.) with date, class times, your own start time, and the role (Head Trainer / Assistant).</li>
+    <li><strong>Working with</strong> — the names of the other staff rostered that day, with the Head Trainer flagged.</li>
+</ul>
+<div class="callout"><strong>If nothing's coming up</strong> The card shows <em>"You're not currently rostered for any upcoming days"</em>. Check your availability is up to date — see Section 8.</div>
+
+<!-- ============ 7. DAY DETAIL ============ -->
+<h2 class="section"><span class="num">07</span>What the day-detail modal shows</h2>
+<p class="lead">Tap any day on the calendar to open the day-detail view.</p>
+<div class="shot" data-caption="Day-detail modal"></div>
+<p>Inside you'll see:</p>
+<ul>
+    <li>The day name + full date.</li>
+    <li>Class times (AM and PM).</li>
+    <li>Student counts (AM / PM).</li>
+    <li>Whether the session is at capacity (CAP badge).</li>
+    <li>The list of staff rostered, sorted with the Head Trainer at the top, each tagged with their role.</li>
+    <li>Your own start time if you're rostered.</li>
+</ul>
+
+<!-- ============ 8. MY AVAILABILITY ============ -->
+<h2 class="section"><span class="num">08</span>The My Availability tab</h2>
+<p class="lead">Where you tell trainers when you can and can't work. Auto-rostering relies on this — keep it current.</p>
+<div class="shot tall" data-caption="My Availability calendar"></div>
+
+<h3>Reading the cells</h3>
+<div class="legend-row">
+    <span class="item"><span class="dot green"></span> Available</span>
+    <span class="item"><span class="dot red"></span> Not available</span>
+    <span class="item"><span class="dot gray"></span> Not set (counts as available by default)</span>
+</div>
+
+<!-- ============ 9. SETTING AVAILABILITY ============ -->
+<h2 class="section"><span class="num">09</span>Setting your availability</h2>
+
+<h3>One day at a time</h3>
+<table class="steps">
+    <tr><td class="num">1</td><td>Tap the day on the calendar.</td></tr>
+    <tr><td class="num">2</td><td>Choose <strong>Available</strong> or <strong>Not Available</strong>.</td></tr>
+    <tr><td class="num">3</td><td><em>Optional:</em> add a note (e.g. "doctor's appointment").</td></tr>
+    <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
+    <tr><td class="num">5</td><td>To remove a set value, open the same day and tap <span class="btn-mock outline">Clear</span>.</td></tr>
+</table>
+<div class="shot" data-caption="Set availability modal"></div>
+
+<h3>Recurring patterns</h3>
+<p>If you have a recurring schedule (e.g. "available every Monday"), tap the <strong>Patterns</strong> button at the top of the tab. The pattern editor lets you toggle each day-of-week as a default — the calendar then applies that pattern to every future date.</p>
+<div class="shot" data-caption="Pattern editor"></div>
+<p>Individual day overrides always win over the pattern. So if your default is <em>available Mondays</em> but you set <em>not available</em> on one specific Monday, that Monday stays as not-available even though the pattern says otherwise.</p>
+
+<h3>When to update</h3>
+<ul>
+    <li>Before the trainer auto-rosters the next month — so the system uses correct data.</li>
+    <li>As soon as you know about a date you can't work — even months in advance.</li>
+    <li>You don't need to mark every available day — leaving a day blank means "available unless told otherwise".</li>
+</ul>
+
+<!-- ============ 10. NOTIFICATIONS ============ -->
+<h2 class="section"><span class="num">10</span>Receiving notifications</h2>
+
+<h3>Two places</h3>
+<ol>
+    <li><strong>The bell icon</strong> in the header. A red badge shows how many unread notifications you have. Tap to open the list.</li>
+    <li><strong>Your phone's notification centre</strong> — a real OS notification (lock screen / banner) for each event, as long as you tapped <span class="btn-mock ghost">🔔 Enable Push</span> earlier.</li>
+</ol>
+<div class="shot" data-caption="Notification bell + panel"></div>
+
+<h3>What kinds of notifications you'll see</h3>
+<ul>
+    <li><strong>"Your roster was updated"</strong> — when a trainer changes your shift for any date.</li>
+    <li><strong>"Your availability was updated"</strong> — when a trainer overrides one of your available/unavailable days.</li>
+    <li><strong>"Default class times updated"</strong> — when class start/end times shift across multiple days of the week.</li>
+    <li><strong>"Assistant start times updated"</strong> — when the slot start-time table changes.</li>
+    <li><strong>Manual announcements</strong> — anything a trainer sends from the Notifications tab.</li>
+</ul>
+
+<h3>Marking a notification read</h3>
+<p>Tap any item in the panel — the unread dot disappears and the bell badge counts down.</p>
+
+<!-- ============ 11. DARK MODE ============ -->
+<h2 class="section"><span class="num">11</span>Dark mode &amp; preferences</h2>
+
+<h3>Switching theme</h3>
+<p>Tap the <span class="btn-mock ghost">🌙</span> (moon) icon in the header to switch to light mode; tap <span class="btn-mock ghost">☀️</span> (sun) to go back to dark. Your choice is saved on this device.</p>
+
+<h3>Default</h3>
+<p>New visitors land in dark mode. If you'd rather have light, just toggle once and it'll remember.</p>
+
+<!-- ============ 12. SIGN OUT / SWITCH DEVICES ============ -->
+<h2 class="section"><span class="num">12</span>Signing out &amp; switching devices</h2>
+
+<h3>Sign out</h3>
+<p>Tap <span class="btn-mock ghost">Sign Out</span> in the header.</p>
+
+<h3>Using multiple devices</h3>
+<p>You can sign in on a phone, a tablet, and a desktop at the same time. Each device manages its own push subscription, so notifications buzz on whichever device you've enabled push for.</p>
+
+<h3>If you change phones</h3>
+<p>Install the app on the new phone, sign in, and tap <span class="btn-mock ghost">🔔 Enable Push</span>. The old device keeps its subscription until you sign out — sign out on the old phone so notifications stop going there.</p>
+
+<!-- ============ 13. TROUBLESHOOTING ============ -->
+<h2 class="section"><span class="num">13</span>Troubleshooting</h2>
+
+<h4>I tap a day on My Roster but nothing happens</h4>
+<p>The My Roster tab is <em>read-only</em>. Tapping a day opens a detail view but you can't edit. To change <em>when you're available</em>, use the <strong>My Availability</strong> tab instead.</p>
+
+<h4>The Enable Push button doesn't appear</h4>
+<p>You've probably already enabled it on this device, or your browser blocks notifications. Check your browser's site settings to confirm.</p>
+
+<h4>My phone isn't getting pushes</h4>
+<ul>
+    <li>iPhone — confirm you installed the PWA via the Install button, and that you opened the app from the home-screen icon (not Safari) when tapping Enable Push.</li>
+    <li>Android — confirm Chrome notifications aren't muted at the OS level.</li>
+    <li>Try signing out and back in; then tap Enable Push again.</li>
+</ul>
+
+<h4>My next shift hero card is wrong</h4>
+<p>It reflects what the trainer has saved in the database. If you think it's wrong, contact your trainer — they may have rolled out an auto-roster that hasn't yet refreshed in your cache. Pull-to-refresh on mobile or hit reload on desktop.</p>
+
+<h4>I forgot my password</h4>
+<p>Ask your trainer to reset it from the Admin tab.</p>
+
+<h4>I see someone else's roster</h4>
+<p>That shouldn't be possible — if you do, sign out immediately and tell your trainer. Your account may be linked to the wrong staff record.</p>
+
+<div class="footer-note">
+    CBD College Staff Scheduler — Assistant Guide<br>
+    For app issues, see the project repo at <code>github.com/parasaudios/CBDCollege-Scheduler</code>.
+</div>
+
+</body>
+</html>
