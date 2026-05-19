@@ -8,7 +8,7 @@
 <body>
 
 <div class="no-print-banner no-print">
-    <strong>Tip:</strong> The boxes labelled 📷 are placeholders for screenshots. Either leave them as labels or replace each <code>&lt;div class="shot"&gt;</code> with an <code>&lt;img&gt;</code> pointing at your screenshot file. When you're ready, press <span class="kbd">Ctrl</span>+<span class="kbd">P</span> and choose <strong>Save as PDF</strong>.
+    <strong>Tip:</strong> Press <span class="kbd">Ctrl</span>+<span class="kbd">P</span> and choose <strong>Save as PDF</strong>. Tick <em>Background graphics</em> in the print dialog so the dark theme prints correctly.
 </div>
 
 <!-- ============ COVER ============ -->
@@ -17,7 +17,7 @@
     <h1>CBD College Staff Scheduler</h1>
     <div class="subtitle">Assistant Guide</div>
     <div class="meta">
-        Everything you need to know to check your roster, see your shift times, declare your availability, and stay on top of changes from the team.
+        Everything you need to know to check your roster, see your shift times, declare your availability, and stay on top of changes from the team. Every section shows both <strong>desktop</strong> and <strong>mobile</strong> views.
     </div>
 </section>
 
@@ -25,26 +25,30 @@
 <section class="toc">
     <h2>Contents</h2>
     <ol>
-        <li>Getting in &mdash; signing in for the first time <span class="page"></span></li>
-        <li>Install the app on your phone <span class="page"></span></li>
-        <li>Turn on mobile notifications <span class="page"></span></li>
-        <li>The header &mdash; what every button does <span class="page"></span></li>
-        <li>Reading the My Roster calendar <span class="page"></span></li>
-        <li>Checking when your next shift is <span class="page"></span></li>
-        <li>What the day-detail modal shows <span class="page"></span></li>
-        <li>The My Availability tab <span class="page"></span></li>
-        <li>Setting your availability <span class="page"></span></li>
-        <li>Receiving notifications <span class="page"></span></li>
-        <li>Dark mode &amp; preferences <span class="page"></span></li>
-        <li>Signing out &amp; switching devices <span class="page"></span></li>
-        <li>Troubleshooting <span class="page"></span></li>
+        <li>Getting in &mdash; signing in for the first time</li>
+        <li>Install the app on your phone</li>
+        <li>Turn on mobile notifications</li>
+        <li>The header &mdash; what every button does</li>
+        <li>Reading the My Roster calendar</li>
+        <li>Checking when your next shift is</li>
+        <li>The day-detail modal</li>
+        <li>The My Availability tab</li>
+        <li>Setting your availability</li>
+        <li>Receiving notifications</li>
+        <li>Dark mode &amp; preferences</li>
+        <li>Signing out &amp; switching devices</li>
+        <li>Troubleshooting</li>
     </ol>
 </section>
 
 <!-- ============ 1. GETTING IN ============ -->
 <h2 class="section"><span class="num">01</span>Getting in</h2>
 <p class="lead">A trainer will create your account and send you an email + temporary password. The app lives at <strong>cbdcollege-scheduler.pages.dev</strong>.</p>
-<div class="shot" data-caption="Sign-in screen"></div>
+
+<div class="dual">
+    <figure><figcaption><span class="badge-platform">Desktop</span> Sign-in screen</figcaption><img src="screenshots/login-desktop.png" alt="Login desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Mobile</span> Sign-in screen</figcaption><img src="screenshots/login-mobile.png" alt="Login mobile"></figure>
+</div>
 
 <h3>First sign-in</h3>
 <table class="steps">
@@ -56,7 +60,7 @@
 
 <!-- ============ 2. INSTALL ON PHONE ============ -->
 <h2 class="section"><span class="num">02</span>Install the app on your phone</h2>
-<p class="lead">Installing the app puts a CBD Scheduler icon on your home screen and unlocks mobile push notifications. Strongly recommended.</p>
+<p class="lead">Installing puts a CBD Scheduler icon on your home screen and unlocks mobile push notifications. Strongly recommended.</p>
 
 <h3>Android (Chrome)</h3>
 <table class="steps">
@@ -74,7 +78,6 @@
     <tr><td class="num">4</td><td>Tap <strong>Add</strong>.</td></tr>
     <tr><td class="num">5</td><td>Open the CBD Scheduler icon from your home screen — <em>not</em> from Safari — to get the full PWA experience.</td></tr>
 </table>
-<div class="shot" data-caption="iOS Add-to-Home-Screen instructions modal"></div>
 
 <!-- ============ 3. NOTIFICATIONS ============ -->
 <h2 class="section"><span class="num">03</span>Turn on mobile notifications</h2>
@@ -85,12 +88,11 @@
     <tr><td class="num">3</td><td>Your phone shows a system prompt — tap <strong>Allow</strong>.</td></tr>
     <tr><td class="num">4</td><td>You'll see a toast saying <em>"Mobile push enabled"</em> and the Enable Push button disappears.</td></tr>
 </table>
-<div class="shot short" data-caption="Enable Push button + system prompt"></div>
 <div class="callout success"><strong>You're set</strong> From now on, your phone receives a real OS notification whenever your roster changes, even if the app is closed.</div>
 
 <!-- ============ 4. HEADER ============ -->
 <h2 class="section"><span class="num">04</span>The header &mdash; every button explained</h2>
-<div class="shot" data-caption="Header with all buttons labelled"></div>
+
 <ul>
     <li><strong>Your name + ASSISTANT badge</strong> — confirms you're signed in.</li>
     <li><span class="btn-mock ghost">📱 Install</span> — install the PWA (mobile only; hides once installed).</li>
@@ -113,7 +115,11 @@
 <!-- ============ 5. MY ROSTER ============ -->
 <h2 class="section"><span class="num">05</span>Reading the My Roster calendar</h2>
 <p class="lead">A month view of every day, with a clear icon showing whether you're rostered or not.</p>
-<div class="shot tall" data-caption="My Roster calendar"></div>
+
+<div class="dual">
+    <figure><figcaption><span class="badge-platform">Desktop</span> My Roster — full detail per cell</figcaption><img src="screenshots/assistant-my-roster-desktop.png" alt="My Roster desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Mobile</span> My Roster — compact check/cross</figcaption><img src="screenshots/assistant-my-roster-mobile.png" alt="My Roster mobile"></figure>
+</div>
 
 <h3>What the icons mean</h3>
 <div class="legend-row">
@@ -132,8 +138,7 @@
 
 <!-- ============ 6. NEXT SHIFT ============ -->
 <h2 class="section"><span class="num">06</span>Checking when your next shift is</h2>
-<p class="lead">Above the calendar is a blue <strong>Next Shift</strong> hero card with at-a-glance info.</p>
-<div class="shot tall" data-caption="Next Shift hero card"></div>
+<p class="lead">Above the calendar is a blue <strong>Next Shift</strong> hero card with at-a-glance info — visible on every screen size.</p>
 
 <h3>What it shows</h3>
 <ul>
@@ -141,12 +146,17 @@
     <li><strong>Next shift</strong> — when your next rostered day is (<em>Tomorrow</em>, <em>In 3 days</em>, etc.) with date, class times, your own start time, and the role (Head Trainer / Assistant).</li>
     <li><strong>Working with</strong> — the names of the other staff rostered that day, with the Head Trainer flagged.</li>
 </ul>
-<div class="callout"><strong>If nothing's coming up</strong> The card shows <em>"You're not currently rostered for any upcoming days"</em>. Check your availability is up to date — see Section 8.</div>
+<div class="callout"><strong>If nothing's coming up</strong> The card shows <em>"You're not currently rostered for any upcoming days"</em>. Check your availability is up to date — see Section 9.</div>
 
 <!-- ============ 7. DAY DETAIL ============ -->
-<h2 class="section"><span class="num">07</span>What the day-detail modal shows</h2>
+<h2 class="section"><span class="num">07</span>The day-detail modal</h2>
 <p class="lead">Tap any day on the calendar to open the day-detail view.</p>
-<div class="shot" data-caption="Day-detail modal"></div>
+
+<div class="dual">
+    <figure><figcaption><span class="badge-platform">Desktop</span> Day-detail modal</figcaption><img src="screenshots/assistant-modal-day-detail-desktop.png" alt="Day detail desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Mobile</span> Day-detail modal</figcaption><img src="screenshots/assistant-modal-day-detail-mobile.png" alt="Day detail mobile"></figure>
+</div>
+
 <p>Inside you'll see:</p>
 <ul>
     <li>The day name + full date.</li>
@@ -160,7 +170,11 @@
 <!-- ============ 8. MY AVAILABILITY ============ -->
 <h2 class="section"><span class="num">08</span>The My Availability tab</h2>
 <p class="lead">Where you tell trainers when you can and can't work. Auto-rostering relies on this — keep it current.</p>
-<div class="shot tall" data-caption="My Availability calendar"></div>
+
+<div class="dual">
+    <figure><figcaption><span class="badge-platform">Desktop</span> My Availability</figcaption><img src="screenshots/assistant-my-availability-desktop.png" alt="My Availability desktop"></figure>
+    <figure><figcaption><span class="badge-platform mob">Mobile</span> My Availability</figcaption><img src="screenshots/assistant-my-availability-mobile.png" alt="My Availability mobile"></figure>
+</div>
 
 <h3>Reading the cells</h3>
 <div class="legend-row">
@@ -180,11 +194,9 @@
     <tr><td class="num">4</td><td>Tap <span class="btn-mock success">Save</span>.</td></tr>
     <tr><td class="num">5</td><td>To remove a set value, open the same day and tap <span class="btn-mock outline">Clear</span>.</td></tr>
 </table>
-<div class="shot" data-caption="Set availability modal"></div>
 
 <h3>Recurring patterns</h3>
 <p>If you have a recurring schedule (e.g. "available every Monday"), tap the <strong>Patterns</strong> button at the top of the tab. The pattern editor lets you toggle each day-of-week as a default — the calendar then applies that pattern to every future date.</p>
-<div class="shot" data-caption="Pattern editor"></div>
 <p>Individual day overrides always win over the pattern. So if your default is <em>available Mondays</em> but you set <em>not available</em> on one specific Monday, that Monday stays as not-available even though the pattern says otherwise.</p>
 
 <h3>When to update</h3>
@@ -202,7 +214,6 @@
     <li><strong>The bell icon</strong> in the header. A red badge shows how many unread notifications you have. Tap to open the list.</li>
     <li><strong>Your phone's notification centre</strong> — a real OS notification (lock screen / banner) for each event, as long as you tapped <span class="btn-mock ghost">🔔 Enable Push</span> earlier.</li>
 </ol>
-<div class="shot" data-caption="Notification bell + panel"></div>
 
 <h3>What kinds of notifications you'll see</h3>
 <ul>
@@ -254,7 +265,7 @@
 </ul>
 
 <h4>My next shift hero card is wrong</h4>
-<p>It reflects what the trainer has saved in the database. If you think it's wrong, contact your trainer — they may have rolled out an auto-roster that hasn't yet refreshed in your cache. Pull-to-refresh on mobile or hit reload on desktop.</p>
+<p>It reflects what the trainer has saved. If you think it's wrong, contact your trainer — they may have rolled out an auto-roster that hasn't yet refreshed in your cache. Pull-to-refresh on mobile or reload on desktop.</p>
 
 <h4>I forgot my password</h4>
 <p>Ask your trainer to reset it from the Admin tab.</p>

@@ -17,21 +17,22 @@ Two print-ready HTML guides live in this folder:
    - **Tick** "Background graphics" so the colored callouts and badges print correctly.
 4. Click **Save**. You'll get a polished PDF.
 
-## Adding screenshots
+## Screenshots are already embedded
 
-Each guide has placeholder boxes labelled with what should go inside (e.g. *"Login screen"*, *"Day editor modal"*). To replace a placeholder with a real screenshot:
+`docs/screenshots/` holds 26 PNGs captured live from the running app — every major view in **both desktop and mobile** sizes, for trainer and assistant perspectives. Both guides reference them via `<img src="screenshots/…">`.
 
-```html
-<!-- Before -->
-<div class="shot" data-caption="Sign-in screen"></div>
+If you want to refresh the screenshots (e.g. after a UI change), the capture script lives at `tools/capture-screenshots.js`:
 
-<!-- After -->
-<img src="screenshots/login.png" alt="Sign-in screen" style="max-width:100%; border-radius:8px; margin:12px 0;">
+```bash
+# 1. Start the local preview server (or use Claude's preview tool)
+# 2. Sign in via the preview to get a Supabase session cookie
+# 3. Grab the auth-token JSON from localStorage:
+#    localStorage.getItem('sb-nqbonrcmbhjutlrpjfpk-auth-token')
+# 4. Run:
+SB_TOKEN='<paste-token-here>' PREVIEW_URL=http://localhost:PORT node tools/capture-screenshots.js
 ```
 
-Drop your screenshot files into `docs/screenshots/` and reference them from the HTML.
-
-If you'd rather keep the placeholders (the boxes look fine when printed and show what the screenshot should depict), just leave the HTML as-is.
+The script drives Edge (via `puppeteer-core` against the system Microsoft Edge install) through every tab + modal at both desktop and mobile viewports.
 
 ## Style
 
@@ -42,4 +43,5 @@ Both guides share `guide-style.css` — a print-tuned stylesheet with:
 - Color-coded callouts (info / warning / danger / success)
 - Inline button + tab mockups so steps are visually scannable
 - Tabular "steps" tables
+- Side-by-side desktop + mobile screenshot frames (`.dual`) with platform-tagged captions
 - Clean typography optimized for legibility at 11pt

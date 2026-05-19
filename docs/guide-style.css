@@ -127,6 +127,67 @@ ul li, ol li { margin: 3px 0; }
 .shot.short { min-height: 130px; }
 .shot img { display: block; max-width: 100%; margin: 0 auto; border-radius: 4px; }
 
+/* Dual-view: desktop + mobile screenshots shown side-by-side.
+   Caption appears above each frame. */
+.dual {
+    display: grid;
+    grid-template-columns: 1.7fr 1fr;
+    gap: 12px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+}
+.dual figure {
+    margin: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+.dual figcaption {
+    background: #f3f4f6;
+    color: #1f2937;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 5px 10px;
+    border-bottom: 1px solid #e5e7eb;
+}
+.dual figcaption .badge-platform {
+    display: inline-block;
+    background: #2563eb;
+    color: white;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    margin-right: 6px;
+    letter-spacing: 0.4px;
+}
+.dual figcaption .badge-platform.mob { background: #16a34a; }
+.dual img { display: block; max-width: 100%; height: auto; }
+.dual.single { grid-template-columns: 1fr; }
+.dual.single figure { max-width: 720px; margin: 0 auto; }
+
+.single-shot {
+    margin: 14px 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    page-break-inside: avoid;
+}
+.single-shot .cap {
+    background: #f3f4f6;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 5px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    color: #1f2937;
+}
+.single-shot img { display: block; max-width: 100%; height: auto; }
+
 .callout {
     border-left: 4px solid #2563eb;
     background: #eff6ff;
