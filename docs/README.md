@@ -2,10 +2,17 @@
 
 Two print-ready guides live in this folder. **Use the `-standalone.html` files** — they have the CSS inlined and every screenshot base64-embedded, so they work correctly when opened anywhere (file://, email attachment, USB stick, any viewer that doesn't resolve relative paths).
 
-- **`trainer-guide-standalone.html`** — for trainers and admins. ~2.2 MB. Covers class setup, roster management, staff administration, auto-roster, importing, notifications, the Admin tab.
-- **`assistant-guide-standalone.html`** — for assistants. ~1.1 MB. Covers signing in, installing on phone, enabling push, reading the roster, checking next shift, setting availability.
+- **`trainer-guide-standalone.html`** — for in-browser reading.
+- **`CBD-Scheduler-Trainer-Guide.pdf`** — pre-rendered PDF for download/print.
+- **`assistant-guide-standalone.html`** — for in-browser reading.
+- **`CBD-Scheduler-Assistant-Guide.pdf`** — pre-rendered PDF for download/print.
 
-The non-standalone versions (`trainer-guide.html` / `assistant-guide.html`) plus the loose `screenshots/` folder and `guide-style.css` are the editable source. If you change them, run `node tools/bundle-guide.js` to regenerate the standalone copies.
+The non-standalone versions (`trainer-guide.html` / `assistant-guide.html`) plus the loose `screenshots/` folder and `guide-style.css` are the editable source. After editing:
+
+```bash
+node tools/bundle-guide.js     # rebuild the *-standalone.html files
+node tools/build-guide-pdf.js  # rebuild the *.pdf files
+```
 
 ## How to produce the PDF
 

@@ -2779,22 +2779,31 @@ async function saveRosterRulesFromSettings() {
 // (useful for previewing what assistants see). Assistants only ever see their own guide.
 var _currentGuide = null; // 'trainer' | 'assistant'
 
-function _guidePathFor(which) {
-    // Served from the same origin as the app (docs/ is committed alongside index.html).
+function _guideViewPathFor(which) {
+    // Used by the in-app iframe + Open-in-new-tab — the standalone HTML reads better in browser.
     return which === 'trainer' ? 'docs/trainer-guide-standalone.html' : 'docs/assistant-guide-standalone.html';
+}
+function _guidePdfPathFor(which) {
+    // Used by the Download button — pre-rendered PDF so users get a clean printable file.
+    return which === 'trainer' ? 'docs/CBD-Scheduler-Trainer-Guide.pdf' : 'docs/CBD-Scheduler-Assistant-Guide.pdf';
 }
 
 function _setGuide(which) {
     _currentGuide = which;
-    var path = _guidePathFor(which);
+    var viewPath = _guideViewPathFor(which);
+    var pdfPath  = _guidePdfPathFor(which);
     var frame = document.getElementById('guideFrame');
     var openBtn = document.getElementById('guideOpenBtn');
     var dlBtn = document.getElementById('guideDownloadBtn');
     var sub = document.getElementById('guidesCardSub');
     var switchBtn = document.getElementById('guideSwitchBtn');
-    if (frame && frame.src.indexOf(path) === -1) frame.src = path;
-    if (openBtn) openBtn.href = path;
-    if (dlBtn) dlBtn.href = path;
+    if (frame && frame.src.indexOf(viewPath) === -1) frame.src = viewPath;
+    if (openBtn) openBtn.href = viewPath;
+    if (dlBtn) {
+        dlBtn.href = pdfPath;
+        dlBtn.setAttribute('download', which === 'trainer' ? 'CBD-Scheduler-Trainer-Guide.pdf' : 'CBD-Scheduler-Assistant-Guide.pdf');
+        dlBtn.textContent = 'Download PDF';
+    }
     if (sub) sub.textContent = which === 'trainer'
         ? 'Trainer & Admin guide — step-by-step walkthrough of every feature you have access to.'
         : 'Assistant guide — how to check your roster, set your availability, and stay up to date.';
@@ -2803,7 +2812,6 @@ function _setGuide(which) {
 
 function renderGuidesTab() {
     var switchBtn = document.getElementById('guideSwitchBtn');
-    var dlBtn = document.getElementById('guideDownloadBtn');
     if (isActualTrainer()) {
         if (switchBtn) switchBtn.style.display = '';
         if (!_currentGuide) _setGuide('trainer');
@@ -2812,14 +2820,11 @@ function renderGuidesTab() {
         if (switchBtn) switchBtn.style.display = 'none';
         _setGuide('assistant');
     }
-    if (dlBtn) dlBtn.setAttribute('download', _currentGuide === 'trainer' ? 'CBD-Scheduler-Trainer-Guide.html' : 'CBD-Scheduler-Assistant-Guide.html');
 }
 
 function switchGuide() {
     if (!isActualTrainer()) return;
     _setGuide(_currentGuide === 'trainer' ? 'assistant' : 'trainer');
-    var dlBtn = document.getElementById('guideDownloadBtn');
-    if (dlBtn) dlBtn.setAttribute('download', _currentGuide === 'trainer' ? 'CBD-Scheduler-Trainer-Guide.html' : 'CBD-Scheduler-Assistant-Guide.html');
 }
 
 // ============ Notifications Tab (trainer compose) ============
