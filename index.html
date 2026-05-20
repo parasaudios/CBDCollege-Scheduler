@@ -901,6 +901,26 @@
             </div>
         </div>
 
+        <!-- ALL: App Guides Tab -->
+        <div id="tab-guides" class="tab-content" style="display:none;">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 id="guidesCardTitle">App Guides</h2>
+                        <div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;" id="guidesCardSub">Step-by-step walkthrough of every feature in this app.</div>
+                    </div>
+                    <div id="guidesActions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" id="guideSwitchBtn" style="display:none;" onclick="switchGuide()">Switch guide</button>
+                        <a class="btn btn-outline btn-sm" id="guideOpenBtn" target="_blank" rel="noopener">Open in new tab</a>
+                        <a class="btn btn-primary btn-sm" id="guideDownloadBtn" download>Download</a>
+                    </div>
+                </div>
+                <div class="card-body" style="padding:0;">
+                    <iframe id="guideFrame" title="App guide" style="display:block;width:100%;height:calc(100vh - 240px);min-height:520px;border:0;background:white;"></iframe>
+                </div>
+            </div>
+        </div>
+
         <!-- ASSISTANT: My Roster Tab (read-only) -->
         <div id="tab-myroster" class="tab-content" style="display:none;">
             <div id="nextShiftHero"></div>
@@ -1921,11 +1941,13 @@ function buildTabs() {
             '<button class="tab" data-tab="classes" onclick="switchTab(\'classes\')">Classes</button>' +
             '<button class="tab" data-tab="people" onclick="switchTab(\'people\')">Staff</button>' +
             '<button class="tab" data-tab="notifications" onclick="switchTab(\'notifications\')">Notifications</button>' +
-            '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>';
+            '<button class="tab" data-tab="admin" onclick="switchTab(\'admin\')">Admin</button>' +
+            '<button class="tab" data-tab="guides" onclick="switchTab(\'guides\')">App Guides</button>';
         document.getElementById('exportBtn').style.display = '';
     } else {
         tabsEl.innerHTML = '<button class="tab active" data-tab="myroster" onclick="switchTab(\'myroster\')">My Roster</button>' +
-            '<button class="tab" data-tab="myavail" onclick="switchTab(\'myavail\')">My Availability</button>';
+            '<button class="tab" data-tab="myavail" onclick="switchTab(\'myavail\')">My Availability</button>' +
+            '<button class="tab" data-tab="guides" onclick="switchTab(\'guides\')">App Guides</button>';
         document.getElementById('exportBtn').style.display = 'none';
     }
 }
@@ -2164,6 +2186,8 @@ function switchTab(tab) {
         loadUsers();
     } else if (tab === 'notifications') {
         renderNotificationsTab();
+    } else if (tab === 'guides') {
+        renderGuidesTab();
     } else if (tab === 'myroster') {
         renderRosterSkeleton('myRosterGrid');
         loadMonth('myroster', myRosterMonth, myRosterYear).then(renderMyRoster);
@@ -2748,6 +2772,54 @@ async function saveRosterRulesFromSettings() {
     } else {
         showToast('Rules saved');
     }
+}
+
+// ============ App Guides Tab ============
+// Trainers default to the trainer guide and get a Switch button to flip to the assistant one
+// (useful for previewing what assistants see). Assistants only ever see their own guide.
+var _currentGuide = null; // 'trainer' | 'assistant'
+
+function _guidePathFor(which) {
+    // Served from the same origin as the app (docs/ is committed alongside index.html).
+    return which === 'trainer' ? 'docs/trainer-guide-standalone.html' : 'docs/assistant-guide-standalone.html';
+}
+
+function _setGuide(which) {
+    _currentGuide = which;
+    var path = _guidePathFor(which);
+    var frame = document.getElementById('guideFrame');
+    var openBtn = document.getElementById('guideOpenBtn');
+    var dlBtn = document.getElementById('guideDownloadBtn');
+    var sub = document.getElementById('guidesCardSub');
+    var switchBtn = document.getElementById('guideSwitchBtn');
+    if (frame && frame.src.indexOf(path) === -1) frame.src = path;
+    if (openBtn) openBtn.href = path;
+    if (dlBtn) dlBtn.href = path;
+    if (sub) sub.textContent = which === 'trainer'
+        ? 'Trainer & Admin guide — step-by-step walkthrough of every feature you have access to.'
+        : 'Assistant guide — how to check your roster, set your availability, and stay up to date.';
+    if (switchBtn) switchBtn.textContent = which === 'trainer' ? 'View Assistant guide' : 'View Trainer guide';
+}
+
+function renderGuidesTab() {
+    var switchBtn = document.getElementById('guideSwitchBtn');
+    var dlBtn = document.getElementById('guideDownloadBtn');
+    if (isActualTrainer()) {
+        if (switchBtn) switchBtn.style.display = '';
+        if (!_currentGuide) _setGuide('trainer');
+        else _setGuide(_currentGuide);
+    } else {
+        if (switchBtn) switchBtn.style.display = 'none';
+        _setGuide('assistant');
+    }
+    if (dlBtn) dlBtn.setAttribute('download', _currentGuide === 'trainer' ? 'CBD-Scheduler-Trainer-Guide.html' : 'CBD-Scheduler-Assistant-Guide.html');
+}
+
+function switchGuide() {
+    if (!isActualTrainer()) return;
+    _setGuide(_currentGuide === 'trainer' ? 'assistant' : 'trainer');
+    var dlBtn = document.getElementById('guideDownloadBtn');
+    if (dlBtn) dlBtn.setAttribute('download', _currentGuide === 'trainer' ? 'CBD-Scheduler-Trainer-Guide.html' : 'CBD-Scheduler-Assistant-Guide.html');
 }
 
 // ============ Notifications Tab (trainer compose) ============
