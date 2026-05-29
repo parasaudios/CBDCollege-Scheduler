@@ -247,6 +247,30 @@
         /* Skeleton placeholders shown while data loads */
         @keyframes skel-shimmer { 0% { opacity: 0.55; } 50% { opacity: 0.85; } 100% { opacity: 0.55; } }
         .calendar-day.skeleton { background: var(--gray-50); border-color: var(--gray-100); cursor: default; }
+        .calendar-day.holiday {
+            background: repeating-linear-gradient(45deg, rgba(168,85,247,0.10), rgba(168,85,247,0.10) 6px, rgba(168,85,247,0.18) 6px, rgba(168,85,247,0.18) 12px);
+            border-color: #a855f7;
+        }
+        .calendar-day.holiday .day-number { color: #a855f7; }
+        .calendar-day .cal-cell-ph-tag {
+            display: inline-block;
+            background: #a855f7;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+        }
+        .calendar-day.holiday .cal-cell-ph-label {
+            font-size: 0.72rem;
+            color: #7c3aed;
+            font-weight: 600;
+            text-align: center;
+            padding: 2px 4px;
+            line-height: 1.2;
+        }
         .skel-bar { display: inline-block; background: linear-gradient(90deg, var(--gray-200) 0%, var(--gray-100) 50%, var(--gray-200) 100%); height: 10px; border-radius: 3px; animation: skel-shimmer 1.4s ease-in-out infinite; }
 
         /* Mobile compact status indicator — hidden on desktop, shown on small screens */
@@ -548,7 +572,7 @@
             .calendar-day .cal-cell-caps,
             .calendar-day .overview-day-staff,
             .calendar-day .assistavail-detail { display: none; }
-            .calendar-day > *:not(.day-number):not(.myroster-status-icon):not(.cal-cell-mobile-status) { display: none !important; }
+            .calendar-day > *:not(.day-number):not(.myroster-status-icon):not(.cal-cell-mobile-status):not(.cal-cell-ph-tag):not(.cal-cell-ph-label) { display: none !important; }
             /* The pre-existing mobile-status block was used for HT/AST/count chips. Suppress
                so only check/cross renders. */
             .calendar-day .cal-cell-mobile-status { display: none !important; }
@@ -796,6 +820,19 @@
                     </div>
                     <div id="dowDefaultsGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
                     <button class="btn btn-success" id="saveDefaultsBtn" onclick="saveDefaultClassTimes()" style="margin-top:14px;">Save Defaults</button>
+                </div>
+            </div>
+
+            <!-- Public Holidays -->
+            <div class="card" style="margin-top:14px;">
+                <div class="card-header"><div><h2>Public Holidays &amp; Closed Days</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Days on this list have no training. They override the weekly defaults, are skipped by auto-roster, and show with a "PH" tag on every calendar.</div></div></div>
+                <div class="card-body">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:14px;">
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.8rem;font-weight:600;color:var(--text-secondary);">Date<input type="date" id="phDateInput" class="form-control" style="min-width:150px;"></label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.8rem;font-weight:600;color:var(--text-secondary);flex:1;min-width:180px;">Label (e.g. "Christmas Day")<input type="text" id="phLabelInput" class="form-control" maxlength="80" placeholder="Public holiday"></label>
+                        <button class="btn btn-success" id="phAddBtn" onclick="addPublicHoliday()">+ Add</button>
+                    </div>
+                    <div id="phList" style="display:flex;flex-direction:column;gap:6px;"></div>
                 </div>
             </div>
         </div>
@@ -1373,6 +1410,7 @@ var staffList = [];
 var availabilityCache = {};        // staffId -> dateStr -> row
 var assistantAvailCache = {};      // dateStr -> [rows]; assistantAvailCache._my is dateStr -> row
 var dayClassesCache = {};          // dateStr -> row
+var publicHolidaysCache = {};      // dateStr -> { date, label, created_by, created_at }
 var profilesCache = null;
 var usersCache = null;
 var currentUser = null;
@@ -1957,6 +1995,7 @@ async function loadAllData() {
     await loadStaff();
     await getProfiles(true);
     await loadSettings();
+    await loadPublicHolidays();
     if (isTrainer()) {
         await loadMonth('roster', currentMonth, currentYear);
         // Default staff selection to the logged-in trainer's own record, else Cameron, else first staff
@@ -2175,6 +2214,7 @@ function switchTab(tab) {
         loadSettings().then(function() {
             renderDowDefaultsGrid();
         });
+        loadPublicHolidays(true).then(renderPublicHolidaysList);
     } else if (tab === 'assistavail') {
         renderStaffPatternsEditor();
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
@@ -2321,10 +2361,12 @@ function renderCalendar() {
         var roster = getRosterForDate(dateStr);
         var entry = roster.find(function(r) { return r.staff_id === selectedStaffId; });
         var cls = 'calendar-day';
+        var holidayHere = isPublicHoliday(dateStr);
+        if (holidayHere) cls += ' holiday';
         if (dateStr === todayStr) cls += ' today';
         var selStaff = staffList.find(function(s) { return s.id === selectedStaffId; });
         var rosterConflict = selStaff && entry && (entry.status === 'available' || entry.status === 'partial') && !isStaffAvailableOnDate(selStaff, dateStr);
-        if (entry) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
+        if (entry && !holidayHere) cls += ' ' + (rosterConflict ? 'unavailable' : entry.status);
         if (multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         var badgeHtml = '';
         if (entry) {
@@ -2377,7 +2419,8 @@ function renderCalendar() {
             statusIconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
         }
 
-        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + classBlockHtml + staffHtml + statusIconHtml + '</div>';
+        var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
+        html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + (holidayHere ? phHtml : (classBlockHtml + staffHtml + statusIconHtml)) + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -3394,7 +3437,27 @@ function _dowDefaults(dateStr) {
 async function loadAutoRosterRules() { return loadSettings(); }
 
 // Effective class times for a given day — merges per-day overrides with per-DOW defaults.
+// Public holidays — dates marked as no-training. Treated like a closed day:
+// no class times, no roster auto-fills, calendar shows a distinct PH style.
+function isPublicHoliday(dateStr) { return !!publicHolidaysCache[dateStr]; }
+function getHolidayLabel(dateStr) {
+    var h = publicHolidaysCache[dateStr];
+    return h ? (h.label || 'Public holiday') : null;
+}
+async function loadPublicHolidays(force) {
+    if (!force && Object.keys(publicHolidaysCache).length > 0) return;
+    try {
+        var r = await sb.from('cbd_public_holidays').select('*').order('date', { ascending: true });
+        if (r.error) throw r.error;
+        publicHolidaysCache = {};
+        (r.data || []).forEach(function(row) { publicHolidaysCache[row.date] = row; });
+    } catch (e) { console.warn('loadPublicHolidays failed:', e); }
+}
+
 function getEffectiveClassTimes(dateStr) {
+    if (isPublicHoliday(dateStr)) {
+        return { am_start: null, am_end: null, pm_start: null, pm_end: null, manual: false, holiday: true };
+    }
     var ci = dayClassesCache[dateStr];
     if (ci && ci.times_manually_set) {
         return {
@@ -3419,6 +3482,10 @@ function getEffectiveClassTimes(dateStr) {
 // only when it has been explicitly set (any of those fields non-zero / true), otherwise
 // fall back to the per-DOW default.
 function getEffectiveClassInfo(dateStr) {
+    // Public holidays: no students, not capped, no class.
+    if (isPublicHoliday(dateStr)) {
+        return { students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, from_default: true, holiday: true };
+    }
     var ci = dayClassesCache[dateStr] || {};
     var def = _dowDefaults(dateStr) || {};
     // Treat the per-day row as "explicitly set" if students or capped have been touched.
@@ -3434,6 +3501,7 @@ function getEffectiveClassInfo(dateStr) {
 
 // Combined "8:30–15:30" span for tight UI cells, or null if neither side has times.
 function getClassDayRange(dateStr) {
+    if (isPublicHoliday(dateStr)) return null;
     var t = getEffectiveClassTimes(dateStr);
     var first = t.am_start || t.pm_start;
     var last = t.pm_end || t.am_end;
@@ -3523,6 +3591,12 @@ async function generateAutoRosterPreview() {
     for (var t = startD.getTime(); t <= endD.getTime(); t += 86400000) {
         var d = new Date(t);
         var ds = formatDate(d);
+        // Public holidays / no-training days are skipped entirely
+        if (isPublicHoliday(ds)) {
+            skipped++;
+            preview.push({ dateStr: ds, dateLabel: _autoRosterDayLabel(d), ci: { students_am: 0, students_pm: 0 }, skipped: true, reason: 'Public holiday: ' + getHolidayLabel(ds) });
+            continue;
+        }
         var infoForDay = getEffectiveClassInfo(ds);
         var ci = { students_am: infoForDay.students_am, students_pm: infoForDay.students_pm, capped_am: infoForDay.capped_am, capped_pm: infoForDay.capped_pm };
         var hasStudents = (ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0;
@@ -4273,9 +4347,10 @@ function renderOverview() {
             return { name: r.name, color: r.color, status: showUnavail ? 'unavailable' : r.status, day_role: r.day_role || 'assistant' };
         });
         var ci = getDayClass(dateStr);
-        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
+        var holidayHere = isPublicHoliday(dateStr);
+        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (holidayHere ? ' holiday' : '');
         var detailHtml = '';
-        if (entries.length > 0 || ci) {
+        if (!holidayHere && (entries.length > 0 || ci)) {
             detailHtml = '<div class="overview-day-staff">';
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
@@ -4292,9 +4367,12 @@ function renderOverview() {
         var hasStaffOn = entries.some(function(e){ return e.status === 'available' || e.status === 'partial'; });
         var classDay = !!(ci && ((ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || ci.capped_am || ci.capped_pm));
         var statusIconHtml = '';
-        if (hasStaffOn) statusIconHtml = '<div class="myroster-status-icon check" aria-label="Staff rostered">&#10003;</div>';
-        else if (classDay) statusIconHtml = '<div class="myroster-status-icon cross" aria-label="No staff rostered">&#10005;</div>';
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + detailHtml + statusIconHtml + '</div>';
+        if (!holidayHere) {
+            if (hasStaffOn) statusIconHtml = '<div class="myroster-status-icon check" aria-label="Staff rostered">&#10003;</div>';
+            else if (classDay) statusIconHtml = '<div class="myroster-status-icon cross" aria-label="No staff rostered">&#10005;</div>';
+        }
+        var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + (holidayHere ? phHtml : (detailHtml + statusIconHtml)) + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -4311,6 +4389,70 @@ function goToOverviewToday() {
     overviewYear = n.getFullYear();
     document.getElementById('overviewMonthLabel').textContent = MONTH_NAMES[overviewMonth] + ' ' + overviewYear;
     loadMonth('overview', overviewMonth, overviewYear).then(renderOverview);
+}
+
+// ============ Public Holidays (Classes Tab) ============
+function renderPublicHolidaysList() {
+    var list = document.getElementById('phList');
+    if (!list) return;
+    var todayStr = formatDate(new Date());
+    var entries = Object.values(publicHolidaysCache || {}).sort(function(a, b) { return a.date.localeCompare(b.date); });
+    if (entries.length === 0) {
+        list.innerHTML = '<div style="color:var(--gray-500);font-style:italic;font-size:0.85rem;padding:8px 0;">No public holidays added yet.</div>';
+        return;
+    }
+    list.innerHTML = entries.map(function(h) {
+        var isPast = h.date < todayStr;
+        var parts = h.date.split('-');
+        var d = new Date(+parts[0], +parts[1]-1, +parts[2]);
+        var dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+        var pretty = dayName + ' ' + d.getDate() + ' ' + MONTH_NAMES[+parts[1]-1] + ' ' + parts[0];
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:var(--radius);background:' + (isPast ? 'var(--surface-2)' : 'var(--surface)') + ';' + (isPast ? 'opacity:0.6;' : '') + '">' +
+            '<span class="capped-badge" style="background:#a855f7;">PH</span>' +
+            '<span style="font-weight:600;color:var(--text-primary);">' + pretty + '</span>' +
+            '<span style="color:var(--text-secondary);font-size:0.88rem;flex:1;">' + escHtml(h.label || 'Public holiday') + '</span>' +
+            '<button class="btn btn-outline btn-sm" onclick="removePublicHoliday(\'' + h.date + '\')">Remove</button>' +
+        '</div>';
+    }).join('');
+}
+
+async function addPublicHoliday() {
+    var dateInp = document.getElementById('phDateInput');
+    var labelInp = document.getElementById('phLabelInput');
+    var btn = document.getElementById('phAddBtn');
+    var date = dateInp.value;
+    var label = (labelInp.value || '').trim() || 'Public holiday';
+    if (!date) { showToast('Pick a date'); return; }
+    setLoading(btn, true);
+    var res = await sb.from('cbd_public_holidays').upsert({ date: date, label: label, created_by: currentUser && currentUser.id }, { onConflict: 'date' });
+    setLoading(btn, false);
+    if (res.error) { showToast('Error: ' + res.error.message); return; }
+    publicHolidaysCache[date] = { date: date, label: label, created_by: currentUser && currentUser.id, created_at: new Date().toISOString() };
+    dateInp.value = '';
+    labelInp.value = '';
+    renderPublicHolidaysList();
+    _refreshHolidaySensitiveViews();
+    showToast('Public holiday added');
+}
+
+async function removePublicHoliday(dateStr) {
+    var ok = await showConfirm({ title: 'Remove public holiday?', body: dateStr + ' will go back to using the normal weekly defaults.', okText: 'Remove', danger: true });
+    if (!ok) return;
+    var res = await sb.from('cbd_public_holidays').delete().eq('date', dateStr);
+    if (res.error) { showToast('Error: ' + res.error.message); return; }
+    delete publicHolidaysCache[dateStr];
+    renderPublicHolidaysList();
+    _refreshHolidaySensitiveViews();
+    showToast('Public holiday removed');
+}
+
+function _refreshHolidaySensitiveViews() {
+    // Re-render any calendar/summary that depends on holiday state.
+    if (currentTab === 'roster') { renderCalendar(); updateSummary(); }
+    else if (currentTab === 'overview') renderOverview();
+    else if (currentTab === 'myroster') renderMyRoster();
+    else if (currentTab === 'myavail') renderMyAvail();
+    else if (currentTab === 'assistavail') renderAssistAvail();
 }
 
 // ============ Classes Tab (Trainer) ============
@@ -4872,26 +5014,31 @@ async function renderAssistAvail() {
         var override = entries.find(function(e) { return e.user_id === selectedUserId; });
         var patternAvail = pattern.indexOf(dow) >= 0;
 
-        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '');
-        if (override) cls += override.is_available ? ' available' : ' unavailable';
-        else if (!patternAvail) cls += ' partial'; // soft tint to indicate pattern says "off"
+        var holidayHere = isPublicHoliday(dateStr);
+        var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (holidayHere ? ' holiday' : '');
+        if (!holidayHere) {
+            if (override) cls += override.is_available ? ' available' : ' unavailable';
+            else if (!patternAvail) cls += ' partial';
+        }
         if (multiSelectMode === 'assistavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
 
         var detail = '<div class="assistavail-detail">';
-        if (override) {
-            detail += '<div style="font-size:0.7rem;text-align:center;font-weight:600;color:' + (override.is_available ? 'var(--success)' : 'var(--danger)') + ';">' +
-                (override.is_available ? 'Available' : 'Unavailable') + '</div>';
-            if (override.note) detail += '<div style="font-size:0.6rem;color:var(--gray-500);text-align:center;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(override.note) + '</div>';
-            detail += '<div style="font-size:0.58rem;color:var(--gray-400);text-align:center;text-transform:uppercase;letter-spacing:0.4px;margin-top:1px;">override</div>';
-        } else {
-            detail += '<div style="font-size:0.65rem;text-align:center;color:var(--gray-500);">' + (patternAvail ? 'Available' : 'Off') + ' <span style="color:var(--gray-300);font-size:0.55rem;">(pattern)</span></div>';
+        if (!holidayHere) {
+            if (override) {
+                detail += '<div style="font-size:0.7rem;text-align:center;font-weight:600;color:' + (override.is_available ? 'var(--success)' : 'var(--danger)') + ';">' +
+                    (override.is_available ? 'Available' : 'Unavailable') + '</div>';
+                if (override.note) detail += '<div style="font-size:0.6rem;color:var(--gray-500);text-align:center;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(override.note) + '</div>';
+                detail += '<div style="font-size:0.58rem;color:var(--gray-400);text-align:center;text-transform:uppercase;letter-spacing:0.4px;margin-top:1px;">override</div>';
+            } else {
+                detail += '<div style="font-size:0.65rem;text-align:center;color:var(--gray-500);">' + (patternAvail ? 'Available' : 'Off') + ' <span style="color:var(--gray-300);font-size:0.55rem;">(pattern)</span></div>';
+            }
         }
         detail += '</div>';
-        // Mobile-only compact indicator
         var mStatusColor = override ? (override.is_available ? 'var(--success)' : 'var(--danger)') : (patternAvail ? 'var(--gray-500)' : 'var(--gray-300)');
         var mStatusText = override ? (override.is_available ? '✓' : '✗') : (patternAvail ? '·' : '');
-        var mobileStatusHtml = '<div class="cal-cell-mobile-status"><span class="check" style="color:' + mStatusColor + ';font-size:0.9rem;">' + mStatusText + '</span></div>';
-        html += '<div class="' + cls + '" onclick="onAssistAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + mobileStatusHtml + '</div>';
+        var mobileStatusHtml = holidayHere ? '' : '<div class="cal-cell-mobile-status"><span class="check" style="color:' + mStatusColor + ';font-size:0.9rem;">' + mStatusText + '</span></div>';
+        var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
+        html += '<div class="' + cls + '" onclick="onAssistAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + (holidayHere ? phHtml : (detail + mobileStatusHtml)) + '</div>';
     }
     container.innerHTML = html;
 }
@@ -5016,23 +5163,25 @@ function renderMyRoster() {
         var dayClass = getDayClass(dateStr);
         var isRostered = !!(entry && (entry.status === 'available' || entry.status === 'partial'));
         var hasClass = !!dayClass;
+        var holidayHere = isPublicHoliday(dateStr);
 
         var cls = 'calendar-day';
+        if (holidayHere) cls += ' holiday';
         if (dateStr === todayStr) cls += ' today';
-        if (isRostered) cls += ' available';
-        else if (hasClass) cls += ' unavailable';
+        if (!holidayHere) {
+            if (isRostered) cls += ' available';
+            else if (hasClass) cls += ' unavailable';
+        }
 
         var dayHeader = '<div class="day-number"><span>' + day + '</span></div>';
 
-        // Single status icon, scales to fit on mobile via CSS: check if rostered, cross if class scheduled but not rostered, nothing if no class
         var iconHtml = '';
-        if (isRostered) {
-            iconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
-        } else if (hasClass) {
-            iconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
+        if (!holidayHere) {
+            if (isRostered) iconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
+            else if (hasClass) iconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
         }
-
-        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + iconHtml + '</div>';
+        var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
+        html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + (holidayHere ? phHtml : iconHtml) + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -5194,16 +5343,19 @@ function renderMyAvail() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = myAvailYear + '-' + String(myAvailMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entry = myAvail[dateStr];
+        var holidayHere = isPublicHoliday(dateStr);
         var cls = 'calendar-day';
+        if (holidayHere) cls += ' holiday';
         if (dateStr === todayStr) cls += ' today';
-        if (entry) cls += entry.is_available ? ' available' : ' unavailable';
+        if (entry && !holidayHere) cls += entry.is_available ? ' available' : ' unavailable';
         if (multiSelectMode === 'myavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
         var detail = '';
-        if (entry) {
+        if (entry && !holidayHere) {
             detail = '<div style="font-size:0.65rem;color:var(--gray-600);text-align:center;">' + (entry.is_available ? 'Available' : 'Not available') + '</div>';
             if (entry.note) detail += '<div style="font-size:0.55rem;color:var(--gray-500);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">' + escHtml(entry.note) + '</div>';
         }
-        html += '<div class="' + cls + '" onclick="onMyAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + detail + '</div>';
+        var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
+        html += '<div class="' + cls + '" onclick="onMyAvailDayClick(\'' + dateStr + '\', event)"><div class="day-number">' + day + '</div>' + (holidayHere ? phHtml : detail) + '</div>';
     }
     grid.innerHTML = html;
 }
@@ -5235,6 +5387,22 @@ function onMyAvailDayClick(dateStr, event) {
     openMyAvailModal(dateStr);
 }
 
+// Assistants can only mark themselves "Not available" for dates >= 14 days from today.
+// (Closer-in dates need to go through a trainer.) Trainers/admins are exempt — they
+// always edit using the trainer-side Availability tab anyway, but if they ever land
+// here we let them through.
+var ASSISTANT_UNAVAIL_LOCK_DAYS = 14;
+function _daysUntil(dateStr) {
+    var p = dateStr.split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    var today = new Date(); today.setHours(0,0,0,0);
+    return Math.round((d - today) / 86400000);
+}
+function isUnavailLockedForAssistant(dateStr) {
+    if (isActualTrainer()) return false; // trainers exempt
+    return _daysUntil(dateStr) < ASSISTANT_UNAVAIL_LOCK_DAYS;
+}
+
 function openMyAvailModal(dateStr) {
     myAvailSelectedDay = dateStr;
     var p = dateStr.split('-');
@@ -5250,6 +5418,26 @@ function openMyAvailModal(dateStr) {
         if (entry.is_available) document.getElementById('myAvailYes').classList.add('selected-available');
         else document.getElementById('myAvailNo').classList.add('selected-unavailable');
         if (entry.note) document.getElementById('myAvailNote').value = entry.note;
+    }
+    // Disable the "Not Available" option for dates within the lock window.
+    var noEl = document.getElementById('myAvailNo');
+    var noticeId = 'myAvailLockNotice';
+    var existing = document.getElementById(noticeId);
+    if (existing) existing.remove();
+    if (isUnavailLockedForAssistant(dateStr)) {
+        noEl.style.pointerEvents = 'none';
+        noEl.style.opacity = '0.4';
+        noEl.setAttribute('aria-disabled', 'true');
+        var notice = document.createElement('div');
+        notice.id = noticeId;
+        notice.style.cssText = 'margin-top:10px;padding:8px 12px;border-radius:var(--radius);background:var(--warning-light);color:#92400e;font-size:0.82rem;line-height:1.4;';
+        var days = Math.max(0, _daysUntil(dateStr));
+        notice.innerHTML = '<strong>Marking yourself unavailable is locked.</strong> This date is only ' + days + ' day' + (days === 1 ? '' : 's') + ' away. You can mark yourself unavailable for dates at least ' + ASSISTANT_UNAVAIL_LOCK_DAYS + ' days from today. For shorter notice, please speak to a trainer.';
+        noEl.parentNode.appendChild(notice);
+    } else {
+        noEl.style.pointerEvents = '';
+        noEl.style.opacity = '';
+        noEl.removeAttribute('aria-disabled');
     }
     document.getElementById('myAvailModal').classList.add('active');
 }
@@ -5415,6 +5603,10 @@ async function saveMyAvailability() {
     var isAvail = yesEl.className.includes('selected');
     var isNotAvail = noEl.className.includes('selected');
     if (!isAvail && !isNotAvail) { showToast('Please select Available or Not Available'); return; }
+    if (isNotAvail && isUnavailLockedForAssistant(myAvailSelectedDay)) {
+        showToast('Too close to the date — speak to a trainer to change this');
+        return;
+    }
     var note = document.getElementById('myAvailNote').value.trim();
     var row = { user_id: currentUser.id, date: myAvailSelectedDay, is_available: isAvail, note: note };
     var result = await sb.from('cbd_assistant_availability').upsert(row, { onConflict: 'user_id,date' });
@@ -5427,11 +5619,25 @@ async function saveMyAvailability() {
 async function bulkSetMyAvail(isAvail) {
     if (viewAsAssistant) { showToast('Preview mode is read-only'); return; }
     if (multiSelectedDays.size === 0) return;
+    var lockedDates = [];
+    var allowed = [];
+    multiSelectedDays.forEach(function(dateStr) {
+        if (!isAvail && isUnavailLockedForAssistant(dateStr)) lockedDates.push(dateStr);
+        else allowed.push(dateStr);
+    });
+    if (!isAvail && lockedDates.length > 0) {
+        if (allowed.length === 0) {
+            showToast('All selected days are within ' + ASSISTANT_UNAVAIL_LOCK_DAYS + ' days — speak to a trainer');
+            return;
+        }
+        showToast('Skipping ' + lockedDates.length + ' day' + (lockedDates.length === 1 ? '' : 's') + ' within ' + ASSISTANT_UNAVAIL_LOCK_DAYS + ' days');
+    }
     var upserts = [];
-    multiSelectedDays.forEach(function(dateStr) { upserts.push({ user_id: currentUser.id, date: dateStr, is_available: isAvail, note: '' }); });
+    allowed.forEach(function(dateStr) { upserts.push({ user_id: currentUser.id, date: dateStr, is_available: isAvail, note: '' }); });
+    if (upserts.length === 0) return;
     var result = await sb.from('cbd_assistant_availability').upsert(upserts, { onConflict: 'user_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
-    showToast(multiSelectedDays.size + ' days set to ' + (isAvail ? 'available' : 'not available'));
+    showToast(upserts.length + ' day' + (upserts.length === 1 ? '' : 's') + ' set to ' + (isAvail ? 'available' : 'not available'));
     await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
 }
 async function bulkClearMyAvail() {

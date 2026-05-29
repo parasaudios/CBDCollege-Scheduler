@@ -4,7 +4,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const puppeteer = require('puppeteer-core');
+// Prefer bundled puppeteer (ships Chromium); fall back to puppeteer-core + system Edge if not installed.
+let puppeteer;
+try { puppeteer = require('puppeteer'); }
+catch (e) { puppeteer = require('puppeteer-core'); }
 
 const EDGE = process.env.EDGE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const DOCS = path.join(__dirname, '..', 'docs');
@@ -15,11 +18,17 @@ const JOBS = [
 ];
 
 (async () => {
-    const browser = await puppeteer.launch({
-        executablePath: EDGE,
+    const os = require('os');
+    const tmpDir = path.join(os.tmpdir(), 'cbd-pdf-' + Date.now());
+    const launchOpts = {
         headless: 'new',
-        args: ['--no-sandbox']
-    });
+        args: ['--no-sandbox', '--user-data-dir=' + tmpDir]
+    };
+    // Only set executablePath if we're on puppeteer-core (bundled puppeteer uses its own Chromium)
+    if (!puppeteer.executablePath || typeof puppeteer.executablePath !== 'function') {
+        launchOpts.executablePath = EDGE;
+    }
+    const browser = await puppeteer.launch(launchOpts);
     const page = await browser.newPage();
 
     for (const job of JOBS) {
