@@ -5114,6 +5114,11 @@ async function saveTrainerAssistAvail() {
     var row = { user_id: trainerAssistEditUserId, date: trainerAssistEditDate, is_available: isAvail, note: note };
     var result = await sb.from('cbd_assistant_availability').upsert(row, { onConflict: 'user_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
+    // Update cache in place — loadAssistantAvailForMonth is a no-op once the month is loaded.
+    if (!assistantAvailCache[trainerAssistEditDate]) assistantAvailCache[trainerAssistEditDate] = [];
+    var bucket = assistantAvailCache[trainerAssistEditDate];
+    var idx = bucket.findIndex(function(e) { return e.user_id === trainerAssistEditUserId; });
+    if (idx >= 0) bucket[idx] = row; else bucket.push(row);
     closeModal('trainerAssistAvailModal');
     showToast('Availability saved');
     notifyStaffOfRosterChange(trainerAssistEditUserId, {
@@ -5122,13 +5127,19 @@ async function saveTrainerAssistAvail() {
         message: trainerAssistEditDate + ' — set to ' + (isAvail ? 'Available' : 'Not available'),
         data: { date: trainerAssistEditDate, is_available: isAvail, note: note }
     });
-    await loadAssistantAvailForMonth(assistMonth, assistYear);
     renderAssistAvail();
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
 }
 async function clearTrainerAssistAvail() {
     if (!trainerAssistEditUserId || !trainerAssistEditDate) return;
     var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', trainerAssistEditUserId).eq('date', trainerAssistEditDate);
     if (result.error) { showToast('Error: ' + result.error.message); return; }
+    var bucket = assistantAvailCache[trainerAssistEditDate];
+    if (bucket) {
+        var idx = bucket.findIndex(function(e) { return e.user_id === trainerAssistEditUserId; });
+        if (idx >= 0) bucket.splice(idx, 1);
+    }
     closeModal('trainerAssistAvailModal');
     showToast('Availability cleared');
     notifyStaffOfRosterChange(trainerAssistEditUserId, {
@@ -5137,8 +5148,9 @@ async function clearTrainerAssistAvail() {
         message: trainerAssistEditDate + ' — cleared',
         data: { date: trainerAssistEditDate, action: 'cleared' }
     });
-    await loadAssistantAvailForMonth(assistMonth, assistYear);
     renderAssistAvail();
+    if (currentTab === 'roster') renderCalendar();
+    if (currentTab === 'overview') renderOverview();
 }
 
 // ============ My Roster (Assistant - read only) ============
