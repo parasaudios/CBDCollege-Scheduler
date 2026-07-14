@@ -866,6 +866,18 @@
                 </div>
             </div>
 
+            <div class="card" id="unlinkedAccountsCard" style="margin-top:14px;display:none;">
+                <div class="card-header">
+                    <div>
+                        <h2>Accounts without a staff record</h2>
+                        <div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">These people have a login but aren't on any schedule yet. Add them so they appear on rosters, calendars and the export.</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="staff-grid" id="unlinkedAccountsList"></div>
+                </div>
+            </div>
+
             <div class="card" style="margin-top:14px;">
                 <div class="card-header"><div><h2>Assistant Start Times by Slot</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Auto-rostered assistants get the start time of the slot they're picked into. Slot 1 = 1st picked, Slot 2 = 2nd, etc. If a higher-priority assistant is unavailable, the next-priority assistant takes their slot.</div></div></div>
                 <div class="card-body">
@@ -2220,6 +2232,7 @@ function switchTab(tab) {
         loadMonth('assistavail', assistMonth, assistYear).then(renderAssistAvail);
     } else if (tab === 'staff') {
         renderStaffGrid();
+        renderUnlinkedAccounts();
         selectPriorityDow(_priorityDow);
         loadSettings().then(renderSettingsCardsInClasses);
     } else if (tab === 'admin') {
@@ -2241,6 +2254,7 @@ function switchTab(tab) {
 function refreshTrainerUI() {
     renderStaffSelect();
     renderStaffGrid();
+    renderUnlinkedAccounts();
     updateSummary();
     if (selectedStaffId) {
         document.getElementById('staffSelect').value = selectedStaffId;
@@ -6043,6 +6057,51 @@ function renderStaffGrid() {
     }).join('');
 }
 
+// ============ Account <-> Staff linking ============
+// A login account (cbd_profiles) and a schedulable staff member (cbd_staff_members)
+// are separate records, linked by cbd_staff_members.user_id. Every schedule/roster/
+// calendar page and the export read staff members, NOT accounts — so an account with
+// no linked staff member is invisible on all of them. These helpers keep them in sync.
+async function createLinkedStaffMember(userId, fullName) {
+    var name = (fullName || '').trim().slice(0, 100);
+    if (!name) return { error: { message: 'Missing name' } };
+    var color = COLORS[staffList.length % COLORS.length];
+    return await sb.from('cbd_staff_members').insert({
+        name: name, role: '', color: color, user_id: userId,
+        priority: 100, is_head_trainer: false, created_by: currentUser.id
+    });
+}
+// Render the "Accounts without a staff record" rescue list on the Staff tab.
+// Hidden when every account is already linked to a staff member.
+function renderUnlinkedAccounts() {
+    var card = document.getElementById('unlinkedAccountsCard');
+    var list = document.getElementById('unlinkedAccountsList');
+    if (!card || !list) return;
+    if (!profilesCache) { getProfiles().then(renderUnlinkedAccounts); return; }
+    var linkedIds = staffList.map(function(s) { return s.user_id; }).filter(Boolean);
+    var unlinked = profilesCache.filter(function(p) { return linkedIds.indexOf(p.id) === -1; });
+    if (unlinked.length === 0) { card.style.display = 'none'; list.innerHTML = ''; return; }
+    card.style.display = 'block';
+    list.innerHTML = unlinked.map(function(p) {
+        var initials = (p.full_name || '?').split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
+        return '<div class="staff-card"><div class="staff-avatar" style="background:var(--gray-400)">' + initials + '</div>' +
+            '<div class="staff-info"><div class="staff-name">' + escHtml(p.full_name) + '</div>' +
+            '<div class="staff-role">' + escHtml(p.role || 'assistant') + ' account &middot; not on schedule</div></div>' +
+            '<div class="staff-actions"><button class="btn btn-success btn-sm" onclick="addAccountToSchedule(\'' + p.id + '\')">+ Add to schedule</button></div></div>';
+    }).join('');
+}
+// Create a schedulable staff member for an existing account (rescue-list button).
+async function addAccountToSchedule(userId) {
+    var prof = (profilesCache || []).find(function(p) { return p.id === userId; });
+    if (!prof) { showToast('Account not found'); return; }
+    if (staffList.some(function(s) { return s.user_id === userId; })) { showToast('Already on the schedule'); renderUnlinkedAccounts(); return; }
+    var res = await createLinkedStaffMember(userId, prof.full_name);
+    if (res && res.error) { showToast('Failed to add: ' + res.error.message); return; }
+    showToast(prof.full_name + ' added to the schedule');
+    await loadStaff({ force: true });
+    refreshTrainerUI();
+}
+
 // ============ Admin Panel ============
 async function loadUsers(forceRefresh) {
     try {
@@ -6067,10 +6126,32 @@ async function createUser() {
     if (password.length < 6) { showToast('Password must be at least 6 characters'); return; }
     var btn = document.querySelector('#createUserModal .btn-primary');
     setLoading(btn, true);
-    try { await adminAPI('create', 'POST', { email: email, password: password, full_name: name, role: role }); } catch (e) { setLoading(btn, false); showToast('Failed to create user: ' + e.message); return; }
+    var created;
+    try { created = await adminAPI('create', 'POST', { email: email, password: password, full_name: name, role: role }); } catch (e) { setLoading(btn, false); showToast('Failed to create user: ' + e.message); return; }
+    // A login account alone is invisible on every schedule page (those read staff
+    // members, not accounts). Auto-create a linked staff member so the new person
+    // appears on rosters/calendars/export right away — one-step onboarding.
+    var addedToSchedule = false;
+    var newUserId = created && created.user && created.user.id;
+    if (newUserId) {
+        await loadStaff({ force: true });
+        if (staffList.some(function(s) { return s.user_id === newUserId; })) {
+            addedToSchedule = true;
+        } else {
+            var staffRes = await createLinkedStaffMember(newUserId, name);
+            addedToSchedule = !(staffRes && staffRes.error);
+        }
+        await loadStaff({ force: true });
+    }
     setLoading(btn, false);
     usersCache = null; profilesCache = null;
-    closeModal('createUserModal'); showToast(name + ' account created'); loadUsers(true);
+    closeModal('createUserModal');
+    showToast(addedToSchedule ? (name + ' account created and added to the schedule')
+                              : (name + ' account created — now add them on the Staff tab'));
+    loadUsers(true);
+    await getProfiles(true);
+    renderStaffGrid();
+    renderUnlinkedAccounts();
 }
 async function toggleUserRole(userId, currentRole) {
     var newRole = currentRole === 'trainer' ? 'assistant' : 'trainer';
@@ -6321,7 +6402,7 @@ async function refreshCurrentView(table) {
             if (isTrainer()) {
                 if (currentTab === 'roster') refreshTrainerUI();
                 if (currentTab === 'overview') renderOverview();
-                if (currentTab === 'staff') renderStaffGrid();
+                if (currentTab === 'staff') { renderStaffGrid(); renderUnlinkedAccounts(); }
             } else {
                 myStaffMember = staffList.find(function(s) { return s.user_id === currentUser.id; });
             }
