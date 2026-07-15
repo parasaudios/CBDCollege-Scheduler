@@ -6872,7 +6872,8 @@ function showBrowserNotification(row) {
 }
 
 function requestNotificationPermission() {
-    if (!isActualTrainer()) return;
+    // Everyone (assistants included) should be prompted to enable push — previously this
+    // bailed for non-trainers, which is why no assistant ever had a push subscription.
     if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
         // Ask only once per session, subtly
