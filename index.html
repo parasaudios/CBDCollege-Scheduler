@@ -6947,8 +6947,18 @@ async function enablePushFromUserGesture() {
     try {
         var perm = await Notification.requestPermission();
         if (perm !== 'granted') { showToast('Notifications blocked — enable in browser settings'); _refreshPushButton(); return; }
-        await ensurePushSubscription();
-        showToast('Mobile push enabled');
+        // Force a genuinely FRESH subscription: drop any existing (possibly stale/410) one first,
+        // then subscribe anew. Prevents re-saving a dead subscription that silently never delivers.
+        var reg = await navigator.serviceWorker.ready;
+        var existing = await reg.pushManager.getSubscription();
+        if (existing) { try { await existing.unsubscribe(); } catch (e) {} }
+        var sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        await _saveSubscriptionRow(sub);
+        showToast('Push enabled on this device ✓');
+        _refreshPushButton();
     } catch (e) {
         showToast('Could not enable push: ' + (e.message || e));
     }
@@ -6958,10 +6968,16 @@ function _refreshPushButton() {
     var btn = document.getElementById('enablePushBtn');
     if (!btn) return;
     if (!currentUser || !pushSupported()) { btn.style.display = 'none'; return; }
-    // Hide if already granted AND we likely have a sub (best-effort: just check permission)
-    var perm = Notification.permission;
-    if (perm === 'granted') { btn.style.display = 'none'; return; }
-    if (perm === 'denied') { btn.style.display = 'none'; return; }
+    if (Notification.permission === 'denied') { btn.style.display = 'none'; return; }
+    // Show for 'default' (first enable) AND 'granted' (re-register a stale/dead subscription).
+    // Hide only once there's a verified live browser subscription, so push stays fixable.
+    if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+            .then(function(reg) { return reg.pushManager.getSubscription(); })
+            .then(function(sub) { btn.style.display = sub ? 'none' : ''; })
+            .catch(function() { btn.style.display = ''; });
+        return;
+    }
     btn.style.display = '';
 }
 
