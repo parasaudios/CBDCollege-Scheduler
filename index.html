@@ -1240,6 +1240,19 @@
     </div>
 </div>
 
+<!-- Set Password Modal -->
+<div class="modal-overlay" id="setPasswordModal">
+    <div class="modal">
+        <div class="modal-header"><h3>Set Password</h3><button class="btn btn-icon btn-outline" onclick="closeModal('setPasswordModal')">&times;</button></div>
+        <div class="modal-body">
+            <p style="font-size:0.9rem;color:var(--gray-600);margin:0 0 14px;">Set a new sign-in password for <strong id="setPasswordUserName"></strong>. Share it with them &mdash; they'll use it the next time they log in.</p>
+            <div class="form-group"><label for="setPasswordValue">New Password *</label><input type="text" class="form-control" id="setPasswordValue" autocomplete="new-password" placeholder="Minimum 6 characters"></div>
+            <div style="margin-top:-4px;"><button type="button" class="btn btn-outline btn-sm" onclick="generateUserPassword()">Generate strong password</button></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('setPasswordModal')">Cancel</button><button class="btn btn-success" onclick="submitSetPassword()">Set Password</button></div>
+    </div>
+</div>
+
 <!-- Reusable styled confirm modal -->
 <div class="modal-overlay" id="confirmModal">
     <div class="modal" style="max-width:440px;">
@@ -6113,7 +6126,7 @@ async function loadUsers(forceRefresh) {
         var role = u.role || 'assistant';
         return '<tr><td>' + escHtml(u.full_name) + '</td><td>' + escHtml(u.email) + '</td>' +
             '<td><span class="role-badge ' + role + '">' + role + '</span></td><td class="hide-mobile">' + new Date(u.created_at).toLocaleDateString() + '</td>' +
-            '<td style="white-space:nowrap;">' + (u.user_id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.user_id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.user_id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
+            '<td style="white-space:nowrap;">' + '<button class="btn btn-outline btn-sm" onclick="openSetPasswordModal(\'' + u.user_id + '\')">Password</button> ' + (u.user_id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.user_id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.user_id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
     }).join('');
 }
 function openCreateUserModal() { document.getElementById('newUserName').value = ''; document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; document.getElementById('newUserRole').value = 'assistant'; document.getElementById('createUserModal').classList.add('active'); document.getElementById('newUserName').focus(); }
@@ -6166,6 +6179,45 @@ async function deleteUser(userId) {
     try { await adminAPI('delete', 'DELETE', { user_id: userId }); } catch (e) { showToast('Failed to delete user: ' + e.message); return; }
     usersCache = null; profilesCache = null;
     showToast('User deleted'); loadUsers(true);
+}
+
+// ============ Set user password (admin/trainer) ============
+// Resets any user's login password via the admin-users edge function
+// (auth.admin.updateUserById — requires the service key, so it must go through
+// the edge function, never the client). Trainer identity is verified server-side.
+var _setPwUserId = null;
+function openSetPasswordModal(userId) {
+    _setPwUserId = userId;
+    var u = (usersCache || []).find(function(x) { return x.user_id === userId; });
+    document.getElementById('setPasswordUserName').textContent = u ? u.full_name : 'this user';
+    document.getElementById('setPasswordValue').value = '';
+    document.getElementById('setPasswordModal').classList.add('active');
+    document.getElementById('setPasswordValue').focus();
+}
+function generateUserPassword() {
+    // Readable strong password: mixed case + digits, ambiguous chars (0/O/1/l/I) omitted.
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    var arr = new Uint32Array(14);
+    (window.crypto || window.msCrypto).getRandomValues(arr);
+    var out = '';
+    for (var i = 0; i < 14; i++) out += chars.charAt(arr[i] % chars.length);
+    var el = document.getElementById('setPasswordValue');
+    el.value = out; el.focus(); el.select();
+}
+async function submitSetPassword() {
+    var userId = _setPwUserId;
+    var password = document.getElementById('setPasswordValue').value;
+    if (!userId) { showToast('No user selected'); return; }
+    if (!password || password.length < 6) { showToast('Password must be at least 6 characters'); return; }
+    var btn = document.querySelector('#setPasswordModal .btn-success');
+    setLoading(btn, true);
+    try { await adminAPI('set-password', 'POST', { user_id: userId, password: password }); }
+    catch (e) { setLoading(btn, false); showToast('Failed to set password: ' + e.message); return; }
+    setLoading(btn, false);
+    var u = (usersCache || []).find(function(x) { return x.user_id === userId; });
+    closeModal('setPasswordModal');
+    _setPwUserId = null;
+    showToast('Password updated for ' + (u ? u.full_name.split(' ')[0] : 'user'));
 }
 
 // ============ Export PDF ============

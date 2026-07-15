@@ -103,6 +103,31 @@ Deno.serve(async (req) => {
       });
     }
 
+    // POST: Set (reset) a user's login password
+    if (req.method === "POST" && action === "set-password") {
+      const body = await req.json();
+      const { user_id, password } = body;
+
+      if (!user_id || !password) {
+        return new Response(JSON.stringify({ error: "Missing user_id or password" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (password.length < 6) {
+        return new Response(JSON.stringify({ error: "Password must be at least 6 characters" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error } = await adminClient.auth.admin.updateUserById(user_id, { password });
+      if (error) throw error;
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // DELETE: Delete a user
     if (req.method === "DELETE" && action === "delete") {
       const body = await req.json();
