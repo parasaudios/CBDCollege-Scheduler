@@ -2648,11 +2648,6 @@ async function clearAllRosterMonth() {
     if (availabilityCache[selectedStaffId]) {
         Object.keys(availabilityCache[selectedStaffId]).forEach(function(d) { if (d >= startDate && d <= endDate) delete availabilityCache[selectedStaffId][d]; });
     }
-    if (found) notifyStaffOfRosterChange(found.user_id, {
-        title: 'Your roster was updated',
-        message: 'All your shifts for ' + MONTH_NAMES[currentMonth] + ' ' + currentYear + ' were cleared',
-        data: { staff_id: selectedStaffId, action: 'cleared_month', month: currentMonth, year: currentYear }
-    });
     showToast(MONTH_NAMES[currentMonth] + ' cleared'); renderCalendar(); updateSummary();
 }
 
@@ -2979,20 +2974,6 @@ function _affectedUserIdsForDates(dates) {
         });
     });
     return Object.keys(set);
-}
-
-// Notify a set of staff (by staff_id) once each about a bulk roster change. Maps staff_id ->
-// linked user_id, de-dupes, and skips the acting trainer. Used by the bulk/mass roster paths.
-function _notifyStaffIds(staffIds, opts) {
-    var uidSet = {};
-    var selfId = currentUser ? currentUser.id : null;
-    (staffIds || []).forEach(function(sid) {
-        var s = staffList.find(function(x) { return x.id === sid; });
-        if (s && s.user_id && s.user_id !== selfId) uidSet[s.user_id] = true;
-    });
-    var uids = Object.keys(uidSet);
-    if (uids.length) notifyUsers(uids, opts);
-    return uids.length;
 }
 
 // Collect upcoming dates (from today through `daysAhead`) whose day-of-week is in the given set.
@@ -3373,23 +3354,6 @@ async function applyImport() {
         return;
     }
 
-    // Notify staff whose roster/leave changed from the import.
-    var _impAffected = {};
-    rosterUpserts.forEach(function(u) { _impAffected[u.staff_id] = true; });
-    _notifyStaffIds(Object.keys(_impAffected), {
-        title: 'Your roster was updated',
-        message: 'Your roster was updated from an imported roster (' + minDate + ' to ' + maxDate + ')',
-        data: { action: 'import', from: minDate, to: maxDate }
-    });
-    var _impLeave = {};
-    (leaveUpserts || []).forEach(function(l) { if (l.user_id) _impLeave[l.user_id] = true; });
-    var _impLeaveArr = Object.keys(_impLeave).filter(function(u) { return !currentUser || u !== currentUser.id; });
-    if (_impLeaveArr.length) notifyUsers(_impLeaveArr, {
-        type: 'availability_changed_by_trainer',
-        title: 'Your availability was updated',
-        message: 'Leave was recorded for you from an imported roster',
-        data: { action: 'import_leave' }
-    });
     setLoading(btn, false);
     closeModal('importRosterModal');
     invalidateAllMonths('staff_avail');
@@ -3819,15 +3783,6 @@ async function applyAutoRoster() {
         if (res.error) { setLoading(btn, false); showToast('Error: ' + res.error.message); return; }
     }
 
-    // Notify every staff member whose schedule changed (rostered on or cleared) in this range.
-    var _arAffected = {};
-    upserts.forEach(function(u) { _arAffected[u.staff_id] = true; });
-    Object.keys(staleByStaff).forEach(function(sid) { _arAffected[sid] = true; });
-    _notifyStaffIds(Object.keys(_arAffected), {
-        title: 'Your roster was updated',
-        message: 'Your roster was updated by auto-roster (' + fromDate + ' to ' + toDate + ')',
-        data: { action: 'auto_roster', from: fromDate, to: toDate }
-    });
     setLoading(btn, false);
     closeModal('autoRosterModal');
     invalidateAllMonths('staff_avail');
@@ -4259,15 +4214,6 @@ async function applyBulkTemplate() {
         batch.forEach(function(row) { dayClassesCache[row.date] = row; });
     }
 
-    // Notify every staff member whose roster changed from applying the template.
-    var _btAffected = {};
-    upserts.forEach(function(u) { _btAffected[u.staff_id] = true; });
-    staleKeys.forEach(function(k) { _btAffected[k.staff_id] = true; });
-    _notifyStaffIds(Object.keys(_btAffected), {
-        title: 'Your roster was updated',
-        message: 'Your ' + MONTH_NAMES[month] + ' ' + year + ' roster was updated from the weekly template',
-        data: { action: 'template', month: month, year: year }
-    });
     setLoading(btn, false);
     // Snapshot template state before closing modal
     var snapshot = { staff: {}, rotate: {}, rotateStart: {}, capped: {}, classStart: tmplClassStartByDow, classEnd: tmplClassEndByDow };
@@ -4861,29 +4807,18 @@ async function saveClassEdit() {
     dayClassesCache[dateStr] = row;
     closeModal('classEditModal');
 
-    // Notify the staff rostered on this date — nobody else is affected by a single-day change.
+    // Notify only the staff rostered on this date — nobody else is affected by a single-day change.
     var timeChanged = (prevTimes.am_start || null) !== (amStart || null) || (prevTimes.am_end || null) !== (amEnd || null)
                    || (prevTimes.pm_start || null) !== (pmStart || null) || (prevTimes.pm_end || null) !== (pmEnd || null);
-    var countCapChanged = (prev.students_am || 0) !== students_am || (prev.students_pm || 0) !== students_pm
-                       || !!prev.capped_am !== capped_am || !!prev.capped_pm !== capped_pm;
-    if ((timeChanged && willBeManual) || countCapChanged) {
+    if (timeChanged && willBeManual) {
+        var human = (amStart && amEnd ? 'AM ' + amStart + '–' + amEnd : '') + (pmStart && pmEnd ? ' · PM ' + pmStart + '–' + pmEnd : '');
         var affected = _affectedUserIdsForDates([dateStr]);
-        if (timeChanged && willBeManual) {
-            var human = (amStart && amEnd ? 'AM ' + amStart + '–' + amEnd : '') + (pmStart && pmEnd ? ' · PM ' + pmStart + '–' + pmEnd : '');
-            notifyUsers(affected, {
-                type: 'class_time_changed',
-                title: 'Class times changed for ' + dateStr,
-                message: 'New times for ' + dateStr + ': ' + human.trim(),
-                data: { date: dateStr, am_start: amStart, am_end: amEnd, pm_start: pmStart, pm_end: pmEnd }
-            });
-        } else {
-            notifyUsers(affected, {
-                type: 'class_changed',
-                title: 'Class details updated',
-                message: 'Class details (students/caps) for ' + dateStr + ' were updated',
-                data: { date: dateStr }
-            });
-        }
+        notifyUsers(affected, {
+            type: 'class_time_changed',
+            title: 'Class times changed for ' + dateStr,
+            message: 'New times for ' + dateStr + ': ' + human.trim(),
+            data: { date: dateStr, am_start: amStart, am_end: amEnd, pm_start: pmStart, pm_end: pmEnd }
+        });
     }
 
     renderClassesCalendar();
@@ -4899,15 +4834,8 @@ async function deleteClassEntry() {
     if (!confirm('Clear the class for this day? This removes times, student counts, and capped flags.')) return;
     var result = await sb.from('cbd_day_classes').delete().eq('date', dateStr);
     if (result.error) { showToast('Error: ' + result.error.message); return; }
-    var _affectedClearClass = _affectedUserIdsForDates([dateStr]);
     delete dayClassesCache[dateStr];
     closeModal('classEditModal');
-    if (_affectedClearClass.length) notifyUsers(_affectedClearClass, {
-        type: 'class_changed',
-        title: 'Class cleared',
-        message: 'The class scheduled for ' + dateStr + ' was cleared',
-        data: { date: dateStr, action: 'class_cleared' }
-    });
     renderClassesCalendar();
     if (currentTab === 'roster') renderCalendar();
     if (currentTab === 'overview') renderOverview();
@@ -5070,14 +4998,6 @@ async function applyBulkClass() {
         batch.forEach(function(r) { dayClassesCache[r.date] = r; });
     }
     setLoading(btn, false);
-    var _bcDates = upserts.map(function(u) { return u.date; });
-    var _bcAffected = _affectedUserIdsForDates(_bcDates);
-    if (_bcAffected.length) notifyUsers(_bcAffected, {
-        type: 'class_changed',
-        title: 'Class details updated',
-        message: upserts.length + ' class day' + (upserts.length === 1 ? '' : 's') + ' were updated',
-        data: { dates: _bcDates, action: 'bulk_class' }
-    });
     closeModal('bulkClassModal');
     renderClassesCalendar();
     if (currentTab === 'roster') renderCalendar();
@@ -5710,7 +5630,6 @@ async function saveStaffPatterns() {
     var profilesById = {};
     (profilesCache || []).forEach(function(p) { profilesById[p.id] = p; });
     var changes = 0;
-    var changedUids = [];
     for (var uid in byUser) {
         var newDows = byUser[uid];
         var prof = profilesById[uid];
@@ -5721,23 +5640,11 @@ async function saveStaffPatterns() {
             if (res.error) { setLoading(btn, false); showToast('Error: ' + res.error.message); return; }
             if (prof) prof.available_dows = newDows;
             changes++;
-            changedUids.push(uid);
         }
     }
     setLoading(btn, false);
     if (changes === 0) showToast('No changes to save');
-    else {
-        showToast('Saved patterns for ' + changes + ' staff');
-        // Notify each affected staff that a trainer changed their weekly availability pattern.
-        changedUids.forEach(function(u) {
-            notifyStaffOfRosterChange(u, {
-                type: 'availability_changed_by_trainer',
-                title: 'Your availability was updated',
-                message: 'A trainer changed your weekly availability pattern',
-                data: { action: 'weekly_pattern' }
-            });
-        });
-    }
+    else showToast('Saved patterns for ' + changes + ' staff');
 }
 
 async function saveMyAvailability() {
@@ -5804,12 +5711,6 @@ async function bulkSetAssistAvail(isAvail) {
     var result = await sb.from('cbd_assistant_availability').upsert(upserts, { onConflict: 'user_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(multiSelectedDays.size + ' days set for ' + (isAvail ? 'available' : 'not available'));
-    notifyStaffOfRosterChange(userId, {
-        type: 'availability_changed_by_trainer',
-        title: 'Your availability was updated',
-        message: upserts.length + ' day' + (upserts.length === 1 ? '' : 's') + ' — set to ' + (isAvail ? 'Available' : 'Not available'),
-        data: { action: 'bulk_set', is_available: isAvail }
-    });
     await loadAssistantAvailForMonth(assistMonth, assistYear); clearMultiSelect(); renderAssistAvail();
 }
 async function bulkClearAssistAvail() {
@@ -5820,12 +5721,6 @@ async function bulkClearAssistAvail() {
     var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', userId).in('date', dates);
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(multiSelectedDays.size + ' days cleared');
-    notifyStaffOfRosterChange(userId, {
-        type: 'availability_changed_by_trainer',
-        title: 'Your availability was updated',
-        message: dates.length + ' day' + (dates.length === 1 ? '' : 's') + ' — availability cleared',
-        data: { action: 'bulk_cleared', dates: dates }
-    });
     await loadAssistantAvailForMonth(assistMonth, assistYear); clearMultiSelect(); renderAssistAvail();
 }
 
@@ -6872,8 +6767,7 @@ function showBrowserNotification(row) {
 }
 
 function requestNotificationPermission() {
-    // Everyone (assistants included) should be prompted to enable push — previously this
-    // bailed for non-trainers, which is why no assistant ever had a push subscription.
+    if (!isActualTrainer()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
         // Ask only once per session, subtly
@@ -6947,18 +6841,8 @@ async function enablePushFromUserGesture() {
     try {
         var perm = await Notification.requestPermission();
         if (perm !== 'granted') { showToast('Notifications blocked — enable in browser settings'); _refreshPushButton(); return; }
-        // Force a genuinely FRESH subscription: drop any existing (possibly stale/410) one first,
-        // then subscribe anew. Prevents re-saving a dead subscription that silently never delivers.
-        var reg = await navigator.serviceWorker.ready;
-        var existing = await reg.pushManager.getSubscription();
-        if (existing) { try { await existing.unsubscribe(); } catch (e) {} }
-        var sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-        await _saveSubscriptionRow(sub);
-        showToast('Push enabled on this device ✓');
-        _refreshPushButton();
+        await ensurePushSubscription();
+        showToast('Mobile push enabled');
     } catch (e) {
         showToast('Could not enable push: ' + (e.message || e));
     }
@@ -6968,16 +6852,10 @@ function _refreshPushButton() {
     var btn = document.getElementById('enablePushBtn');
     if (!btn) return;
     if (!currentUser || !pushSupported()) { btn.style.display = 'none'; return; }
-    if (Notification.permission === 'denied') { btn.style.display = 'none'; return; }
-    // Show for 'default' (first enable) AND 'granted' (re-register a stale/dead subscription).
-    // Hide only once there's a verified live browser subscription, so push stays fixable.
-    if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.ready
-            .then(function(reg) { return reg.pushManager.getSubscription(); })
-            .then(function(sub) { btn.style.display = sub ? 'none' : ''; })
-            .catch(function() { btn.style.display = ''; });
-        return;
-    }
+    // Hide if already granted AND we likely have a sub (best-effort: just check permission)
+    var perm = Notification.permission;
+    if (perm === 'granted') { btn.style.display = 'none'; return; }
+    if (perm === 'denied') { btn.style.display = 'none'; return; }
     btn.style.display = '';
 }
 
@@ -7149,7 +7027,6 @@ async function saveDayClassAndRoster() {
     dayClassesCache[dateStr] = classRow;
 
     // Save roster changes from staff toggles
-    var rosteredOnIds = [], unrosteredIds = [];
     var toggleContainer = document.getElementById('dayDetailStaffToggles');
     if (toggleContainer) {
         var checkboxes = toggleContainer.querySelectorAll('input[type="checkbox"]');
@@ -7163,7 +7040,6 @@ async function saveDayClassAndRoster() {
 
             if (nowChecked && !wasRostered) {
                 // Roster this staff member
-                rosteredOnIds.push(staffId);
                 var existingEntry = availabilityCache[staffId] && availabilityCache[staffId][dateStr];
                 var dayRole = (existingEntry && existingEntry.day_role) || 'assistant';
                 var staffEndTime = pmEnd || amEnd || null;
@@ -7188,7 +7064,6 @@ async function saveDayClassAndRoster() {
                 }
             } else if (!nowChecked && wasRostered) {
                 // Un-roster this staff member
-                unrosteredIds.push(staffId);
                 promises.push(sb.from('cbd_availability').delete().eq('staff_id', staffId).eq('date', dateStr).then(function(res) {
                     if (!res.error && availabilityCache[staffId]) {
                         delete availabilityCache[staffId][dateStr];
@@ -7203,26 +7078,6 @@ async function saveDayClassAndRoster() {
             var errors = results.filter(function(r) { return r.error; });
             if (errors.length > 0) { setLoading(saveBtn, false); showToast('Some roster changes failed'); return; }
         }
-    }
-
-    // Notify affected staff: rostered on, taken off, and (for those staying on) class-detail changes.
-    rosteredOnIds.forEach(function(sid) {
-        var s = staffList.find(function(x) { return x.id === sid; });
-        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were rostered on for ' + dateStr, data: { date: dateStr, action: 'rostered_on' } });
-    });
-    unrosteredIds.forEach(function(sid) {
-        var s = staffList.find(function(x) { return x.id === sid; });
-        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were taken off the roster for ' + dateStr, data: { date: dateStr, action: 'unrostered' } });
-    });
-    var _dcClassChanged = (prev.am_start_time || null) !== (amStart || null) || (prev.am_end_time || null) !== (amEnd || null)
-        || (prev.pm_start_time || null) !== (pmStart || null) || (prev.pm_end_time || null) !== (pmEnd || null)
-        || (prev.students_am || 0) !== studentsAM || (prev.students_pm || 0) !== studentsPM
-        || !!prev.capped_am !== cappedAM || !!prev.capped_pm !== cappedPM;
-    if (_dcClassChanged) {
-        var _dcJustAdded = {};
-        rosteredOnIds.forEach(function(sid) { var s = staffList.find(function(x) { return x.id === sid; }); if (s && s.user_id) _dcJustAdded[s.user_id] = true; });
-        var _dcContinuing = _affectedUserIdsForDates([dateStr]).filter(function(u) { return !_dcJustAdded[u]; });
-        if (_dcContinuing.length) notifyUsers(_dcContinuing, { type: 'class_changed', title: 'Class details updated', message: 'Class details for ' + dateStr + ' were updated', data: { date: dateStr } });
     }
 
     setLoading(saveBtn, false);
