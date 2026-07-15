@@ -232,7 +232,7 @@
         }
         .calendar-day.today .day-number { color: var(--primary); font-weight: 700; }
         .calendar-day.today:hover { box-shadow: 0 0 0 1px var(--primary), 0 6px 18px rgba(37,99,235,0.32); }
-        .calendar-day.available { background: var(--success-light); border-color: #86efac; }
+        .calendar-day.available, .calendar-day.pattern-available { background: var(--success-light); border-color: #86efac; }
         .calendar-day.partial { background: var(--warning-light); border-color: #fcd34d; }
         .calendar-day.unavailable { background: var(--danger-light); border-color: #fca5a5; }
         .calendar-day.selected-multi { outline: 2px solid var(--primary); outline-offset: -2px; }
@@ -5058,7 +5058,7 @@ async function renderAssistAvail() {
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (holidayHere ? ' holiday' : '');
         if (!holidayHere) {
             if (override) cls += override.is_available ? ' available' : ' unavailable';
-            else if (!patternAvail) cls += ' partial';
+            else cls += patternAvail ? ' pattern-available' : ' partial';
         }
         if (multiSelectMode === 'assistavail' && multiSelectedDays.has(dateStr)) cls += ' selected-multi';
 
