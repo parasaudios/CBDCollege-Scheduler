@@ -1232,7 +1232,7 @@
         <div class="modal-header"><h3>Create User Account</h3><button class="btn btn-icon btn-outline" onclick="closeModal('createUserModal')">&times;</button></div>
         <div class="modal-body">
             <div class="form-group"><label for="newUserName">Full Name *</label><input type="text" class="form-control" id="newUserName"></div>
-            <div class="form-group"><label for="newUserEmail">Email *</label><input type="email" class="form-control" id="newUserEmail"></div>
+            <div class="form-group"><label for="newUserEmail">Username or email *</label><input type="text" class="form-control" id="newUserEmail" placeholder="e.g. william (becomes william@cbdcollege.edu.au)"></div>
             <div class="form-group"><label for="newUserPassword">Password *</label><input type="password" class="form-control" id="newUserPassword" placeholder="Minimum 6 characters"></div>
             <div class="form-group"><label for="newUserRole">Role</label><select class="form-control" id="newUserRole"><option value="assistant">Assistant</option><option value="trainer">Trainer</option></select></div>
         </div>
@@ -1250,6 +1250,19 @@
             <div style="margin-top:-4px;"><button type="button" class="btn btn-outline btn-sm" onclick="generateUserPassword()">Generate strong password</button></div>
         </div>
         <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('setPasswordModal')">Cancel</button><button class="btn btn-success" onclick="submitSetPassword()">Set Password</button></div>
+    </div>
+</div>
+
+<!-- Change Email Modal -->
+<div class="modal-overlay" id="setEmailModal">
+    <div class="modal">
+        <div class="modal-header"><h3>Change Login Email</h3><button class="btn btn-icon btn-outline" onclick="closeModal('setEmailModal')">&times;</button></div>
+        <div class="modal-body">
+            <p style="font-size:0.9rem;color:var(--gray-600);margin:0 0 14px;">Change the sign-in email for <strong id="setEmailUserName"></strong>. Type just a username to use the standard <code>@cbdcollege.edu.au</code> address, or a full email.</p>
+            <div class="form-group"><label for="setEmailValue">Username or email *</label><input type="text" class="form-control" id="setEmailValue" autocomplete="off" placeholder="e.g. william"></div>
+            <div style="font-size:0.8rem;color:var(--gray-500);">Will become: <strong id="setEmailPreview">&mdash;</strong></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('setEmailModal')">Cancel</button><button class="btn btn-success" onclick="submitSetEmail()">Change Email</button></div>
     </div>
 </div>
 
@@ -6126,13 +6139,13 @@ async function loadUsers(forceRefresh) {
         var role = u.role || 'assistant';
         return '<tr><td>' + escHtml(u.full_name) + '</td><td>' + escHtml(u.email) + '</td>' +
             '<td><span class="role-badge ' + role + '">' + role + '</span></td><td class="hide-mobile">' + new Date(u.created_at).toLocaleDateString() + '</td>' +
-            '<td style="white-space:nowrap;">' + '<button class="btn btn-outline btn-sm" onclick="openSetPasswordModal(\'' + u.user_id + '\')">Password</button> ' + (u.user_id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.user_id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.user_id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
+            '<td style="white-space:nowrap;">' + '<button class="btn btn-outline btn-sm" onclick="openSetPasswordModal(\'' + u.user_id + '\')">Password</button> ' + '<button class="btn btn-outline btn-sm" onclick="openSetEmailModal(\'' + u.user_id + '\')">Email</button> ' + (u.user_id !== currentUser.id ? '<button class="btn btn-outline btn-sm" onclick="toggleUserRole(\'' + u.user_id + '\',\'' + role + '\')">' + (role === 'trainer' ? 'Make Assistant' : 'Make Trainer') + '</button> <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteUser(\'' + u.user_id + '\')">Delete</button>' : '<span style="color:var(--gray-400);font-size:0.8rem;">You</span>') + '</td></tr>';
     }).join('');
 }
 function openCreateUserModal() { document.getElementById('newUserName').value = ''; document.getElementById('newUserEmail').value = ''; document.getElementById('newUserPassword').value = ''; document.getElementById('newUserRole').value = 'assistant'; document.getElementById('createUserModal').classList.add('active'); document.getElementById('newUserName').focus(); }
 async function createUser() {
     var name = document.getElementById('newUserName').value.trim();
-    var email = document.getElementById('newUserEmail').value.trim();
+    var email = cbdEmailFromInput(document.getElementById('newUserEmail').value); // bare username -> @cbdcollege.edu.au
     var password = document.getElementById('newUserPassword').value;
     var role = document.getElementById('newUserRole').value;
     if (!name || !email || !password) { showToast('Please fill in all required fields'); return; }
@@ -6218,6 +6231,54 @@ async function submitSetPassword() {
     closeModal('setPasswordModal');
     _setPwUserId = null;
     showToast('Password updated for ' + (u ? u.full_name.split(' ')[0] : 'user'));
+}
+
+// ============ Change user email (admin/trainer) ============
+// Mirrors the login screen: a bare username becomes <username>@cbdcollege.edu.au,
+// a full "x@y" is used as-is. Keeps create/login/change-email symmetric.
+function cbdEmailFromInput(raw) {
+    var v = (raw || '').trim().toLowerCase();
+    if (!v) return '';
+    return v.indexOf('@') === -1 ? v + '@cbdcollege.edu.au' : v;
+}
+var _setEmailUserId = null;
+function updateSetEmailPreview() {
+    var el = document.getElementById('setEmailPreview');
+    if (el) el.textContent = cbdEmailFromInput(document.getElementById('setEmailValue').value) || '—';
+}
+function openSetEmailModal(userId) {
+    _setEmailUserId = userId;
+    var u = (usersCache || []).find(function(x) { return x.user_id === userId; });
+    document.getElementById('setEmailUserName').textContent = u ? u.full_name : 'this user';
+    // Prefill: keep the username if already on the standard domain; otherwise suggest the first name.
+    var cur = (u && u.email) ? String(u.email) : '';
+    var prefill;
+    if (cur.toLowerCase().slice(-18) === '@cbdcollege.edu.au') prefill = cur.split('@')[0];
+    else if (u && u.full_name) prefill = u.full_name.trim().split(/\s+/)[0].toLowerCase();
+    else prefill = cur;
+    var input = document.getElementById('setEmailValue');
+    input.value = prefill;
+    input.oninput = updateSetEmailPreview;
+    updateSetEmailPreview();
+    document.getElementById('setEmailModal').classList.add('active');
+    input.focus();
+    input.select();
+}
+async function submitSetEmail() {
+    var userId = _setEmailUserId;
+    var email = cbdEmailFromInput(document.getElementById('setEmailValue').value);
+    if (!userId) { showToast('No user selected'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Enter a valid username or email'); return; }
+    var btn = document.querySelector('#setEmailModal .btn-success');
+    setLoading(btn, true);
+    try { await adminAPI('set-email', 'POST', { user_id: userId, email: email }); }
+    catch (e) { setLoading(btn, false); showToast('Failed to change email: ' + e.message); return; }
+    setLoading(btn, false);
+    usersCache = null;
+    closeModal('setEmailModal');
+    _setEmailUserId = null;
+    showToast('Email changed to ' + email);
+    loadUsers(true);
 }
 
 // ============ Export PDF ============

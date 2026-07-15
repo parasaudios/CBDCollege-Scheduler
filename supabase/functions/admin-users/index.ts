@@ -128,6 +128,32 @@ Deno.serve(async (req) => {
       });
     }
 
+    // POST: Change a user's login email
+    if (req.method === "POST" && action === "set-email") {
+      const body = await req.json();
+      const { user_id, email } = body;
+
+      if (!user_id || !email) {
+        return new Response(JSON.stringify({ error: "Missing user_id or email" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return new Response(JSON.stringify({ error: "Invalid email address" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // email_confirm:true so the new address is immediately usable (no verification email)
+      const { error } = await adminClient.auth.admin.updateUserById(user_id, { email, email_confirm: true });
+      if (error) throw error;
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // DELETE: Delete a user
     if (req.method === "DELETE" && action === "delete") {
       const body = await req.json();
