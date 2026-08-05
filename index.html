@@ -6673,9 +6673,11 @@ var notifInitialLoadDone = false;
 
 async function loadNotifications(opts) {
     opts = opts || {};
-    if (!isActualTrainer()) return;
-    // Load last 50 notifications
-    var result = await sb.from('cbd_notifications').select('*').order('created_at', { ascending: false }).limit(50);
+    // Trainers/admins see ALL notifications (oversight). Anyone below trainer (assistants)
+    // sees ONLY notifications targeted to them — never broadcasts or other people's changes.
+    var _nq = sb.from('cbd_notifications').select('*').order('created_at', { ascending: false }).limit(50);
+    if (!isActualTrainer()) _nq = _nq.eq('target_user_id', currentUser.id);
+    var result = await _nq;
     var fresh = result.data || [];
     // Load read receipts for current user
     var readsResult = await sb.from('cbd_notification_reads').select('notification_id').eq('user_id', currentUser.id);
@@ -6843,8 +6845,9 @@ async function markAllNotificationsRead() {
 
 function handleNewNotification(row) {
     if (!currentUser) return;
-    // Realtime delivers all inserts; ignore rows targeted at someone else.
-    if (row.target_user_id && row.target_user_id !== currentUser.id && !isActualTrainer()) return;
+    // Trainers get every notification; anyone below trainer only gets ones targeted to them
+    // (never broadcasts or other people's changes).
+    if (!isActualTrainer() && row.target_user_id !== currentUser.id) return;
     // Dedupe against polling — if already seen, skip alerts
     if (notifLastSeenIds[row.id]) return;
     notifLastSeenIds[row.id] = true;
