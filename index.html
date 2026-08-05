@@ -5629,6 +5629,9 @@ async function saveMyPattern() {
         var p = profilesCache.find(function(x){ return x.id === currentUser.id; });
         if (p) p.available_dows = dows;
     }
+    // Re-render the overrides calendar so the new weekly pattern shows immediately
+    // (previously it only updated after a full page refresh).
+    if (typeof renderMyAvail === 'function') renderMyAvail();
     showToast('Weekly pattern saved');
 }
 
@@ -6993,7 +6996,13 @@ async function openDayDetail(dateStr) {
 
     // Gather roster entries — explicit cbd_availability if any, otherwise computed from patterns.
     var roster = getRosterForDate(dateStr);
-    var rostered = roster.filter(function(r) { return r.status === 'available' || r.status === 'partial'; });
+    var rostered = roster.filter(function(r) {
+        if (r.status !== 'available' && r.status !== 'partial') return false;
+        // A staff member who has marked themselves Unavailable for this date must NOT show as
+        // rostered (they still appear in "Assistant Availability Submitted" below, as Unavailable).
+        var st = r.staff || staffList.find(function(s) { return s.id === r.staff_id; });
+        return !st || isStaffAvailableOnDate(st, dateStr);
+    });
     var trainers = rostered.filter(function(r) { return r.day_role === 'head_trainer'; });
     var assistants = rostered.filter(function(r) { return r.day_role !== 'head_trainer'; });
     var rosterIsAuto = rostered.length > 0 && rostered.every(function(r) { return r.source === 'auto'; });
