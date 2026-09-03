@@ -1643,6 +1643,19 @@ function _weekendSlotIndex(dateStr) {
     return count;
 }
 
+// Global weekend index — number of weeks from a fixed anchor Saturday (2026-01-03), with Sundays
+// mapped to their Saturday. Makes the HT weekend rotation CONTINUOUS and rolling across months
+// (the old per-month slot index reset every month, so the sequence broke at month boundaries).
+function _globalWeekIndex(dateStr) {
+    var p = dateStr.split('-');
+    var y = +p[0], mo = +p[1] - 1, dd = +p[2];
+    var d = new Date(y, mo, dd);
+    var satOffset = (d.getDay() === 0) ? -1 : 0; // Sunday -> its Saturday
+    var sat = new Date(y, mo, dd + satOffset);
+    var anchor = new Date(2026, 0, 3);           // a Saturday; parity chosen so first-Sat HT works
+    return Math.round((sat - anchor) / (7 * 86400000));
+}
+
 // Pick the HT for a weekend day under the alternating rotation:
 //   Weekend 1 (slot 0,1): A=Sat, B=Sun
 //   Weekend 2 (slot 2,3): B=Sat, A=Sun (swap)
@@ -1658,16 +1671,17 @@ function _pickHTForWeekend(availHTs, dateStr) {
     var htA = availHTs.find(function(h) { return h.id === firstSatId; }) || availHTs[0];
     var htB = availHTs.find(function(h) { return h !== htA; }) || htA;
 
-    var slotIndex = _weekendSlotIndex(dateStr);
-    if (slotIndex < 0) return htA;
     var p = dateStr.split('-');
     var d = new Date(+p[0], +p[1]-1, +p[2]);
-    var isSat = d.getDay() === 6;
-    var weekendNum = Math.floor(slotIndex / 2);
+    var dow = d.getDay();
+    if (dow !== 0 && dow !== 6) return htA; // not a weekend
+    var isSat = dow === 6;
+    // Continuous rotation index (rolls over month to month) rather than a per-month reset.
+    var weekendNum = _globalWeekIndex(dateStr);
 
     var aPicks;
-    if (weekendNum % 2 === 0) aPicks = isSat;       // even weekends: A=Sat, B=Sun
-    else aPicks = !isSat;                            // odd weekends: swap
+    if (weekendNum % 2 === 0) aPicks = isSat;       // even week: A=Sat, B=Sun
+    else aPicks = !isSat;                           // odd week: swap
     return aPicks ? htA : htB;
 }
 
