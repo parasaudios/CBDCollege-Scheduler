@@ -3991,15 +3991,12 @@ function openBulkTemplate() {
     var dayLabels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     var dayDows = [1,2,3,4,5,6,0]; // JS getDay() values
     var isWeekend = {6: true, 0: true};
-    // Identify staff who have ever been HT (from availability data)
-    var knownHTs = {};
-    for (var sid in availabilityCache) {
-        for (var d in availabilityCache[sid]) {
-            if (availabilityCache[sid][d].day_role === 'head_trainer') { knownHTs[sid] = true; break; }
-        }
-    }
-    var htStaff = staffList.filter(function(s) { return knownHTs[s.id]; });
-    var assistStaff = staffList.filter(function(s) { return !knownHTs[s.id]; });
+    // Head trainers come from the is_head_trainer flag (NOT historical roster data, which is often
+    // empty for the current month and left the rotation list + dropdown blank). Sorted by priority.
+    var htStaff = staffList.filter(function(s) { return s.is_head_trainer; }).sort(function(a, b) {
+        return ((a.priority || 100) - (b.priority || 100)) || a.name.localeCompare(b.name);
+    });
+    var assistStaff = staffList.filter(function(s) { return !s.is_head_trainer; });
     var html = '';
     dayLabels.forEach(function(label, i) {
         var dow = dayDows[i];
@@ -4089,13 +4086,10 @@ async function applyBulkTemplate() {
     var cappedBoxes = document.querySelectorAll('.tmpl-capped:checked');
     var rotateBoxes = document.querySelectorAll('.tmpl-rotate:checked');
 
-    // Identify known HTs from availability data
+    // Head trainers come from the is_head_trainer flag (not historical roster data, which may be
+    // empty and would wrongly commit Head Trainers as assistants).
     var knownHTs = {};
-    for (var sid in availabilityCache) {
-        for (var d in availabilityCache[sid]) {
-            if (availabilityCache[sid][d].day_role === 'head_trainer') { knownHTs[sid] = true; break; }
-        }
-    }
+    staffList.forEach(function(s) { if (s.is_head_trainer) knownHTs[s.id] = true; });
 
     // Build capped map: dow -> true
     var cappedDows = {};
