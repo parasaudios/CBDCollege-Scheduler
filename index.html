@@ -2350,8 +2350,8 @@ function renderTodayHero() {
     var dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][today.getDay()];
     var dateLabel = dayName + ', ' + today.getDate() + ' ' + MONTH_NAMES[today.getMonth()] + ' ' + today.getFullYear();
 
-    // Class info — use effective times (manual or default)
-    var ci = getDayClass(todayStr);
+    // Class info — use effective times + counts (manual per-day override, else weekday default)
+    var ci = getEffectiveClassInfo(todayStr);
     var times = getEffectiveClassTimes(todayStr);
     var classTime = '';
     if (times.am_start && times.am_end) classTime += 'AM ' + times.am_start + '–' + times.am_end;
@@ -4448,11 +4448,12 @@ function renderOverview() {
             var showUnavail = (r.status === 'available' || r.status === 'partial') && staffObj && !isStaffAvailableOnDate(staffObj, dateStr);
             return { name: r.name, color: r.color, status: showUnavail ? 'unavailable' : r.status, day_role: r.day_role || 'assistant' };
         });
-        var ci = getDayClass(dateStr);
+        var ci = getEffectiveClassInfo(dateStr);
+        var ciHas = (ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || ci.capped_am || ci.capped_pm;
         var holidayHere = isPublicHoliday(dateStr);
         var cls = 'calendar-day' + (dateStr === todayStr ? ' today' : '') + (holidayHere ? ' holiday' : '');
         var detailHtml = '';
-        if (!holidayHere && (entries.length > 0 || ci)) {
+        if (!holidayHere && (entries.length > 0 || ciHas)) {
             detailHtml = '<div class="overview-day-staff">';
             entries.slice(0,3).forEach(function(e) {
                 var c = e.status==='available'?'var(--success)':e.status==='partial'?'var(--warning)':'var(--danger)';
@@ -4460,14 +4461,14 @@ function renderOverview() {
                 detailHtml += '<div class="overview-staff-entry"><span class="mini-dot" style="background:'+c+'"></span><span class="mini-name">'+escHtml(e.name.split(' ')[0])+roleTag+'</span></div>';
             });
             if (entries.length > 3) detailHtml += '<div style="color:var(--gray-400);font-size:0.75rem;">+' + (entries.length-3) + ' more</div>';
-            if (ci && (ci.students_am || ci.students_pm)) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.75rem;">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
-            if (ci && ci.capped_am) detailHtml += '<span class="capped-badge">AM CAP</span>';
-            if (ci && ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
+            if (ci.students_am || ci.students_pm) detailHtml += '<div style="color:var(--gray-600);font-weight:600;font-size:0.75rem;">AM:' + (ci.students_am||0) + ' PM:' + (ci.students_pm||0) + '</div>';
+            if (ci.capped_am) detailHtml += '<span class="capped-badge">AM CAP</span>';
+            if (ci.capped_pm) detailHtml += '<span class="capped-badge">PM CAP</span>';
             detailHtml += '</div>';
         }
         // Mobile-only status icon: check if anyone is rostered, cross if class day with nobody on it.
         var hasStaffOn = entries.some(function(e){ return e.status === 'available' || e.status === 'partial'; });
-        var classDay = !!(ci && ((ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || ci.capped_am || ci.capped_pm));
+        var classDay = !holidayHere && ciHas;
         var statusIconHtml = '';
         if (!holidayHere) {
             if (hasStaffOn) statusIconHtml = '<div class="myroster-status-icon check" aria-label="Staff rostered">&#10003;</div>';
@@ -4723,6 +4724,16 @@ async function saveDefaultClassTimes() {
         var rowDiff = [];
         ['am_start','am_end','pm_start','pm_end'].forEach(function(k) {
             if ((cur[k] || '') !== (nxt[k] || '')) rowDiff.push(k.replace('_',' ') + ': ' + (cur[k] || '—') + ' → ' + (nxt[k] || '—'));
+        });
+        // Student-count defaults — so setting per-weekday student numbers actually saves
+        // (previously only time changes were detected, silently discarding student edits).
+        [['students_am','Students AM'],['students_pm','Students PM']].forEach(function(pair) {
+            var k = pair[0];
+            if ((cur[k] || 0) !== (nxt[k] || 0)) rowDiff.push(pair[1] + ': ' + (cur[k] || 0) + ' → ' + (nxt[k] || 0));
+        });
+        [['capped_am','Cap AM'],['capped_pm','Cap PM']].forEach(function(pair) {
+            var k = pair[0];
+            if (!!cur[k] !== !!nxt[k]) rowDiff.push(pair[1] + ': ' + (cur[k] ? 'on' : 'off') + ' → ' + (nxt[k] ? 'on' : 'off'));
         });
         if (rowDiff.length > 0) { diff.push(DOW_LABELS[String(d2)] + ': ' + rowDiff.join(', ')); changedDows.push(d2); }
     }
@@ -5300,9 +5311,9 @@ function renderMyRoster() {
     for (var day = 1; day <= lastDay.getDate(); day++) {
         var dateStr = myRosterYear + '-' + String(myRosterMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
         var entry = getEffectiveAvailability(myStaffMember.id, dateStr);
-        var dayClass = getDayClass(dateStr);
+        var dayClass = getEffectiveClassInfo(dateStr);
         var isRostered = !!(entry && (entry.status === 'available' || entry.status === 'partial'));
-        var hasClass = !!dayClass;
+        var hasClass = (dayClass.students_am || 0) > 0 || (dayClass.students_pm || 0) > 0 || dayClass.capped_am || dayClass.capped_pm;
         var holidayHere = isPublicHoliday(dateStr);
 
         var cls = 'calendar-day';
@@ -5335,14 +5346,16 @@ function _shiftSection(label, dateLabel, dateStr, ci, entry, others, isToday) {
     if (!classTime) classTime = '—';
     var startTime = (entry && entry.start_time) ? entry.start_time.slice(0,5) : '—';
     var roleLabel = entry ? (entry.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant') : 'Not rostered';
-    var students = ci ? ('AM ' + (ci.students_am||0) + ' · PM ' + (ci.students_pm||0)) : '—';
+    // A class exists if there are students or a cap set (via manual override or weekday default).
+    var hasClass = !!(ci && ((ci.students_am||0) > 0 || (ci.students_pm||0) > 0 || ci.capped_am || ci.capped_pm));
+    var students = hasClass ? ('AM ' + (ci.students_am||0) + ' · PM ' + (ci.students_pm||0)) : '—';
     var capParts = [];
     if (ci && ci.capped_am) capParts.push('AM');
     if (ci && ci.capped_pm) capParts.push('PM');
-    var capText = capParts.length ? capParts.join(' & ') + ' capped' : (ci ? 'Not capped' : '—');
+    var capText = capParts.length ? capParts.join(' & ') + ' capped' : (hasClass ? 'Not capped' : '—');
 
     var othersHtml;
-    if (!entry && !ci) {
+    if (!entry && !hasClass) {
         othersHtml = '<span class="hero-card-empty">No class scheduled</span>';
     } else if (others.length === 0) {
         othersHtml = '<span class="hero-card-empty">' + (entry ? 'Working solo' : 'No-one rostered') + '</span>';
@@ -5355,7 +5368,7 @@ function _shiftSection(label, dateLabel, dateStr, ci, entry, others, isToday) {
     var statusBadge = '';
     if (isToday) {
         if (entry) statusBadge = '<span style="background:rgba(255,255,255,0.25);padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;letter-spacing:0.5px;margin-left:10px;vertical-align:middle;">YOU\'RE WORKING</span>';
-        else if (ci) statusBadge = '<span style="background:rgba(0,0,0,0.18);padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;letter-spacing:0.5px;margin-left:10px;vertical-align:middle;">NOT NEEDED</span>';
+        else if (hasClass) statusBadge = '<span style="background:rgba(0,0,0,0.18);padding:3px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;letter-spacing:0.5px;margin-left:10px;vertical-align:middle;">NOT NEEDED</span>';
     }
 
     var stats = '<div class="hero-card-row">' +
@@ -5396,7 +5409,7 @@ async function renderNextShiftHero() {
 
     // Today's data
     var todayEntry = getEffectiveAvailability(myStaffMember.id, todayStr);
-    var todayClass = getDayClass(todayStr);
+    var todayClass = getEffectiveClassInfo(todayStr);
     var todayLabel = dayName(todayDate) + ', ' + todayDate.getDate() + ' ' + MONTH_NAMES[todayDate.getMonth()];
 
     // Find the next future shift (skip today). Check cache first, fall back to server.
@@ -5442,7 +5455,7 @@ async function renderNextShiftHero() {
         var diff = Math.round((nextShift.date - todayDate) / 86400000);
         var rel = diff === 1 ? 'Tomorrow' : ('In ' + diff + ' day' + (diff === 1 ? '' : 's'));
         var nextLabel = dayName(nextShift.date) + ', ' + nextShift.date.getDate() + ' ' + MONTH_NAMES[nextShift.date.getMonth()];
-        var nextCi = getDayClass(nextShift.dateStr);
+        var nextCi = getEffectiveClassInfo(nextShift.dateStr);
         var nextOthers = _gatherOthers(nextShift.dateStr, myStaffMember.id);
         html += '<div style="border-top:1px solid rgba(255,255,255,0.25);margin-top:18px;padding-top:14px;">';
         html += _shiftSection(rel + ' · Your next shift', nextLabel, nextShift.dateStr, nextCi, nextShift.entry, nextOthers, false);
@@ -6457,7 +6470,7 @@ function generatePrintPage(month, year, pdfStaff, printWin) {
         var dow = (startDow + day - 1) % 7;
         if (dow === 0 && day > 1) html += '</tr><tr>';
         var dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-        var ci = getDayClass(dateStr);
+        var ci = getEffectiveClassInfo(dateStr);
 
         if (isIndividual) {
             var se = getAvailability(pdfStaff[0].id, dateStr);
@@ -6471,7 +6484,7 @@ function generatePrintPage(month, year, pdfStaff, printWin) {
                 if (pdfTimes.pm_start && pdfTimes.pm_end) pdfRange += (pdfRange ? '<br>' : '') + 'PM ' + pdfTimes.pm_start + '-' + pdfTimes.pm_end;
                 if (pdfRange) html += '<div class="time">' + pdfRange + '</div>';
                 if (se.start_time) html += '<div style="font-weight:600;font-size:11px;color:#2563eb;">Start: ' + se.start_time.slice(0,5) + '</div>';
-                if (ci && (ci.students_am || ci.students_pm)) html += '<div class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</div>';
+                if (ci.students_am || ci.students_pm) html += '<div class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</div>';
                 // Other rostered staff
                 var pdfOthers = [];
                 staffList.forEach(function(s) {
@@ -6490,7 +6503,7 @@ function generatePrintPage(month, year, pdfStaff, printWin) {
             staffList.forEach(function(s) { var e = getAvailability(s.id, dateStr); if (e && (e.status==='available'||e.status==='partial')) names.push(escHtml(s.name.split(' ')[0])); });
             html += '<td class="' + (names.length > 0 ? 'has-staff' : '') + '">';
             html += '<div class="day-num">' + day + '</div>';
-            if (ci && (ci.students_am || ci.students_pm)) html += '<div class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</div>';
+            if (ci.students_am || ci.students_pm) html += '<div class="students">' + (ci.students_am||0) + '/' + (ci.students_pm||0) + '</div>';
             if (names.length > 0) html += '<div class="names">' + names.join('<br>') + '</div>';
             html += '</td>';
         }
@@ -7015,12 +7028,12 @@ async function openDayDetail(dateStr) {
     var assistants = rostered.filter(function(r) { return r.day_role !== 'head_trainer'; });
     var rosterIsAuto = rostered.length > 0 && rostered.every(function(r) { return r.source === 'auto'; });
 
-    // Get class info from day_classes table
-    var classInfo = getDayClass(dateStr);
-    var amStudents = classInfo ? classInfo.students_am : 0;
-    var pmStudents = classInfo ? classInfo.students_pm : 0;
-    var amCapped = classInfo ? classInfo.capped_am : false;
-    var pmCapped = classInfo ? classInfo.capped_pm : false;
+    // Class info — effective value (manual per-day override, else weekday default)
+    var classInfo = getEffectiveClassInfo(dateStr);
+    var amStudents = classInfo.students_am || 0;
+    var pmStudents = classInfo.students_pm || 0;
+    var amCapped = classInfo.capped_am || false;
+    var pmCapped = classInfo.capped_pm || false;
     var detailEffective = getEffectiveClassTimes(dateStr);
     var classTime = '';
     if (detailEffective.am_start && detailEffective.am_end) classTime += 'AM ' + detailEffective.am_start + '-' + detailEffective.am_end;
