@@ -20,14 +20,18 @@
 //   CBD_SECRET_KEY                   - existing service-role key (already set)
 // Optional secrets:
 //   VASTO_BASE_URL   (default https://vastosoft.com)
-//   VASTO_DAYS_AHEAD (default 60)
+//   VASTO_DAYS_AHEAD (default 30)
 //   VASTO_ACTOR_ID   (UUID for updated_by; default null)
+//
+// Notifications: when a day's numbers cross an assistant-staffing threshold
+// (cbd_auto_roster_rules 8/16), the affected rostered staff are notified (and
+// trainers via RLS). Pure enrolment wobble that doesn't change staffing is silent.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const UA = "Mozilla/5.0 (compatible; CBDScheduler-Sync/1.0)";
 const BASE = (Deno.env.get("VASTO_BASE_URL") || "https://vastosoft.com").replace(/\/+$/, "");
-const DAYS_AHEAD = parseInt(Deno.env.get("VASTO_DAYS_AHEAD") || "60", 10);
+const DAYS_AHEAD = parseInt(Deno.env.get("VASTO_DAYS_AHEAD") || "30", 10);
 const ACTOR_ID = Deno.env.get("VASTO_ACTOR_ID") || null;
 
 const cors = {
@@ -76,6 +80,12 @@ function melbourneToday(): Date {
   }).format(new Date());
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+const _WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const _MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function prettyDate(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${_WD[new Date(y, m - 1, d).getDay()]} ${d} ${_MON[m - 1]}`;
 }
 
 // ============================================================
@@ -228,7 +238,76 @@ Deno.serve(async (req) => {
       if (error) throw error;
     }
 
-    return json({ ok: true, scanned, failed, parsedNone, updated: upserts.length, changes });
+    // ---- Notify ONLY on staffing-relevant changes (assistant-count threshold crossed) ----
+    // Pure enrolment wobble that doesn't change how many assistants a day needs stays silent.
+    let notified = 0;
+    let notifyError: string | undefined;
+    try {
+      const { data: rulesRow } = await supabase
+        .from("cbd_auto_roster_rules")
+        .select("min_students_for_one_assistant, min_students_for_two_assistants")
+        .eq("id", 1).maybeSingle();
+      const oneT = Number(rulesRow?.min_students_for_one_assistant ?? 8);
+      const twoT = Number(rulesRow?.min_students_for_two_assistants ?? 16);
+      const assistantsNeeded = (am: number, pm: number) => {
+        const b = Math.max(am || 0, pm || 0);
+        return b >= twoT ? 2 : (b >= oneT ? 1 : 0);
+      };
+      // Only changes to an EXISTING day (from != null) whose required assistant count moved.
+      const staffing = (changes as { date: string; from: number[] | null; to: number[] }[])
+        .filter((c) => c.from && assistantsNeeded(c.from[0], c.from[1]) !== assistantsNeeded(c.to[0], c.to[1]));
+
+      if (staffing.length) {
+        const dates = staffing.map((c) => c.date);
+        const [staffRes, trainerRes, availRes] = await Promise.all([
+          supabase.from("cbd_staff_members").select("id, user_id"),
+          supabase.from("cbd_profiles").select("id").eq("role", "trainer"),
+          supabase.from("cbd_availability").select("date, staff_id, status").in("date", dates).in("status", ["available", "partial"]),
+        ]);
+        const staffMap = new Map((staffRes.data || []).map((s: { id: string; user_id: string | null }) => [s.id, s.user_id]));
+        const trainerIds = (trainerRes.data || []).map((t: { id: string }) => t.id);
+        const byDate = new Map<string, Set<string>>();
+        for (const a of (availRes.data || []) as { date: string; staff_id: string }[]) {
+          const uid = staffMap.get(a.staff_id);
+          if (!uid) continue;
+          (byDate.get(a.date) ?? byDate.set(a.date, new Set<string>()).get(a.date)!).add(uid);
+        }
+
+        const rows: Record<string, unknown>[] = [];
+        for (const c of staffing) {
+          const nFrom = assistantsNeeded(c.from![0], c.from![1]);
+          const nTo = assistantsNeeded(c.to[0], c.to[1]);
+          const title = `Staffing changed — ${prettyDate(c.date)}`;
+          const message = `Now AM ${c.to[0]} · PM ${c.to[1]} students — needs ${nTo} assistant${nTo === 1 ? "" : "s"} (was ${nFrom}).`;
+          const data = { date: c.date, students_am: c.to[0], students_pm: c.to[1], needed_from: nFrom, needed_to: nTo, source: "vasto" };
+          // Rostered staff on that day get it (trainers see it too via RLS); if nobody is
+          // rostered yet, target one trainer so the change still reaches the trainers.
+          const rostered = [...(byDate.get(c.date) || [])];
+          const recipients = rostered.length ? rostered : trainerIds.slice(0, 1);
+          for (const uid of recipients) rows.push({ type: "vasto_staffing_changed", title, message, data, target_user_id: uid });
+        }
+
+        if (rows.length) {
+          const { error: nErr } = await supabase.from("cbd_notifications").insert(rows);
+          if (nErr) throw nErr;
+          notified = rows.length;
+          // Best-effort Web Push — never let a push failure affect the sync.
+          const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push`;
+          const svc = Deno.env.get("CBD_SECRET_KEY")!;
+          await Promise.all(rows.map((r) =>
+            fetch(pushUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${svc}` },
+              body: JSON.stringify({ title: r.title, body: r.message, data: r.data, tag: "cbd-vasto", target_user_id: r.target_user_id }),
+            }).then(() => {}).catch(() => {})
+          ));
+        }
+      }
+    } catch (e) {
+      notifyError = String((e as Error).message || e); // non-critical: numbers are already written
+    }
+
+    return json({ ok: true, scanned, failed, parsedNone, updated: upserts.length, notified, notifyError, changes });
   } catch (err) {
     return json({ ok: false, error: String((err as Error).message || err) }, 500);
   }
