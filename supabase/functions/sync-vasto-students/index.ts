@@ -15,9 +15,12 @@
 // Scheduled by pg_cron (see setup notes) every few hours.
 //
 // Required secrets:
-//   VASTO_USERNAME, VASTO_PASSWORD   - the (ideally read-only) Vasto login
+//   VASTO_USERNAME, VASTO_PASSWORD   - the first Vasto login (ideally read-only)
 //   VASTO_SYNC_SECRET                - random string; also sent by the cron caller
 //   CBD_SECRET_KEY                   - existing service-role key (already set)
+// Extra Vasto logins (trainers each see only their own rostered days): add pairs
+//   VASTO_USERNAME_2 / VASTO_PASSWORD_2, _3, ... — every account is scanned and the
+//   results merged per day (a day's numbers come from whichever account can see it).
 // Optional secrets:
 //   VASTO_BASE_URL   (default https://vastosoft.com)
 //   VASTO_DAYS_AHEAD (default 30)
@@ -86,6 +89,18 @@ const _MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oc
 function prettyDate(iso: string) {
   const [y, m, d] = iso.split("-").map(Number);
   return `${_WD[new Date(y, m - 1, d).getDay()]} ${d} ${_MON[m - 1]}`;
+}
+
+// Gather every configured Vasto login: VASTO_USERNAME/PASSWORD, then _2, _3, … until a pair is missing.
+function collectAccounts(): { username: string; password: string; label: string }[] {
+  const out: { username: string; password: string; label: string }[] = [];
+  const u1 = Deno.env.get("VASTO_USERNAME"), p1 = Deno.env.get("VASTO_PASSWORD");
+  if (u1 && p1) out.push({ username: u1, password: p1, label: u1 });
+  for (let i = 2; i <= 10; i++) {
+    const u = Deno.env.get(`VASTO_USERNAME_${i}`), p = Deno.env.get(`VASTO_PASSWORD_${i}`);
+    if (u && p) out.push({ username: u, password: p, label: u });
+  }
+  return out;
 }
 
 // ============================================================
@@ -178,23 +193,55 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get("VASTO_SYNC_SECRET");
   if (!secret || req.headers.get("x-sync-secret") !== secret) return json({ error: "Unauthorized" }, 401);
 
-  const username = Deno.env.get("VASTO_USERNAME");
-  const password = Deno.env.get("VASTO_PASSWORD");
-  if (!username || !password) return json({ error: "Vasto credentials not configured" }, 500);
+  const accounts = collectAccounts();
+  if (accounts.length === 0) return json({ error: "No Vasto accounts configured" }, 500);
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("CBD_SECRET_KEY")!);
 
   try {
-    const jar = new Jar();
-    await login(jar, username, password);
-    if (jar.size === 0) throw new Error("No session cookie after login");
-
     // Build the date window [today, today+DAYS_AHEAD) anchored to Melbourne's date.
     const today = melbourneToday();
     const days: { iso: string; vasto: string }[] = [];
     for (let i = 0; i < DAYS_AHEAD; i++) {
       const d = new Date(today); d.setDate(d.getDate() + i);
       days.push({ iso: isoDate(d), vasto: vastoDate(d) });
+    }
+
+    // Scan every configured Vasto account (the trainers each only see their own rostered
+    // days) and merge per day: a day's numbers come from whichever account can see it. The
+    // accounts are assumed not to overlap; if a day shows in more than one, the larger wins
+    // (so identical full-day views are never double-counted).
+    const merged = new Map<string, { am: number; pm: number }>();
+    const accountStats: { account: string; scanned: number; failed: number; error?: string }[] = [];
+    for (const acct of accounts) {
+      const st: { account: string; scanned: number; failed: number; error?: string } =
+        { account: acct.label, scanned: 0, failed: 0 };
+      try {
+        const jar = new Jar();
+        await login(jar, acct.username, acct.password);
+        if (jar.size === 0) throw new Error("no session cookie after login");
+        for (const day of days) {
+          let html = "";
+          try {
+            const r = await fetch(`${BASE}/elearning/trainer_day.php?date=${day.vasto}`, {
+              headers: { "User-Agent": UA, "Cookie": jar.header() },
+            });
+            if (r.status !== 200) { st.failed++; continue; }
+            html = await r.text();
+          } catch (_) { st.failed++; continue; }
+          st.scanned++;
+          const { am, pm } = parseDayCounts(html);
+          if (am === null && pm === null) continue; // this account has no class data for that day
+          const cur = merged.get(day.iso);
+          merged.set(day.iso, {
+            am: Math.max(cur?.am ?? 0, am ?? 0),
+            pm: Math.max(cur?.pm ?? 0, pm ?? 0),
+          });
+        }
+      } catch (e) {
+        st.error = String((e as Error).message || e); // one account failing must not sink the others
+      }
+      accountStats.push(st);
     }
 
     // Existing rows, for change detection (only write when a number actually changed).
@@ -208,30 +255,16 @@ Deno.serve(async (req) => {
 
     const changes: unknown[] = [];
     const upserts: Record<string, unknown>[] = [];
-    let scanned = 0, failed = 0, parsedNone = 0;
-
-    for (const day of days) {
-      let html = "";
-      try {
-        const r = await fetch(`${BASE}/elearning/trainer_day.php?date=${day.vasto}`, {
-          headers: { "User-Agent": UA, "Cookie": jar.header() },
-        });
-        if (r.status !== 200) { failed++; continue; }
-        html = await r.text();
-      } catch (_) { failed++; continue; }
-      scanned++;
-
-      const { am, pm } = parseDayCounts(html);
-      if (am === null && pm === null) { parsedNone++; continue; } // couldn't read — don't overwrite
-
-      const p = prev.get(day.iso) as { students_am: number; students_pm: number } | undefined;
-      const newAm = am ?? (p?.students_am ?? 0);
-      const newPm = pm ?? (p?.students_pm ?? 0);
-      if (!p || (p.students_am ?? 0) !== newAm || (p.students_pm ?? 0) !== newPm) {
-        changes.push({ date: day.iso, from: p ? [p.students_am, p.students_pm] : null, to: [newAm, newPm] });
-        upserts.push({ date: day.iso, students_am: newAm, students_pm: newPm, updated_by: ACTOR_ID });
+    for (const [iso, v] of merged) {
+      const p = prev.get(iso) as { students_am: number; students_pm: number } | undefined;
+      if (!p || (p.students_am ?? 0) !== v.am || (p.students_pm ?? 0) !== v.pm) {
+        changes.push({ date: iso, from: p ? [p.students_am, p.students_pm] : null, to: [v.am, v.pm] });
+        upserts.push({ date: iso, students_am: v.am, students_pm: v.pm, updated_by: ACTOR_ID });
       }
     }
+    const scanned = accountStats.reduce((a, s) => a + s.scanned, 0);
+    const failed = accountStats.reduce((a, s) => a + s.failed, 0);
+    const parsedNone = days.length - merged.size;
 
     if (upserts.length) {
       const { error } = await supabase.from("cbd_day_classes").upsert(upserts, { onConflict: "date" });
@@ -307,7 +340,7 @@ Deno.serve(async (req) => {
       notifyError = String((e as Error).message || e); // non-critical: numbers are already written
     }
 
-    return json({ ok: true, scanned, failed, parsedNone, updated: upserts.length, notified, notifyError, changes });
+    return json({ ok: true, scanned, failed, parsedNone, updated: upserts.length, notified, notifyError, accounts: accountStats, changes });
   } catch (err) {
     return json({ ok: false, error: String((err as Error).message || err) }, 500);
   }
