@@ -1352,6 +1352,18 @@
     </div>
 </div>
 
+<!-- Notification detail modal — shows exactly what changed, who it affects, and who's on that day -->
+<div class="modal-overlay" id="notifDetailModal">
+    <div class="modal" style="max-width:520px;">
+        <div class="modal-header">
+            <h3 id="notifDetailTitle">Notification</h3>
+            <button class="btn btn-icon btn-outline" onclick="closeModal('notifDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="notifDetailBody" style="max-height:72vh;overflow-y:auto;"></div>
+        <div class="modal-footer" id="notifDetailFooter"></div>
+    </div>
+</div>
+
 <!-- Auto-roster Modal -->
 <!-- Import Roster Modal -->
 <div class="modal-overlay" id="importRosterModal">
@@ -3042,12 +3054,39 @@ function _upcomingDatesForAmStarts(amStarts, daysAhead) {
 }
 
 // Fire one targeted in-app + push notification per recipient. Falls back gracefully when no targets.
+// Each row is stamped with the recipient as the "subject" (who it affects) unless the caller has
+// already named a different subject (e.g. an assistant self-edit fanned out to trainers).
 async function notifyUsers(userIds, opts) {
     if (!userIds || userIds.length === 0) return 0;
+    opts = opts || {};
     await Promise.all(userIds.map(function(uid) {
-        return emitNotification(Object.assign({}, opts, { target_user_id: uid }));
+        var data = Object.assign({}, opts.data || {});
+        if (data.subject_user_id == null) data.subject_user_id = uid;
+        if (data.subject_name == null) data.subject_name = _nameForUserId(uid);
+        return emitNotification(Object.assign({}, opts, { data: data, target_user_id: uid }));
     }));
     return userIds.length;
+}
+
+// Notify every trainer (except the person acting) that an assistant changed their OWN availability.
+// Targeted per-trainer so assistants are never pinged; the subject stays the acting assistant so the
+// bell + detail view read "Sarah's availability …" for the trainers who receive it.
+async function notifyTrainersOfAssistantChange(opts) {
+    if (!currentUser) return 0;
+    if (!profilesCache) { try { await getProfiles(); } catch (e) {} }
+    var meName = _currentActorName();
+    var trainerIds = (profilesCache || [])
+        .filter(function(p) { return p.role === 'trainer' && p.id !== currentUser.id; })
+        .map(function(p) { return p.id; });
+    if (!trainerIds.length) return 0;
+    opts = opts || {};
+    var data = Object.assign({ subject_user_id: currentUser.id, subject_name: meName }, opts.data || {});
+    return notifyUsers(trainerIds, {
+        type: opts.type || 'availability_changed_by_assistant',
+        title: opts.title || (meName + ' updated their availability'),
+        message: opts.message || '',
+        data: data
+    });
 }
 
 // Targeted notification helper — fire a per-user push when a trainer changes that staff member's
@@ -3056,11 +3095,16 @@ async function notifyStaffOfRosterChange(targetUserId, opts) {
     if (!targetUserId) return;
     if (currentUser && targetUserId === currentUser.id) return;
     opts = opts || {};
+    // Stamp WHO this affects so trainers (who see everyone's notifications) get a correctly-worded
+    // bell entry and the detail view can name the affected person.
+    var data = Object.assign({}, opts.data || {});
+    if (data.subject_user_id == null) data.subject_user_id = targetUserId;
+    if (data.subject_name == null) data.subject_name = _nameForUserId(targetUserId);
     return emitNotification({
         type: opts.type || 'roster_changed',
         title: opts.title || 'Your roster was updated',
         message: opts.message || '',
-        data: opts.data || {},
+        data: data,
         target_user_id: targetUserId
     });
 }
@@ -3069,11 +3113,17 @@ async function notifyStaffOfRosterChange(targetUserId, opts) {
 // opts.target_user_id (optional): when set, only that user receives the in-app notif + push.
 //   When omitted, the row is a broadcast and every device receives the push.
 async function emitNotification(opts) {
+    // Always stamp WHO made the change and WHEN, so every recipient can see the source in the
+    // bell + detail view. Older rows without these keys still render via fallbacks downstream.
+    var data = Object.assign({}, opts.data || {});
+    if (currentUser && data.actor_id == null) data.actor_id = currentUser.id;
+    if (data.actor_name == null) { var _an = _currentActorName(); if (_an) data.actor_name = _an; }
+    if (data.emitted_at == null) data.emitted_at = new Date().toISOString();
     var row = {
         type: opts.type,
         title: opts.title,
         message: opts.message,
-        data: opts.data || {}
+        data: data
     };
     if (opts.target_user_id) row.target_user_id = opts.target_user_id;
     try {
@@ -3084,7 +3134,7 @@ async function emitNotification(opts) {
         var pushBody = {
             title: opts.title,
             body: opts.message,
-            data: opts.data || {},
+            data: data,
             tag: 'cbd-' + (opts.type || 'notif')
         };
         if (opts.target_user_id) pushBody.target_user_id = opts.target_user_id;
@@ -4305,6 +4355,11 @@ async function clearAllMyAvailMonth() {
     var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', currentUser.id).gte('date', startDate).lte('date', endDate);
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     assistantAvailCache['_my'] = {};
+    notifyTrainersOfAssistantChange({
+        title: _currentActorName() + ' updated their availability',
+        message: 'All availability for ' + MONTH_NAMES[myAvailMonth] + ' ' + myAvailYear + ' was cleared',
+        data: { month: myAvailMonth, year: myAvailYear, action: 'self_bulk_cleared' }
+    });
     showToast(MONTH_NAMES[myAvailMonth] + ' cleared'); renderMyAvail();
 }
 
@@ -4404,10 +4459,11 @@ async function saveDayAvailability() {
     if (targetStaff) {
         var roleLbl = dayRole === 'head_trainer' ? 'Head Trainer' : 'Assistant';
         var statusLbl = status === 'available' ? 'rostered on' : status === 'partial' ? 'partially rostered' : 'unrostered';
+        var _hrs = _formatHoursRange(startTime, endTime);
         notifyStaffOfRosterChange(targetStaff.user_id, {
             title: 'Your roster was updated',
-            message: savedDate + ' — ' + statusLbl + (status !== 'unavailable' ? ' as ' + roleLbl : ''),
-            data: { staff_id: selectedStaffId, date: savedDate, status: status, day_role: dayRole }
+            message: _prettyDateShort(savedDate) + ' — ' + statusLbl + (status !== 'unavailable' ? ' as ' + roleLbl : '') + (_hrs ? ' (' + _hrs + ')' : ''),
+            data: { staff_id: selectedStaffId, date: savedDate, status: status, day_role: dayRole, start_time: startTime, end_time: endTime, note: note }
         });
     }
     closeModal('dayModal'); selectedDay = null; renderCalendar(); updateSummary(); showToast('Roster saved');
@@ -5650,6 +5706,14 @@ async function saveMyPattern() {
         var p = profilesCache.find(function(x){ return x.id === currentUser.id; });
         if (p) p.available_dows = dows;
     }
+    // Notify trainers that this assistant changed their standing weekly availability pattern.
+    var _dowShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var _dowLabels = [1,2,3,4,5,6,0].filter(function(d) { return dows.indexOf(d) >= 0; }).map(function(d) { return _dowShort[d]; });
+    notifyTrainersOfAssistantChange({
+        title: _currentActorName() + ' updated their weekly availability',
+        message: _dowLabels.length ? ('Now available on: ' + _dowLabels.join(', ')) : 'Now marked unavailable every day',
+        data: { available_dows: dows.slice(), action: 'self_pattern' }
+    });
     // Re-render the overrides calendar so the new weekly pattern shows immediately
     // (previously it only updated after a full page refresh).
     if (typeof renderMyAvail === 'function') renderMyAvail();
@@ -5782,6 +5846,12 @@ async function saveMyAvailability() {
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     if (!assistantAvailCache['_my']) assistantAvailCache['_my'] = {};
     assistantAvailCache['_my'][myAvailSelectedDay] = row;
+    // Let the trainers know — an assistant marking themselves off (or back on) directly affects roster planning.
+    notifyTrainersOfAssistantChange({
+        title: _currentActorName() + ' updated their availability',
+        message: _prettyDateShort(myAvailSelectedDay) + ' — ' + (isAvail ? 'Available' : 'Not available') + (note ? ' — "' + note + '"' : ''),
+        data: { date: myAvailSelectedDay, is_available: isAvail, note: note, action: 'self_set' }
+    });
     closeModal('myAvailModal'); myAvailSelectedDay = null; renderMyAvail(); showToast('Availability saved');
 }
 
@@ -5807,6 +5877,11 @@ async function bulkSetMyAvail(isAvail) {
     var result = await sb.from('cbd_assistant_availability').upsert(upserts, { onConflict: 'user_id,date' });
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(upserts.length + ' day' + (upserts.length === 1 ? '' : 's') + ' set to ' + (isAvail ? 'available' : 'not available'));
+    notifyTrainersOfAssistantChange({
+        title: _currentActorName() + ' updated their availability',
+        message: allowed.length + ' day' + (allowed.length === 1 ? '' : 's') + ' — set to ' + (isAvail ? 'Available' : 'Not available'),
+        data: { dates: allowed.slice(), is_available: isAvail, action: 'self_bulk_set' }
+    });
     await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
 }
 async function bulkClearMyAvail() {
@@ -5816,6 +5891,11 @@ async function bulkClearMyAvail() {
     var result = await sb.from('cbd_assistant_availability').delete().eq('user_id', currentUser.id).in('date', dates);
     if (result.error) { showToast('Error: ' + result.error.message); return; }
     showToast(multiSelectedDays.size + ' days cleared');
+    notifyTrainersOfAssistantChange({
+        title: _currentActorName() + ' updated their availability',
+        message: dates.length + ' day' + (dates.length === 1 ? '' : 's') + ' — availability cleared',
+        data: { dates: dates.slice(), action: 'self_bulk_cleared' }
+    });
     await loadMyAvailForMonth(myAvailMonth, myAvailYear); clearMultiSelect();
 }
 
@@ -6810,6 +6890,88 @@ function _nameForUserId(uid) {
     return (s && s.name) || 'A staff member';
 }
 
+// Display name for the currently signed-in user (the person making a change).
+function _currentActorName() {
+    if (!currentUser) return '';
+    if (currentProfile && currentProfile.full_name) return currentProfile.full_name;
+    return _nameForUserId(currentUser.id);
+}
+
+// Human label + icon + accent colour for each notification type — used by the bell list and detail modal.
+function _notifTypeMeta(type) {
+    switch (type) {
+        case 'roster_changed':                    return { label: 'Roster change',       icon: '📅', accent: 'var(--primary)' };
+        case 'availability_changed_by_trainer':   return { label: 'Availability change',  icon: '🗓️', accent: 'var(--primary)' };
+        case 'availability_changed_by_assistant': return { label: 'Availability change',  icon: '🗓️', accent: 'var(--warning)' };
+        case 'class_changed':                     return { label: 'Class update',         icon: '🎓', accent: 'var(--primary)' };
+        case 'vasto_staffing_changed':            return { label: 'Staffing change',      icon: '👥', accent: 'var(--warning)' };
+        case 'manual_announcement':               return { label: 'Announcement',         icon: '📣', accent: 'var(--primary)' };
+        default:                                  return { label: 'Update',               icon: '🔔', accent: 'var(--gray-500)' };
+    }
+}
+
+// Pretty date helpers for a YYYY-MM-DD string.
+function _prettyDateLong(dateStr) {
+    try { return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+    catch (e) { return dateStr; }
+}
+function _prettyDateShort(dateStr) {
+    try { return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }); }
+    catch (e) { return dateStr; }
+}
+
+// Plain-English sentence for an `action` code stored on a notification.
+function _actionSentence(action) {
+    switch (action) {
+        case 'cleared':          return 'These roster entries were cleared.';
+        case 'cleared_month':    return 'All shifts for the month were cleared.';
+        case 'unrostered':       return 'Taken off the roster.';
+        case 'rostered_on':      return 'Added to the roster.';
+        case 'weekly_pattern':   return 'The weekly availability pattern was changed.';
+        case 'bulk_set':         return 'Availability was set in bulk.';
+        case 'bulk_cleared':     return 'Availability was cleared in bulk.';
+        case 'self_set':         return 'Set by the staff member themselves.';
+        case 'self_bulk_set':    return 'Set in bulk by the staff member themselves.';
+        case 'self_bulk_cleared':return 'Cleared in bulk by the staff member themselves.';
+        case 'self_pattern':     return 'The staff member changed their own weekly pattern.';
+        default:                 return '';
+    }
+}
+
+// A small coloured status pill (returns an HTML string).
+function _notifPill(text, color) {
+    return '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:0.78rem;font-weight:700;' +
+        'color:#fff;background:' + color + ';">' + escHtml(text) + '</span>';
+}
+function _statusPill(status) {
+    if (status === 'available') return _notifPill('Rostered on', 'var(--success)');
+    if (status === 'partial')   return _notifPill('Partial', 'var(--warning)');
+    if (status === 'unavailable') return _notifPill('Unrostered', 'var(--danger)');
+    return '';
+}
+
+// Re-word a "Your …" title into third person for viewers who are NOT the target (trainers on oversight).
+function _rewordTitleForViewer(n) {
+    var data = n.data || {};
+    var title = n.title || '';
+    if (n.target_user_id && currentUser && n.target_user_id !== currentUser.id && /^your\b/i.test(title)) {
+        var subjName = data.subject_name || _nameForUserId(n.target_user_id);
+        return subjName + "'s" + title.slice(4);
+    }
+    return title;
+}
+
+// Label for who a notification affects, from the current viewer's perspective.
+// The affected person (subject) can differ from the recipient (target) — e.g. an assistant's
+// self-edit is delivered TO a trainer but is ABOUT the assistant — so prefer the explicit subject.
+function _subjectLabelForViewer(n) {
+    var data = n.data || {};
+    var subjId = data.subject_user_id || n.target_user_id;
+    if (!subjId) return 'All staff';
+    if (currentUser && subjId === currentUser.id) return 'You';
+    return data.subject_name || _nameForUserId(subjId);
+}
+
 function renderNotifList() {
     var list = document.getElementById('notifList');
     if (notifications.length === 0) {
@@ -6819,26 +6981,29 @@ function renderNotifList() {
     list.innerHTML = notifications.map(function(n) {
         var isRead = !!notifReads[n.id];
         var data = n.data || {};
+        var meta = _notifTypeMeta(n.type);
         // Availability/roster notifications are stored from the recipient's ("Your …") perspective
         // and are ALSO visible to trainers for oversight. When the viewer isn't the target, re-word
         // to third person so it reads correctly in a trainer's bell (e.g. "William's availability …").
-        var displayTitle = n.title;
-        if (n.target_user_id && currentUser && n.target_user_id !== currentUser.id && /^your\b/i.test(n.title)) {
-            var subjName = data.subject_name || _nameForUserId(n.target_user_id);
-            displayTitle = subjName + "'s" + n.title.slice(4);
-        }
-        var dateStr = data.date ? new Date(data.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-        var statusColor = data.is_available ? 'var(--success)' : 'var(--danger)';
-        var statusText = data.is_available ? 'Available' : 'Not available';
-        return '<div class="notif-item" data-id="' + n.id + '" style="padding:12px 16px;border-bottom:1px solid var(--gray-200);' + (isRead ? 'background:var(--surface);' : 'background:var(--primary-light);') + 'cursor:pointer;display:flex;gap:10px;align-items:flex-start;" onclick="markNotificationRead(\'' + n.id + '\')">' +
-            (isRead ? '' : '<span style="width:8px;height:8px;border-radius:50%;background:var(--primary);margin-top:6px;flex-shrink:0;"></span>') +
+        var displayTitle = _rewordTitleForViewer(n);
+        // "Who it affects / who changed it" line — the key extra context trainers were missing.
+        var subjectLabel = _subjectLabelForViewer(n);
+        var actorName = data.actor_name;
+        var showActor = actorName && (!currentUser || data.actor_id !== currentUser.id) && actorName !== subjectLabel;
+        var whoLine = 'Affects ' + escHtml(subjectLabel) + (showActor ? ' &middot; by ' + escHtml(actorName) : '');
+        return '<div class="notif-item" data-id="' + n.id + '" style="padding:12px 16px;border-bottom:1px solid var(--gray-200);' + (isRead ? 'background:var(--surface);' : 'background:var(--primary-light);') + 'cursor:pointer;display:flex;gap:10px;align-items:flex-start;" onclick="openNotifDetail(\'' + n.id + '\')">' +
+            '<span style="font-size:1.1rem;line-height:1.2;flex-shrink:0;" aria-hidden="true">' + meta.icon + '</span>' +
             '<div style="flex:1;min-width:0;">' +
-                '<div style="font-weight:600;font-size:0.9rem;margin-bottom:2px;">' + escHtml(displayTitle) + '</div>' +
-                '<div style="font-size:0.85rem;color:var(--gray-600);margin-bottom:4px;">' +
-                    (dateStr ? '<span style="color:' + statusColor + ';font-weight:600;">' + statusText + '</span> on ' + escHtml(dateStr) : escHtml(n.message)) +
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">' +
+                    '<span style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:' + meta.accent + ';">' + escHtml(meta.label) + '</span>' +
+                    (isRead ? '' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--primary);flex-shrink:0;"></span>') +
+                    '<span style="margin-left:auto;font-size:0.72rem;color:var(--gray-400);white-space:nowrap;">' + formatNotifTime(n.created_at) + '</span>' +
                 '</div>' +
+                '<div style="font-weight:600;font-size:0.9rem;margin-bottom:2px;">' + escHtml(displayTitle) + '</div>' +
+                '<div style="font-size:0.85rem;color:var(--gray-600);margin-bottom:3px;white-space:pre-wrap;">' + escHtml(n.message || '') + '</div>' +
+                '<div style="font-size:0.76rem;color:var(--gray-500);">' + whoLine + '</div>' +
                 (data.note ? '<div style="font-size:0.82rem;color:var(--gray-700);font-style:italic;background:var(--surface-2);padding:4px 8px;border-radius:4px;margin-top:4px;border-left:3px solid var(--primary);">"' + escHtml(data.note) + '"</div>' : '') +
-                '<div style="font-size:0.72rem;color:var(--gray-400);margin-top:4px;">' + formatNotifTime(n.created_at) + '</div>' +
+                '<div style="font-size:0.72rem;color:var(--primary);margin-top:5px;font-weight:600;">View details ›</div>' +
             '</div>' +
         '</div>';
     }).join('');
@@ -6847,6 +7012,197 @@ function renderNotifList() {
 async function openNotifPanel() {
     document.getElementById('notifModal').classList.add('active');
     renderNotifList();
+}
+
+// ============ Notification detail modal ============
+// Opening a notification marks it read AND shows a full breakdown of what changed, who it affects,
+// who made the change, and (for a single-date change) who is currently rostered on that day.
+async function openNotifDetail(notifId) {
+    var n = notifications.find(function(x) { return x.id === notifId; });
+    if (!n) return;
+    markNotificationRead(notifId);
+    renderNotifDetail(n);
+    document.getElementById('notifDetailModal').classList.add('active');
+    // Best-effort "who's on this day" snapshot for single-date notifications.
+    var d = (n.data && n.data.date) || null;
+    if (d) {
+        var snap = await _loadDaySnapshot(d);
+        _fillDaySnapshot(d, snap);
+    }
+}
+
+// A labelled fact row for the detail modal.
+function _detailRow(label, valueHtml) {
+    return '<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border-subtle);">' +
+        '<div style="flex:0 0 116px;font-size:0.8rem;color:var(--gray-500);font-weight:600;">' + escHtml(label) + '</div>' +
+        '<div style="flex:1;min-width:0;font-size:0.88rem;color:var(--text-secondary);">' + valueHtml + '</div>' +
+    '</div>';
+}
+
+function renderNotifDetail(n) {
+    var data = n.data || {};
+    var meta = _notifTypeMeta(n.type);
+    document.getElementById('notifDetailTitle').textContent = _rewordTitleForViewer(n);
+
+    var rows = '';
+    // Type + when
+    rows += _detailRow('Type', '<span style="color:' + meta.accent + ';font-weight:700;">' + meta.icon + ' ' + escHtml(meta.label) + '</span>');
+    var whenIso = data.emitted_at || n.created_at;
+    var whenTxt = '';
+    try { whenTxt = new Date(whenIso).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+    catch (e) { whenTxt = String(whenIso || ''); }
+    rows += _detailRow('When', escHtml(whenTxt) + ' <span style="color:var(--gray-400);">(' + escHtml(formatNotifTime(n.created_at)) + ')</span>');
+
+    // Who it affects + who made the change
+    rows += _detailRow('Affects', '<strong>' + escHtml(_subjectLabelForViewer(n)) + '</strong>');
+    if (data.actor_name) {
+        var actorTxt = (currentUser && data.actor_id === currentUser.id) ? (escHtml(data.actor_name) + ' (you)') : escHtml(data.actor_name);
+        rows += _detailRow('Changed by', actorTxt);
+    }
+
+    // The date(s) involved
+    if (data.date) {
+        rows += _detailRow('Date', escHtml(_prettyDateLong(data.date)));
+    } else if (Array.isArray(data.dates) && data.dates.length) {
+        var chips = data.dates.slice().sort().map(function(d) {
+            return '<span style="display:inline-block;background:var(--surface-2);border:1px solid var(--border-subtle);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0;font-size:0.8rem;">' + escHtml(_prettyDateShort(d)) + '</span>';
+        }).join('');
+        rows += _detailRow(data.dates.length + ' day' + (data.dates.length === 1 ? '' : 's'), chips);
+    } else if (data.month != null && data.year != null) {
+        rows += _detailRow('Period', escHtml((MONTH_NAMES[data.month] || '') + ' ' + data.year));
+    }
+
+    // Roster status / availability
+    if (data.status) rows += _detailRow('Status', _statusPill(data.status));
+    if (typeof data.is_available === 'boolean') {
+        rows += _detailRow('Availability', data.is_available ? _notifPill('Available', 'var(--success)') : _notifPill('Not available', 'var(--danger)'));
+    }
+    if (data.day_role) rows += _detailRow('Role', escHtml(data.day_role === 'head_trainer' ? 'Head Trainer' : 'Assistant'));
+
+    // Hours
+    var hrs = _formatHoursRange(data.start_time, data.end_time);
+    if (hrs) rows += _detailRow('Hours', escHtml(hrs));
+
+    // Student counts (e.g. Vasto staffing changes)
+    if (data.students_am != null || data.students_pm != null) {
+        rows += _detailRow('Students', 'AM <strong>' + escHtml(String(data.students_am != null ? data.students_am : '—')) + '</strong> &middot; PM <strong>' + escHtml(String(data.students_pm != null ? data.students_pm : '—')) + '</strong>');
+    }
+    if (data.needed_to != null) {
+        var needTxt = data.needed_to + ' assistant' + (data.needed_to === 1 ? '' : 's');
+        if (data.needed_from != null && data.needed_from !== data.needed_to) needTxt += ' <span style="color:var(--gray-400);">(was ' + data.needed_from + ')</span>';
+        rows += _detailRow('Assistants needed', needTxt);
+    }
+
+    // Generic before/after change list (any caller can attach data.changes = [{label, from, to}]).
+    if (Array.isArray(data.changes) && data.changes.length) {
+        var chg = data.changes.map(function(c) {
+            return '<div style="margin-bottom:3px;">' + escHtml(c.label || 'Changed') + ': ' +
+                '<span style="color:var(--gray-400);text-decoration:line-through;">' + escHtml(String(c.from == null ? '—' : c.from)) + '</span> ' +
+                '<span style="color:var(--gray-400);">→</span> ' +
+                '<strong>' + escHtml(String(c.to == null ? '—' : c.to)) + '</strong></div>';
+        }).join('');
+        rows += _detailRow('Changes', chg);
+    }
+
+    // Action sentence (cleared, rostered on, weekly pattern, …)
+    var actionTxt = _actionSentence(data.action);
+    if (actionTxt) rows += _detailRow('Note', escHtml(actionTxt));
+
+    // Free-text note attached to the change
+    if (data.note) {
+        rows += _detailRow('Message', '<span style="font-style:italic;">"' + escHtml(data.note) + '"</span>');
+    }
+
+    // Always include the raw message as a friendly summary at the top.
+    var summaryHtml = '';
+    if (n.message) {
+        summaryHtml = '<div style="font-size:0.92rem;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-subtle);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;white-space:pre-wrap;">' + escHtml(n.message) + '</div>';
+    }
+
+    var snapshotSlot = data.date ? '<div id="notifSnapshotSlot" style="margin-top:16px;"><div style="font-size:0.8rem;color:var(--gray-500);">Loading who’s on this day…</div></div>' : '';
+
+    document.getElementById('notifDetailBody').innerHTML = summaryHtml + '<div>' + rows + '</div>' + snapshotSlot;
+
+    // Footer actions
+    var footer = document.getElementById('notifDetailFooter');
+    var gotoBtn = data.date ? '<button class="btn btn-outline" onclick="_gotoNotifDate(\'' + escHtml(data.date) + '\')">Go to this day</button>' : '';
+    footer.innerHTML = gotoBtn + '<button class="btn btn-success" onclick="closeModal(\'notifDetailModal\')">Close</button>';
+}
+
+function _formatHoursRange(start, end) {
+    var s = _trimTime(start), e = _trimTime(end);
+    if (!s && !e) return '';
+    if (s && e) return s + '–' + e;
+    return s || e;
+}
+
+// Fetch the staff explicitly rostered (available/partial) on a single date, best-effort.
+async function _loadDaySnapshot(dateStr) {
+    try {
+        var res = await sb.from('cbd_availability')
+            .select('staff_id,status,start_time,end_time,day_role,note')
+            .eq('date', dateStr)
+            .in('status', ['available', 'partial']);
+        var rows = res.data || [];
+        return rows.map(function(r) {
+            var s = (staffList || []).find(function(x) { return x.id === r.staff_id; });
+            return {
+                name: (s && s.name) || 'Unknown staff',
+                color: (s && s.color) || 'var(--gray-500)',
+                status: r.status,
+                day_role: r.day_role || 'assistant',
+                start_time: r.start_time,
+                end_time: r.end_time,
+                note: r.note
+            };
+        }).sort(function(a, b) {
+            if ((a.day_role === 'head_trainer') !== (b.day_role === 'head_trainer')) return a.day_role === 'head_trainer' ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+    } catch (e) { return null; }
+}
+
+function _fillDaySnapshot(dateStr, snap) {
+    var slot = document.getElementById('notifSnapshotSlot');
+    if (!slot) return;
+    var header = '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--gray-500);margin-bottom:8px;">Rostered on ' + escHtml(_prettyDateShort(dateStr)) + '</div>';
+    if (snap == null) {
+        slot.innerHTML = header + '<div style="font-size:0.85rem;color:var(--gray-500);">Couldn’t load the roster for this day.</div>';
+        return;
+    }
+    if (snap.length === 0) {
+        slot.innerHTML = header + '<div style="font-size:0.85rem;color:var(--gray-500);">No one is explicitly rostered on this day yet.</div>';
+        return;
+    }
+    var items = snap.map(function(p) {
+        var hrs = _formatHoursRange(p.start_time, p.end_time);
+        return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--border-subtle);">' +
+            '<span style="width:10px;height:10px;border-radius:50%;background:' + p.color + ';flex-shrink:0;"></span>' +
+            '<span style="font-weight:600;font-size:0.88rem;">' + escHtml(p.name) + '</span>' +
+            (p.day_role === 'head_trainer' ? '<span style="font-size:0.72rem;background:var(--primary);color:#fff;border-radius:999px;padding:1px 8px;">Head Trainer</span>' : '') +
+            (p.status === 'partial' ? '<span style="font-size:0.72rem;background:var(--warning);color:#fff;border-radius:999px;padding:1px 8px;">Partial</span>' : '') +
+            (hrs ? '<span style="margin-left:auto;font-size:0.8rem;color:var(--gray-500);">' + escHtml(hrs) + '</span>' : '') +
+        '</div>';
+    }).join('');
+    slot.innerHTML = header + '<div>' + items + '</div>';
+}
+
+// Jump the calendar to the date a notification refers to (role-appropriate view).
+function _gotoNotifDate(dateStr) {
+    if (!dateStr) return;
+    var p = String(dateStr).split('-');
+    if (p.length < 2) return;
+    var y = parseInt(p[0], 10), m = parseInt(p[1], 10) - 1;
+    if (isNaN(y) || isNaN(m)) return;
+    closeModal('notifDetailModal');
+    closeModal('notifModal');
+    if (isActualTrainer() && !viewAsAssistant) {
+        currentMonth = m; currentYear = y;
+        switchTab('roster');
+    } else {
+        myRosterMonth = m; myRosterYear = y;
+        switchTab('myroster');
+    }
 }
 
 async function markNotificationRead(notifId) {
@@ -7241,11 +7597,11 @@ async function saveDayClassAndRoster() {
     // Notify affected staff: rostered on, taken off, and (for those staying on) class-detail changes.
     rosteredOnIds.forEach(function(sid) {
         var s = staffList.find(function(x) { return x.id === sid; });
-        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were rostered on for ' + dateStr, data: { date: dateStr, action: 'rostered_on' } });
+        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were rostered on for ' + _prettyDateShort(dateStr), data: { date: dateStr, status: 'available', action: 'rostered_on' } });
     });
     unrosteredIds.forEach(function(sid) {
         var s = staffList.find(function(x) { return x.id === sid; });
-        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were taken off the roster for ' + dateStr, data: { date: dateStr, action: 'unrostered' } });
+        if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were taken off the roster for ' + _prettyDateShort(dateStr), data: { date: dateStr, action: 'unrostered' } });
     });
     var _dcClassChanged = (prev.am_start_time || null) !== (amStart || null) || (prev.am_end_time || null) !== (amEnd || null)
         || (prev.pm_start_time || null) !== (pmStart || null) || (prev.pm_end_time || null) !== (pmEnd || null)
@@ -7255,7 +7611,20 @@ async function saveDayClassAndRoster() {
         var _dcJustAdded = {};
         rosteredOnIds.forEach(function(sid) { var s = staffList.find(function(x) { return x.id === sid; }); if (s && s.user_id) _dcJustAdded[s.user_id] = true; });
         var _dcContinuing = _affectedUserIdsForDates([dateStr]).filter(function(u) { return !_dcJustAdded[u]; });
-        if (_dcContinuing.length) notifyUsers(_dcContinuing, { type: 'class_changed', title: 'Class details updated', message: 'Class details for ' + dateStr + ' were updated', data: { date: dateStr } });
+        if (_dcContinuing.length) {
+            // Build an explicit before/after list so recipients see exactly what changed.
+            var _dcChanges = [];
+            var _amOld = _formatHoursRange(prev.am_start_time, prev.am_end_time), _amNew = _formatHoursRange(amStart, amEnd);
+            if (_amOld !== _amNew) _dcChanges.push({ label: 'AM hours', from: _amOld || 'none', to: _amNew || 'none' });
+            var _pmOld = _formatHoursRange(prev.pm_start_time, prev.pm_end_time), _pmNew = _formatHoursRange(pmStart, pmEnd);
+            if (_pmOld !== _pmNew) _dcChanges.push({ label: 'PM hours', from: _pmOld || 'none', to: _pmNew || 'none' });
+            if ((prev.students_am || 0) !== studentsAM) _dcChanges.push({ label: 'AM students', from: (prev.students_am || 0), to: studentsAM });
+            if ((prev.students_pm || 0) !== studentsPM) _dcChanges.push({ label: 'PM students', from: (prev.students_pm || 0), to: studentsPM });
+            if (!!prev.capped_am !== cappedAM) _dcChanges.push({ label: 'AM capped', from: (prev.capped_am ? 'Yes' : 'No'), to: (cappedAM ? 'Yes' : 'No') });
+            if (!!prev.capped_pm !== cappedPM) _dcChanges.push({ label: 'PM capped', from: (prev.capped_pm ? 'Yes' : 'No'), to: (cappedPM ? 'Yes' : 'No') });
+            var _dcMsg = _dcChanges.length ? _dcChanges.map(function(c) { return c.label + ': ' + c.from + ' → ' + c.to; }).join(' · ') : 'Class details were updated';
+            notifyUsers(_dcContinuing, { type: 'class_changed', title: 'Class details updated', message: _prettyDateShort(dateStr) + ' — ' + _dcMsg, data: { date: dateStr, changes: _dcChanges, students_am: studentsAM, students_pm: studentsPM } });
+        }
     }
 
     setLoading(saveBtn, false);
