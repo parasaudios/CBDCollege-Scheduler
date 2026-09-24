@@ -11,7 +11,9 @@
 //  - This whole function is meant to be deleted once Vasto exposes an API / the
 //    integration is no longer needed.
 //
-// Invoke: POST with header  x-sync-secret: <VASTO_SYNC_SECRET>
+// Invoke: POST with header  x-sync-secret: <VASTO_SYNC_SECRET>  (the cron caller), OR
+//   POST from the app as a signed-in trainer (the function validates the user's JWT and
+//   checks cbd_profiles.role = 'trainer'). This powers the in-app "Sync students now" button.
 // Scheduled by pg_cron (see setup notes) every few hours.
 //
 // Required secrets:
@@ -351,14 +353,32 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  // Authorize the invocation (the cron job passes this header).
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("CBD_SECRET_KEY")!);
+
+  // Authorize the invocation. Two accepted callers:
+  //   1) the cron job, which passes the shared x-sync-secret header; or
+  //   2) a signed-in trainer using "Sync students now" in the app — verified from their JWT
+  //      (the function is deployed --no-verify-jwt, so we validate the token ourselves).
   const secret = Deno.env.get("VASTO_SYNC_SECRET");
-  if (!secret || req.headers.get("x-sync-secret") !== secret) return json({ error: "Unauthorized" }, 401);
+  const bySecret = !!secret && req.headers.get("x-sync-secret") === secret;
+  let byTrainer = false;
+  if (!bySecret) {
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    // The client sends the anon/publishable key by default; only a genuine user JWT can authorize.
+    if (token && token !== Deno.env.get("SUPABASE_ANON_KEY")) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (!error && user) {
+          const { data: prof } = await supabase.from("cbd_profiles").select("role").eq("id", user.id).maybeSingle();
+          byTrainer = prof?.role === "trainer";
+        }
+      } catch (_) { /* not a valid user token → stays unauthorized */ }
+    }
+  }
+  if (!bySecret && !byTrainer) return json({ error: "Unauthorized" }, 401);
 
   const accounts = collectAccounts();
   if (accounts.length === 0) return json({ error: "No Vasto accounts configured" }, 500);
-
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("CBD_SECRET_KEY")!);
 
   try {
     // Build the date window [today, today+DAYS_AHEAD) anchored to Melbourne's date.

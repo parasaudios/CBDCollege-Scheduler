@@ -724,6 +724,7 @@
                                 <button class="btn btn-outline btn-icon" onclick="changeMonth(1)">&#8250;</button>
                             </div>
                             <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
+                            <button class="btn btn-outline btn-sm" id="rosterSyncBtn" onclick="syncVastoStudents(this)" title="Fetch the latest student numbers from Vasto for the next 30 days">&#8635; Sync students</button>
                         </div>
                         <div class="calendar-grid" id="calendarGrid"></div>
                     </div>
@@ -814,6 +815,13 @@
 
         <!-- TRAINER: Classes Tab -->
         <div id="tab-classes" class="tab-content" style="display:none;">
+            <div class="card" style="margin-bottom:14px;">
+                <div class="card-header"><div><h2>Student Numbers (Vasto)</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Pull the latest AM/PM student counts from Vasto for the next 30 days. Days that really have no students are recorded as 0; days not yet synced keep showing the per-weekday default until then.</div></div></div>
+                <div class="card-body">
+                    <button class="btn btn-success" id="vastoSyncBtn" onclick="syncVastoStudents(this)">&#8635; Sync next 30 days</button>
+                    <div id="vastoSyncStatus" style="margin-top:10px;font-size:0.85rem;color:var(--gray-500);" aria-live="polite"></div>
+                </div>
+            </div>
             <div class="card" style="margin-bottom:14px;">
                 <div class="card-header"><div><h2>Default Class Times</h2><div style="font-size:0.85rem;color:var(--gray-500);margin-top:2px;">Per-day-of-week defaults. Each day automatically uses its own row unless that specific date has been manually overridden.</div></div></div>
                 <div class="card-body">
@@ -2422,7 +2430,9 @@ function _cellNumBadge(info, rostered) {
     if (!info) return '';
     var am = info.students_am || 0, pm = info.students_pm || 0;
     if (am <= 0 && pm <= 0) return '';
-    var label = (am === pm) ? String(am) : (am + '/' + pm);
+    // Always show both AM and PM (e.g. "3/3"), never collapse an equal split to one number,
+    // so an even day and a one-sided day are never confused.
+    var label = am + '/' + pm;
     return '<div class="myroster-status-icon cal-cell-num ' + (rostered ? 'check' : 'cross') +
         '" aria-label="' + am + ' AM / ' + pm + ' PM students — ' + (rostered ? 'rostered' : 'not rostered') + '">' + label + '</div>';
 }
@@ -6861,6 +6871,53 @@ async function _dataPollTick() {
 }
 function stopDataPolling() {
     if (_dataPollTimer) { clearInterval(_dataPollTimer); _dataPollTimer = null; }
+}
+
+// ============ Manual Vasto student sync (trainer button) ============
+// Triggers the sync-vasto-students edge function for the next 30 days, then reloads the class
+// numbers so the calendars update immediately. The function authorises the caller from their
+// trainer JWT (sent automatically by functions.invoke), so no secret is needed in the client.
+async function syncVastoStudents(btn) {
+    if (!isActualTrainer()) { showToast('Trainers only'); return; }
+    var statusEl = document.getElementById('vastoSyncStatus');
+    if (statusEl) statusEl.textContent = 'Syncing the next 30 days from Vasto…';
+    setLoading(btn, true);
+    showToast('Syncing students…');
+    try {
+        var res = await sb.functions.invoke('sync-vasto-students', { body: { source: 'manual' } });
+        if (res.error) {
+            // Surface the function's own error message when we can read it (e.g. "Unauthorized").
+            var detail = '';
+            try {
+                if (res.error.context && typeof res.error.context.json === 'function') {
+                    var b = await res.error.context.json();
+                    if (b && b.error) detail = b.error;
+                }
+            } catch (e) {}
+            throw new Error(detail || res.error.message || 'Sync failed');
+        }
+        var d = res.data || {};
+        if (d.ok === false) throw new Error(d.error || 'Sync failed');
+        // Pull the freshly-written numbers back in and re-render the active view.
+        try { await _dataPollTick(); } catch (e) {}
+        if (typeof renderTodayHero === 'function') { try { renderTodayHero(); } catch (e) {} }
+        var updated = (typeof d.updated === 'number') ? d.updated : null;
+        var msg = (updated === null)
+            ? 'Students synced'
+            : ('Students synced · ' + updated + ' day' + (updated === 1 ? '' : 's') + ' updated');
+        if (statusEl) statusEl.textContent = msg + ' · ' + new Date().toLocaleTimeString();
+        showToast(msg);
+    } catch (e) {
+        console.warn('vasto sync failed:', e);
+        var em = (e && (e.message || e.error)) ? (e.message || e.error) : String(e);
+        // A non-2xx / 401 here usually means the edge function hasn't been redeployed with the
+        // trainer-JWT auth path yet.
+        var hint = /non-2xx|401|unauthor/i.test(em) ? ' — the sync function may need redeploying' : '';
+        if (statusEl) statusEl.textContent = 'Sync failed: ' + em + hint;
+        showToast('Sync failed' + hint);
+    } finally {
+        setLoading(btn, false);
+    }
 }
 
 function stopNotifPolling() {
