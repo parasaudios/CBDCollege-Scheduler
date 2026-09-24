@@ -279,6 +279,9 @@
         .myroster-status-icon { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; line-height: 1; font-weight: 700; }
         .myroster-status-icon.check { color: var(--success); text-shadow: 0 1px 2px rgba(22,163,74,0.18); }
         .myroster-status-icon.cross { color: var(--danger); text-shadow: 0 1px 2px rgba(220,38,38,0.18); }
+        /* Student-count variant of the status slot: number instead of a tick/cross, still
+           green when rostered (.check) / red when not (.cross). */
+        .myroster-status-icon.cal-cell-num { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.3px; }
 
         /* Calendar cell content — readable, scannable */
         .calendar-day { padding: 6px 8px; }
@@ -597,6 +600,7 @@
             .cal-cell-mobile-status .cross { color: var(--danger); font-size: 0.95rem; line-height: 1; font-weight: 700; }
             /* On mobile, scale the desktop myroster icon down so it fits the small cell */
             .calendar-day .myroster-status-icon { font-size: 1.3rem; }
+            .calendar-day .myroster-status-icon.cal-cell-num { font-size: 0.95rem; }
             .cal-cell-mobile-status .badge { background: var(--primary); color: white; padding: 1px 5px; border-radius: 3px; font-size: 0.55rem; letter-spacing: 0.3px; }
             .cal-cell-mobile-status .ht-badge { background: var(--primary); }
             .cal-cell-mobile-status .ast-badge { background: var(--gray-400); }
@@ -2411,6 +2415,18 @@ function renderTodayHero() {
     '</div>';
 }
 
+// Compact per-cell status: the class's student count (AM/PM), shown in the status slot in
+// place of the old tick/cross — green when the relevant staff is rostered that day, red when
+// a class is on but they aren't. Returns '' when there are no students that day.
+function _cellNumBadge(info, rostered) {
+    if (!info) return '';
+    var am = info.students_am || 0, pm = info.students_pm || 0;
+    if (am <= 0 && pm <= 0) return '';
+    var label = (am === pm) ? String(am) : (am + '/' + pm);
+    return '<div class="myroster-status-icon cal-cell-num ' + (rostered ? 'check' : 'cross') +
+        '" aria-label="' + am + ' AM / ' + pm + ' PM students — ' + (rostered ? 'rostered' : 'not rostered') + '">' + label + '</div>';
+}
+
 // ============ Calendar (Trainer) ============
 function renderCalendar() {
     if (!selectedStaffId) return;
@@ -2478,12 +2494,7 @@ function renderCalendar() {
         // days with no class at all (weekend/holiday).
         var dayHasClass = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
         var staffIsOn = !!(entry && (entry.status === 'available' || entry.status === 'partial') && !rosterConflict);
-        var statusIconHtml = '';
-        if (staffIsOn) {
-            statusIconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
-        } else if (dayHasClass) {
-            statusIconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
-        }
+        var statusIconHtml = dayHasClass ? _cellNumBadge(info, staffIsOn) : '';
 
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + (holidayHere ? phHtml : (classBlockHtml + staffHtml + statusIconHtml)) + '</div>';
@@ -4536,11 +4547,7 @@ function renderOverview() {
         // Mobile-only status icon: check if anyone is rostered, cross if class day with nobody on it.
         var hasStaffOn = entries.some(function(e){ return e.status === 'available' || e.status === 'partial'; });
         var classDay = !holidayHere && ciHas;
-        var statusIconHtml = '';
-        if (!holidayHere) {
-            if (hasStaffOn) statusIconHtml = '<div class="myroster-status-icon check" aria-label="Staff rostered">&#10003;</div>';
-            else if (classDay) statusIconHtml = '<div class="myroster-status-icon cross" aria-label="No staff rostered">&#10005;</div>';
-        }
+        var statusIconHtml = classDay ? _cellNumBadge(ci, hasStaffOn) : '';
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + (holidayHere ? phHtml : (detailHtml + statusIconHtml)) + '</div>';
     }
@@ -5393,11 +5400,7 @@ function renderMyRoster() {
 
         var dayHeader = '<div class="day-number"><span>' + day + '</span></div>';
 
-        var iconHtml = '';
-        if (!holidayHere) {
-            if (isRostered) iconHtml = '<div class="myroster-status-icon check" aria-label="Rostered">&#10003;</div>';
-            else if (hasClass) iconHtml = '<div class="myroster-status-icon cross" aria-label="Not rostered">&#10005;</div>';
-        }
+        var iconHtml = (!holidayHere && hasClass) ? _cellNumBadge(dayClass, isRostered) : '';
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + (holidayHere ? phHtml : iconHtml) + '</div>';
     }
@@ -7427,10 +7430,18 @@ async function openDayDetail(dateStr) {
     }
     html += '</div>';
 
-    // Read-only staff list (auto-rostered — no manual toggles)
-    if (rostered.length > 0) {
+    // Assistants who are available that day but NOT rostered — shown alongside the rostered
+    // ones so a trainer can see who could be added. Only the actually-rostered ones show green.
+    var _rosteredIds = {};
+    rostered.forEach(function(r) { _rosteredIds[r.staff_id] = true; });
+    var availableExtra = staffList.filter(function(s) {
+        return !s.is_head_trainer && !_rosteredIds[s.id] && isStaffAvailableOnDate(s, dateStr);
+    });
+
+    var hasClassDay = amStudents > 0 || pmStudents > 0 || amCapped || pmCapped;
+    if (rostered.length > 0 || availableExtra.length > 0 || hasClassDay) {
         html += '<div class="detail-section">';
-        if (rosterIsAuto) html += '<div style="font-size:0.75rem;color:var(--gray-500);font-style:italic;margin-bottom:8px;">Showing the auto-roster based on patterns + priorities. Not yet committed to the database — use Auto-roster (Schedule → Team) to lock in.</div>';
+        if (rosterIsAuto && rostered.length > 0) html += '<div style="font-size:0.75rem;color:var(--gray-500);font-style:italic;margin-bottom:8px;">Showing the auto-roster based on patterns + priorities. Not yet committed to the database — use Auto-roster (Schedule → Team) to lock in.</div>';
         html += '<h4>Head Trainer' + (trainers.length > 1 ? 's' : '') + '</h4>';
         if (trainers.length > 0) {
             trainers.forEach(function(t) {
@@ -7442,8 +7453,10 @@ async function openDayDetail(dateStr) {
         }
         html += '</div>';
         html += '<div class="detail-section">';
-        html += '<h4>Assistants Rostered</h4>';
-        if (assistants.length > 0) {
+        html += '<h4>Assistants</h4>';
+        if (assistants.length === 0 && availableExtra.length === 0) {
+            html += '<div class="detail-no-data">No assistants rostered or available</div>';
+        } else {
             assistants.forEach(function(a) {
                 var statusBadge = a.status === 'available' ? '<span class="avail-badge yes" style="margin-left:auto;">Rostered</span>' : '<span class="avail-badge" style="margin-left:auto;background:var(--warning-light);color:#92400e;">Partial</span>';
                 var startTag = a.start_time ? ' <span style="color:var(--gray-500);font-size:0.78rem;font-weight:400;margin-left:6px;">starts ' + a.start_time.slice(0,5) + '</span>' : '';
@@ -7451,8 +7464,11 @@ async function openDayDetail(dateStr) {
                     (a.note ? '<div class="detail-staff-role">' + escHtml(a.note) + '</div>' : '') +
                     '</div>' + statusBadge + '</div>';
             });
-        } else {
-            html += '<div class="detail-no-data">No assistants rostered</div>';
+            // Available but not rostered — neutral badge, dimmed, never green.
+            availableExtra.forEach(function(s) {
+                html += '<div class="detail-staff-item" style="opacity:0.7;"><div class="detail-staff-dot" style="background:' + s.color + '"></div><div><div class="detail-staff-name">' + escHtml(s.name) + '</div></div>' +
+                    '<span class="avail-badge" style="margin-left:auto;background:var(--gray-100);color:var(--gray-600);">Available</span></div>';
+            });
         }
         html += '</div>';
     } else {
