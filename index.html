@@ -706,10 +706,13 @@
                         <h2>Staff Roster</h2>
                         <div style="font-size:0.8rem;color:var(--gray-500);margin-top:2px;">Select a staff member to view their roster calendar.</div>
                     </div>
-                    <div class="legend">
-                        <div class="legend-item"><div class="legend-color available"></div> Rostered</div>
-                        <div class="legend-item"><div class="legend-color partial"></div> Partial</div>
-                        <div class="legend-item"><div class="legend-color unavailable"></div> Unavailable</div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                        <button class="btn btn-outline btn-sm" id="rosterSyncBtn" onclick="syncVastoStudents(this)" title="Fetch the latest student numbers from Vasto for the next 30 days">&#8635; Sync students</button>
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color available"></div> Rostered</div>
+                            <div class="legend-item"><div class="legend-color partial"></div> Partial</div>
+                            <div class="legend-item"><div class="legend-color unavailable"></div> Unavailable</div>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
@@ -724,7 +727,6 @@
                                 <button class="btn btn-outline btn-icon" onclick="changeMonth(1)">&#8250;</button>
                             </div>
                             <button class="btn btn-outline btn-sm" onclick="goToToday()">Today</button>
-                            <button class="btn btn-outline btn-sm" id="rosterSyncBtn" onclick="syncVastoStudents(this)" title="Fetch the latest student numbers from Vasto for the next 30 days">&#8635; Sync students</button>
                         </div>
                         <div class="calendar-grid" id="calendarGrid"></div>
                     </div>
