@@ -3618,24 +3618,33 @@ function getEffectiveClassTimes(dateStr) {
     };
 }
 
-// Effective class info for a date — student counts and capped flags. Per-day row wins
-// only when it has been explicitly set (any of those fields non-zero / true), otherwise
-// fall back to the per-DOW default.
+// Effective class info for a date — student counts and capped flags. A per-day row's numbers
+// are authoritative (including an explicit 0); only fall back to the per-DOW default when there
+// is no per-day row at all.
 function getEffectiveClassInfo(dateStr) {
     // Public holidays: no students, not capped, no class.
     if (isPublicHoliday(dateStr)) {
         return { students_am: 0, students_pm: 0, capped_am: false, capped_pm: false, from_default: true, holiday: true };
     }
-    var ci = dayClassesCache[dateStr] || {};
+    var ci = dayClassesCache[dateStr];
     var def = _dowDefaults(dateStr) || {};
-    // Treat the per-day row as "explicitly set" if students or capped have been touched.
-    var hasManualNumbers = (ci.students_am || 0) > 0 || (ci.students_pm || 0) > 0 || !!ci.capped_am || !!ci.capped_pm;
+    // A per-day row's student numbers are authoritative — including an explicit 0. Days that
+    // genuinely have no students (e.g. recorded by the Vasto sync) must show 0, not inherit the
+    // per-DOW default. Previously a "> 0" test treated a real 0/0 day as "unset" and fell back to
+    // the default counts, so no-student days wrongly displayed the default (e.g. 16 / 24).
+    // Exception: a row that exists ONLY to pin a manual time override, with student numbers never
+    // touched (0/0 and uncapped), still shows the per-DOW default counts.
+    var hasRow = !!ci;
+    var timesOnlyRow = hasRow && !!ci.times_manually_set
+        && (ci.students_am || 0) === 0 && (ci.students_pm || 0) === 0
+        && !ci.capped_am && !ci.capped_pm;
+    var useRow = hasRow && !timesOnlyRow;
     return {
-        students_am: hasManualNumbers ? (ci.students_am || 0) : (def.students_am || 0),
-        students_pm: hasManualNumbers ? (ci.students_pm || 0) : (def.students_pm || 0),
-        capped_am:   hasManualNumbers ? !!ci.capped_am          : !!def.capped_am,
-        capped_pm:   hasManualNumbers ? !!ci.capped_pm          : !!def.capped_pm,
-        from_default: !hasManualNumbers
+        students_am: useRow ? (ci.students_am || 0) : (def.students_am || 0),
+        students_pm: useRow ? (ci.students_pm || 0) : (def.students_pm || 0),
+        capped_am:   useRow ? !!ci.capped_am        : !!def.capped_am,
+        capped_pm:   useRow ? !!ci.capped_pm        : !!def.capped_pm,
+        from_default: !useRow
     };
 }
 
@@ -3810,18 +3819,20 @@ function _renderAutoRosterPreview() {
         if (p.skipped) {
             return '<tr style="color:var(--gray-400);"><td>' + escHtml(p.dateLabel) + '</td><td colspan="3" style="font-style:italic;">' + escHtml(p.reason) + '</td></tr>';
         }
-        var biggest = Math.max(p.ci.students_am || 0, p.ci.students_pm || 0);
+        // Show both AM and PM counts (e.g. "3/3"), not just the busier half — so an even split
+        // and a one-sided day are told apart at a glance.
+        var classCount = (p.ci.students_am || 0) + '/' + (p.ci.students_pm || 0);
         var ht = (p.htNames && p.htNames.length > 0)
             ? p.htNames.map(function(n) { return '<span style="background:var(--primary);color:white;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-right:5px;">HT</span>' + escHtml(n.split(' ')[0]); }).join(' ')
             : '<span style="color:var(--danger);font-style:italic;">No HT available</span>';
         var assists = p.assistantNames.length > 0 ? p.assistantNames.map(function(n) { return escHtml(n.split(' ')[0]); }).join(', ') : '<span style="color:var(--gray-400);font-style:italic;">None</span>';
         if (p.shortBy > 0) assists += ' <span style="color:var(--danger);font-style:italic;">(short ' + p.shortBy + ')</span>';
-        return '<tr><td>' + escHtml(p.dateLabel) + '</td><td>' + biggest + '</td><td>' + ht + '</td><td>' + assists + '</td></tr>';
+        return '<tr><td>' + escHtml(p.dateLabel) + '</td><td>' + classCount + '</td><td>' + ht + '</td><td>' + assists + '</td></tr>';
     }).join('');
 
     document.getElementById('arPreviewContainer').innerHTML =
         '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">' +
-            '<thead><tr style="background:var(--gray-50);"><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Day</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Class</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Head Trainer</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Assistants</th></tr></thead>' +
+            '<thead><tr style="background:var(--gray-50);"><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Day</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Students AM/PM</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Head Trainer</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Assistants</th></tr></thead>' +
             '<tbody>' + rows + '</tbody>' +
         '</table>';
     document.querySelectorAll('#arPreviewContainer tbody td').forEach(function(td) { td.style.padding = '6px 10px'; td.style.borderBottom = '1px solid var(--gray-100)'; });
