@@ -2427,13 +2427,17 @@ function renderTodayHero() {
 
 // Compact per-cell status: the class's student count (AM/PM), shown in the status slot in
 // place of the old tick/cross — green when the relevant staff is rostered that day, red when
-// a class is on but they aren't. Returns '' when there are no students that day.
+// a class is on but they aren't. Returns '' only when the day has no class at all.
 function _cellNumBadge(info, rostered) {
     if (!info) return '';
     var am = info.students_am || 0, pm = info.students_pm || 0;
-    if (am <= 0 && pm <= 0) return '';
-    // Always show both AM and PM (e.g. "3/3"), never collapse an equal split to one number,
-    // so an even day and a one-sided day are never confused.
+    // Show the badge whenever the day has a real class record — even one with 0 students, which
+    // the Vasto sync records for a class that ran with no attendees — or a non-zero per-weekday
+    // default. A day with no record and a 0/0 default has no class, so it stays blank.
+    var hasClass = (info.from_default === false) || am > 0 || pm > 0 || info.capped_am || info.capped_pm;
+    if (!hasClass) return '';
+    // Always show both AM and PM (e.g. "3/3" or "0/0"), never collapse or blank an even split,
+    // so a real no-students day reads as "0/0" instead of looking like missing data.
     var label = am + '/' + pm;
     return '<div class="myroster-status-icon cal-cell-num ' + (rostered ? 'check' : 'cross') +
         '" aria-label="' + am + ' AM / ' + pm + ' PM students — ' + (rostered ? 'rostered' : 'not rostered') + '">' + label + '</div>';
@@ -2501,12 +2505,11 @@ function renderCalendar() {
         });
         var staffHtml = nameRows.length > 0 ? '<div class="cal-cell-staff-list">' + nameRows.join('') + '</div>' : '';
 
-        // Mobile-only status icon: check if the selected staff is rostered on this day,
-        // cross if the day has a class scheduled but they aren't on it. No icon for
-        // days with no class at all (weekend/holiday).
-        var dayHasClass = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
+        // Status-slot number: green when the selected staff is rostered, red when a class is on
+        // but they aren't. _cellNumBadge returns '' for a day with no class at all (weekend/holiday),
+        // and shows "0/0" for a real class that ran with no students.
         var staffIsOn = !!(entry && (entry.status === 'available' || entry.status === 'partial') && !rosterConflict);
-        var statusIconHtml = dayHasClass ? _cellNumBadge(info, staffIsOn) : '';
+        var statusIconHtml = _cellNumBadge(info, staffIsOn);
 
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="onDayClick(\'' + dateStr + '\',event)">' + dayHeader + (holidayHere ? phHtml : (classBlockHtml + staffHtml + statusIconHtml)) + '</div>';
@@ -4558,8 +4561,8 @@ function renderOverview() {
         }
         // Mobile-only status icon: check if anyone is rostered, cross if class day with nobody on it.
         var hasStaffOn = entries.some(function(e){ return e.status === 'available' || e.status === 'partial'; });
-        var classDay = !holidayHere && ciHas;
-        var statusIconHtml = classDay ? _cellNumBadge(ci, hasStaffOn) : '';
+        // Let the badge decide: it shows "0/0" for a real no-students class and '' for no class.
+        var statusIconHtml = holidayHere ? '' : _cellNumBadge(ci, hasStaffOn);
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')"><div class="day-number">' + day + '</div>' + (holidayHere ? phHtml : (detailHtml + statusIconHtml)) + '</div>';
     }
@@ -5412,7 +5415,7 @@ function renderMyRoster() {
 
         var dayHeader = '<div class="day-number"><span>' + day + '</span></div>';
 
-        var iconHtml = (!holidayHere && hasClass) ? _cellNumBadge(dayClass, isRostered) : '';
+        var iconHtml = holidayHere ? '' : _cellNumBadge(dayClass, isRostered);
         var phHtml = holidayHere ? '<div class="cal-cell-ph-label">' + escHtml(getHolidayLabel(dateStr)) + '</div><span class="cal-cell-ph-tag">PH</span>' : '';
         html += '<div class="' + cls + '" onclick="openDayDetail(\'' + dateStr + '\')">' + dayHeader + (holidayHere ? phHtml : iconHtml) + '</div>';
     }
