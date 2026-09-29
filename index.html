@@ -757,7 +757,6 @@
                             <button class="btn btn-outline btn-sm" onclick="goToOverviewToday()">Today</button>
                             <button class="btn btn-outline btn-sm" onclick="openImportRoster()">Import Roster</button>
                             <button class="btn btn-outline btn-sm" onclick="openAutoRoster()">Auto-roster</button>
-                            <button class="btn btn-outline btn-sm" onclick="openWeekendRepair()" title="Correct the Saturday/Sunday Head Trainer to match the continuous rotation, without touching assistants or weekdays">Fix weekend rotation</button>
                             <button class="btn btn-blue btn-sm" onclick="openBulkTemplate()">Roster Template</button>
                         </div>
                     </div>
@@ -1431,29 +1430,6 @@
     </div>
 </div>
 
-<!-- Fix Weekend Rotation Modal -->
-<div class="modal-overlay" id="weekendRepairModal">
-    <div class="modal" style="max-width:640px;">
-        <div class="modal-header"><h3>Fix weekend Head-Trainer rotation</h3><button class="btn btn-icon btn-outline" onclick="closeModal('weekendRepairModal')">&times;</button></div>
-        <div class="modal-body" style="padding:16px 20px;">
-            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:12px;">Corrects any saved weekend Head-Trainer assignment that doesn't match the continuous rotation (Sat one weekend, Sun the next, rolling over month to month). Only existing weekend Head-Trainer entries are changed — assistants, weekday rosters, and weekends with no saved entry are left exactly as they are. Preview first; nothing changes until you press Apply.</p>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-                <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0;"><label>From</label><input type="date" id="wrFromDate" class="form-control"></div>
-                <div class="form-group" style="flex:1;min-width:160px;margin-bottom:0;"><label>To</label><input type="date" id="wrToDate" class="form-control"></div>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                <button class="btn btn-outline btn-sm" onclick="previewWeekendRepair()">Preview changes</button>
-                <span id="wrSummary" style="font-size:0.85rem;color:var(--gray-500);"></span>
-            </div>
-            <div id="wrPreviewContainer" style="max-height:46vh;overflow:auto;border:1px solid var(--gray-200);border-radius:var(--radius);"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline" onclick="closeModal('weekendRepairModal')">Cancel</button>
-            <button class="btn btn-success" id="wrApplyBtn" onclick="applyWeekendRepair()" disabled>Apply fix</button>
-        </div>
-    </div>
-</div>
-
 <!-- Bulk Roster Template Modal -->
 <div class="modal-overlay" id="bulkTemplateModal">
     <div class="modal" style="max-width:600px;">
@@ -1828,6 +1804,68 @@ function computeRosterForDate(dateStr) {
 
 // Resolver: returns explicit cbd_availability entries when they exist, otherwise computed.
 // Each entry has the fields a roster row would have, plus a `source: 'manual'|'auto'` marker.
+// ============ Weekend Head-Trainer rotation rule (enforced from today onward) ============
+// The trainers' rule: the anchor Head Trainer (Cameron) works the SUNDAY of the 3-4 Oct 2026
+// weekend, then the SATURDAY of the next weekend, alternating continuously and rolling over month
+// boundaries. Enforced for weekend dates from today onward, so a stale saved entry can never show
+// the wrong Head Trainer. Past weekends are never touched (history stays as-is). If the rotation or
+// the anchor trainer ever changes, update the two constants below.
+var WEEKEND_ANCHOR_HT_NAME = 'cameron';        // matched case-insensitively against the staff name
+var WEEKEND_ANCHOR_SAT = new Date(2026, 9, 3); // Sat 3 Oct 2026 — the anchor HT works this weekend's SUNDAY
+
+// The Head Trainer who must be rostered on a given weekend day under the rule, or null when the rule
+// does not apply: not a weekend, a past date, fewer than two Head Trainers, the anchor HT can't be
+// found by name, or the day's assigned HT has marked themselves unavailable (so a manual cover stands).
+function _ruleHTForDate(dateStr) {
+    var p = String(dateStr).split('-');
+    if (p.length < 3) return null;
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    var dow = d.getDay();
+    if (dow !== 0 && dow !== 6) return null;             // weekends only
+    if (dateStr < formatDate(new Date())) return null;    // never touch past weekends
+    var hts = staffList.filter(function(s) { return s.is_head_trainer; });
+    if (hts.length < 2) return null;                      // a rotation needs two Head Trainers
+    var anchorHT = hts.find(function(s) { return (s.name || '').toLowerCase().indexOf(WEEKEND_ANCHOR_HT_NAME) !== -1; });
+    if (!anchorHT) return null;                           // can't identify the anchor HT -> leave as-is
+    var otherHT = hts.find(function(s) { return s.id !== anchorHT.id; });
+    if (!otherHT) return null;
+    var satOffset = (dow === 0) ? -1 : 0;                 // map Sunday back to its Saturday
+    var sat = new Date(d.getFullYear(), d.getMonth(), d.getDate() + satOffset);
+    var weeks = Math.round((sat - WEEKEND_ANCHOR_SAT) / (7 * 86400000));
+    var anchorWorksSunday = (((weeks % 2) + 2) % 2) === 0; // even weeks from anchor -> anchor HT on Sunday
+    var satHT = anchorWorksSunday ? otherHT : anchorHT;
+    var sunHT = anchorWorksSunday ? anchorHT : otherHT;
+    var chosen = (dow === 6) ? satHT : sunHT;
+    if (!isStaffAvailableOnDate(chosen, dateStr)) return null; // assigned HT is away -> manual cover stands
+    return chosen;
+}
+
+// Force the weekend Head Trainer in a roster array to the rule's HT (correcting a stale/wrong one)
+// without touching assistants. Only acts when the day has a class or already lists a Head Trainer.
+function _applyWeekendHTRule(dateStr, roster) {
+    var ruleHT = _ruleHTForDate(dateStr);
+    if (!ruleHT) return roster;
+    var htEntries = roster.filter(function(r) { return r.day_role === 'head_trainer'; });
+    if (htEntries.length === 1 && htEntries[0].staff_id === ruleHT.id) return roster; // already correct
+    var info = getEffectiveClassInfo(dateStr);
+    var hasClass = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
+    if (htEntries.length === 0 && !hasClass) return roster; // no HT context -> nothing to enforce
+    var template = htEntries[0] || null;
+    var times = getEffectiveClassTimes(dateStr);
+    var out = roster.filter(function(r) { return r.day_role !== 'head_trainer'; });
+    out.push({
+        staff_id: ruleHT.id, staff: ruleHT,
+        name: ruleHT.name, color: ruleHT.color,
+        day_role: 'head_trainer',
+        status: (template && template.status) || 'available',
+        start_time: template ? template.start_time : (times.am_start || null),
+        end_time: template ? template.end_time : (times.pm_end || times.am_end || null),
+        note: (template && template.note) || '',
+        source: 'rule'
+    });
+    return out;
+}
+
 function getRosterForDate(dateStr) {
     var explicit = [];
     staffList.forEach(function(s) {
@@ -1845,12 +1883,24 @@ function getRosterForDate(dateStr) {
             });
         }
     });
-    if (explicit.length > 0) return explicit;
-    return computeRosterForDate(dateStr);
+    var roster = explicit.length > 0 ? explicit : computeRosterForDate(dateStr);
+    return _applyWeekendHTRule(dateStr, roster);
 }
 
 // Single-staff lookup. Returns a roster entry if this staff is rostered that day (manual or auto).
 function getEffectiveAvailability(staffId, dateStr) {
+    // Head trainers on a future weekend follow the rotation rule, so a stale saved entry can't make
+    // the wrong HT look rostered (or the right one look off).
+    var st = staffList.find(function(s) { return s.id === staffId; });
+    if (st && st.is_head_trainer && _ruleHTForDate(dateStr)) {
+        var mine = getRosterForDate(dateStr).find(function(r) { return r.staff_id === staffId && r.day_role === 'head_trainer'; });
+        return mine ? {
+            staff_id: staffId, date: dateStr,
+            status: mine.status, day_role: 'head_trainer',
+            start_time: mine.start_time, end_time: mine.end_time,
+            _computed: true
+        } : null;
+    }
     var explicit = getAvailability(staffId, dateStr);
     if (explicit) return explicit;
     var computed = computeRosterForDate(dateStr);
@@ -3961,168 +4011,6 @@ async function applyAutoRoster() {
     if (currentTab === 'overview') renderOverview();
     if (currentTab === 'classes') renderClassesCalendar();
     showToast('Auto-rostered ' + actionable.length + ' day' + (actionable.length === 1 ? '' : 's'));
-}
-
-// ============ Fix weekend Head-Trainer rotation ============
-// Surgical repair for the continuous Sat/Sun HT rotation: corrects ONLY weekend Head-Trainer
-// entries to match _pickHTForWeekend, leaving assistants, weekday rosters and no-class days
-// untouched. Fixes the case where old (month-resetting) roster entries were committed before
-// the continuous rotation logic existed.
-var _weekendRepairPlan = [];
-
-// The HT the rotation assigns to a weekend date, or null when there's no class that day or no HT
-// available. Mirrors computeRosterForDate's HT selection so the repair matches the app's own logic.
-function _rotationHTForWeekend(dateStr) {
-    var p = dateStr.split('-');
-    var d = new Date(+p[0], +p[1] - 1, +p[2]);
-    var dow = d.getDay();
-    if (dow !== 0 && dow !== 6) return null;
-    var info = getEffectiveClassInfo(dateStr);
-    if ((info.students_am || 0) <= 0 && (info.students_pm || 0) <= 0) return null; // no class
-    var hts = staffList.filter(function(s) {
-        return s.is_head_trainer && isStaffAvailableOnDate(s, dateStr) && !_isExcludedFromDow(s, dow);
-    }).sort(function(a, b) {
-        return ((a.priority || 100) - (b.priority || 100)) || a.name.localeCompare(b.name);
-    });
-    return _pickHTForWeekend(hts, dateStr);
-}
-
-// Ensure availability + class + assistant-availability caches are loaded for every month the
-// range spans, so the preview/apply see all existing entries regardless of the current view.
-async function _loadMonthsInRange(fromDate, toDate) {
-    var start = new Date(fromDate + 'T00:00:00'), end = new Date(toDate + 'T00:00:00');
-    var d = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (d <= end) {
-        await loadMonth('overview', d.getMonth(), d.getFullYear());
-        d.setMonth(d.getMonth() + 1);
-    }
-}
-
-function openWeekendRepair() {
-    if (!isActualTrainer()) { showToast('Trainers only'); return; }
-    // Default range: the viewed overview month through the end of two months later — a useful
-    // forward window. The preview only ever lists weekends that are actually wrong, so a wide
-    // range is safe (correct weekends are left alone).
-    var fromR = _monthRange(overviewMonth, overviewYear);
-    var toM = overviewMonth + 2, toY = overviewYear + Math.floor(toM / 12);
-    var toR = _monthRange(((toM % 12) + 12) % 12, toY);
-    document.getElementById('wrFromDate').value = fromR.startDate;
-    document.getElementById('wrToDate').value = toR.endDate;
-    document.getElementById('wrPreviewContainer').innerHTML = '';
-    document.getElementById('wrSummary').textContent = '';
-    document.getElementById('wrApplyBtn').disabled = true;
-    _weekendRepairPlan = [];
-    document.getElementById('weekendRepairModal').classList.add('active');
-}
-
-async function previewWeekendRepair() {
-    var fromDate = document.getElementById('wrFromDate').value;
-    var toDate = document.getElementById('wrToDate').value;
-    if (!fromDate || !toDate || fromDate > toDate) { showToast('Pick a valid date range'); return; }
-    document.getElementById('wrSummary').textContent = 'Scanning…';
-    document.getElementById('wrApplyBtn').disabled = true;
-    try { await _loadMonthsInRange(fromDate, toDate); } catch (e) { /* networkErr already shown */ }
-
-    var plan = [];
-    var start = new Date(fromDate + 'T00:00:00'), end = new Date(toDate + 'T00:00:00');
-    for (var d = new Date(start.getFullYear(), start.getMonth(), start.getDate()); d <= end; d.setDate(d.getDate() + 1)) {
-        var dow = d.getDay();
-        if (dow !== 0 && dow !== 6) continue;              // weekends only
-        var ds = formatDate(d);
-        if (isPublicHoliday(ds)) continue;
-        var correctHT = _rotationHTForWeekend(ds);
-        if (!correctHT) continue;                          // no class, or no HT available that day
-        var currentHTs = staffList.filter(function(s) {
-            var e = availabilityCache[s.id] && availabilityCache[s.id][ds];
-            return e && e.day_role === 'head_trainer' && (e.status === 'available' || e.status === 'partial');
-        });
-        var currentIds = currentHTs.map(function(s) { return s.id; });
-        // Only correct days that already have an explicit HT entry. A weekend with no saved HT
-        // already shows the correct HT via the computed rotation, so there's nothing to fix (and
-        // adding a row there would just be noise).
-        if (currentIds.length === 0) continue;
-        if (currentIds.length === 1 && currentIds[0] === correctHT.id) continue; // already correct
-        var removeIds = currentIds.filter(function(id) { return id !== correctHT.id; });
-        var addCorrect = currentIds.indexOf(correctHT.id) === -1;
-        if (removeIds.length === 0 && !addCorrect) continue;
-        plan.push({
-            dateStr: ds,
-            label: _autoRosterDayLabel(d),
-            fromNames: currentHTs.map(function(s) { return s.name.split(' ')[0]; }),
-            toName: correctHT.name.split(' ')[0],
-            correctId: correctHT.id,
-            removeIds: removeIds,
-            addCorrect: addCorrect
-        });
-    }
-    _weekendRepairPlan = plan;
-    _renderWeekendRepairPreview();
-    document.getElementById('wrSummary').textContent = plan.length === 0
-        ? 'No changes needed — the weekend rotation is already correct in this range.'
-        : (plan.length + ' weekend day' + (plan.length === 1 ? '' : 's') + ' to fix');
-    document.getElementById('wrApplyBtn').disabled = plan.length === 0;
-}
-
-function _renderWeekendRepairPreview() {
-    var el = document.getElementById('wrPreviewContainer');
-    if (!_weekendRepairPlan.length) {
-        el.innerHTML = '<div style="padding:16px;color:var(--gray-500);font-size:0.85rem;">Nothing to change.</div>';
-        return;
-    }
-    var rows = _weekendRepairPlan.map(function(p) {
-        var from = p.fromNames.length ? escHtml(p.fromNames.join(', ')) : '<span style="color:var(--gray-400);font-style:italic;">none</span>';
-        return '<tr><td>' + escHtml(p.label) + '</td><td>' + from + '</td><td><span style="color:var(--gray-400);">→</span> <strong>' + escHtml(p.toName) + '</strong></td></tr>';
-    }).join('');
-    el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">' +
-        '<thead><tr style="background:var(--gray-50);"><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Weekend day</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Currently</th><th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--gray-200);">Corrected to</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table>';
-    document.querySelectorAll('#wrPreviewContainer tbody td').forEach(function(td) { td.style.padding = '6px 10px'; td.style.borderBottom = '1px solid var(--gray-100)'; });
-}
-
-async function applyWeekendRepair() {
-    if (!_weekendRepairPlan.length) { showToast('Nothing to apply'); return; }
-    var btn = document.getElementById('wrApplyBtn');
-    setLoading(btn, true);
-    showToast('Fixing weekend rotation…');
-    var affected = {};
-    try {
-        for (var i = 0; i < _weekendRepairPlan.length; i++) {
-            var p = _weekendRepairPlan[i];
-            for (var j = 0; j < p.removeIds.length; j++) {
-                var rid = p.removeIds[j];
-                var dr = await sb.from('cbd_availability').delete().eq('staff_id', rid).eq('date', p.dateStr);
-                if (dr.error) throw new Error(dr.error.message);
-                if (availabilityCache[rid]) delete availabilityCache[rid][p.dateStr];
-                affected[rid] = true;
-            }
-            if (p.addCorrect) {
-                var times = getEffectiveClassTimes(p.dateStr);
-                var row = { staff_id: p.correctId, date: p.dateStr, status: 'available', start_time: times.am_start || null, end_time: null, note: '', day_role: 'head_trainer', created_by: currentUser.id };
-                var ur = await sb.from('cbd_availability').upsert(row, { onConflict: 'staff_id,date' });
-                if (ur.error) throw new Error(ur.error.message);
-                if (!availabilityCache[p.correctId]) availabilityCache[p.correctId] = {};
-                availabilityCache[p.correctId][p.dateStr] = row;
-                affected[p.correctId] = true;
-            }
-        }
-    } catch (e) {
-        setLoading(btn, false);
-        showToast('Error fixing rotation: ' + (e.message || e));
-        return;
-    }
-    var fixedCount = _weekendRepairPlan.length;
-    _notifyStaffIds(Object.keys(affected), {
-        title: 'Your weekend roster was updated',
-        message: 'The weekend Head Trainer rotation was corrected.',
-        data: { action: 'weekend_rotation_fix' }
-    });
-    setLoading(btn, false);
-    closeModal('weekendRepairModal');
-    _weekendRepairPlan = [];
-    if (currentTab === 'overview') renderOverview();
-    if (currentTab === 'roster') { renderCalendar(); refreshTrainerUI(); }
-    if (typeof renderTodayHero === 'function') renderTodayHero();
-    showToast('Weekend rotation fixed · ' + fixedCount + ' day' + (fixedCount === 1 ? '' : 's'));
 }
 
 // ============ Bulk Roster Template ============
