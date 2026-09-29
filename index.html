@@ -1714,10 +1714,22 @@ function _pickHTForWeekend(availHTs, dateStr) {
 // Compute who would be rostered on a given date based on patterns + priorities + class info.
 // Returns array of pseudo-roster entries: { staff_id, staff (full obj), day_role, status, start_time, end_time, source: 'auto' }.
 // Used as a FALLBACK when cbd_availability has no explicit entries for the date.
+// Whether the college runs a class on this date. True when there's a real per-day class record or a
+// non-zero weekday default — even with 0 students; false for public holidays and genuine no-class
+// days (no record + a 0 default). Full-time Head Trainers are rostered on every class day.
+function _isClassDay(dateStr) {
+    if (isPublicHoliday(dateStr)) return false;
+    var info = getEffectiveClassInfo(dateStr);
+    return (info.students_am || 0) > 0 || (info.students_pm || 0) > 0
+        || !!info.capped_am || !!info.capped_pm || info.from_default === false;
+}
+
 function computeRosterForDate(dateStr) {
     var info = getEffectiveClassInfo(dateStr);
-    var hasStudents = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0;
-    if (!hasStudents) return [];
+    // Head Trainers are full-time: they're rostered on every class day, even one with 0 students.
+    // Only genuine no-class days and public holidays get no roster. Assistants still scale with the
+    // student numbers further down (0 students -> 0 assistants, HT(s) still rostered).
+    if (!_isClassDay(dateStr)) return [];
     // Build a synthetic ci-like object so existing _assistantsNeededForClass works
     var ci = { students_am: info.students_am, students_pm: info.students_pm, capped_am: info.capped_am, capped_pm: info.capped_pm };
 
@@ -1847,9 +1859,7 @@ function _applyWeekendHTRule(dateStr, roster) {
     if (!ruleHT) return roster;
     var htEntries = roster.filter(function(r) { return r.day_role === 'head_trainer'; });
     if (htEntries.length === 1 && htEntries[0].staff_id === ruleHT.id) return roster; // already correct
-    var info = getEffectiveClassInfo(dateStr);
-    var hasClass = (info.students_am || 0) > 0 || (info.students_pm || 0) > 0 || info.capped_am || info.capped_pm;
-    if (htEntries.length === 0 && !hasClass) return roster; // no HT context -> nothing to enforce
+    if (htEntries.length === 0 && !_isClassDay(dateStr)) return roster; // no HT context -> nothing to enforce
     var template = htEntries[0] || null;
     var times = getEffectiveClassTimes(dateStr);
     var out = roster.filter(function(r) { return r.day_role !== 'head_trainer'; });
