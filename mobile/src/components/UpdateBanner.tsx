@@ -4,7 +4,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
 } from 'react-native';
 import {
@@ -12,7 +11,8 @@ import {
   RELEASE_BASE_URL,
   VERSION_MANIFEST_URL,
 } from '../lib/config';
-import { paletteFor, radius, spacing } from '../theme';
+import { useTheme } from '../ThemeProvider';
+import { radius, spacing } from '../theme';
 
 interface Manifest {
   versionCode: number;
@@ -25,7 +25,7 @@ interface Manifest {
 // download page. (Silent background download/install can come later; opening the
 // download page works on every device without extra install permissions.)
 export default function UpdateBanner() {
-  const palette = paletteFor(useColorScheme());
+  const { palette } = useTheme();
   const [available, setAvailable] = useState<Manifest | null>(null);
   const [dismissed, setDismissed] = useState(false);
 

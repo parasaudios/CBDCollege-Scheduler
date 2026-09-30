@@ -8,7 +8,6 @@ import {
   Switch,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import {
@@ -21,6 +20,7 @@ import { notifyStaffOfRosterChange, notifyTrainersOfAssistantChange } from '../l
 import { roleLabel } from '../lib/roster';
 import { makeRoster, type ComputedEntry, type RosterContext } from '../lib/rosterCompute';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../ThemeProvider';
 import type { DayClass, Profile } from '../lib/types';
 import { paletteFor, radius, spacing, type Palette } from '../theme';
 
@@ -47,7 +47,7 @@ export default function DayDetailSheet({
   onClose,
   onChanged,
 }: Props) {
-  const palette = paletteFor(useColorScheme());
+  const { palette } = useTheme();
   const isTrainer = profile?.role === 'trainer';
   const userId = session.user.id;
   const actorName = profile?.full_name || session.user.email || 'Someone';

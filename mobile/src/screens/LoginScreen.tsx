@@ -8,14 +8,14 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { paletteFor, radius, spacing } from '../theme';
+import { useTheme } from '../ThemeProvider';
+import { radius, spacing } from '../theme';
 
 export default function LoginScreen() {
-  const palette = paletteFor(useColorScheme());
+  const { palette } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);

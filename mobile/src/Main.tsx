@@ -1,30 +1,45 @@
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, View } from 'react-native';
+import Header, { type HeaderAction } from './components/Header';
+import NotificationsModal from './components/NotificationsModal';
+import TopTabs, { type TabDef } from './components/TopTabs';
+import UpdateBanner from './components/UpdateBanner';
+import { useNotifications } from './lib/useNotifications';
 import { supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
-import CalendarScreen from './screens/CalendarScreen';
-import HomeScreen from './screens/HomeScreen';
-import { paletteFor, spacing } from './theme';
+import Placeholder from './screens/Placeholder';
+import ScheduleScreen from './screens/ScheduleScreen';
+import { useTheme } from './ThemeProvider';
 
-type Tab = 'today' | 'calendar';
+type TrainerTab = 'schedule' | 'classes' | 'staff' | 'notifications' | 'admin' | 'guides';
+type AssistantTab = 'myroster' | 'myavail' | 'guides';
+type Tab = TrainerTab | AssistantTab;
 
-interface Props {
-  session: Session;
-}
+const TRAINER_TABS: TabDef<Tab>[] = [
+  { key: 'schedule', label: 'Schedule' },
+  { key: 'classes', label: 'Classes' },
+  { key: 'staff', label: 'Staff' },
+  { key: 'notifications', label: 'Notifications' },
+  { key: 'admin', label: 'Admin' },
+  { key: 'guides', label: 'App Guides' },
+];
+const ASSISTANT_TABS: TabDef<Tab>[] = [
+  { key: 'myroster', label: 'My Roster' },
+  { key: 'myavail', label: 'My Availability' },
+  { key: 'guides', label: 'App Guides' },
+];
 
-export default function Main({ session }: Props) {
-  const palette = paletteFor(useColorScheme());
+export default function Main({ session }: { session: Session }) {
+  const { palette } = useTheme();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('today');
+  const isTrainer = profile?.role === 'trainer';
+  const tabs = isTrainer ? TRAINER_TABS : ASSISTANT_TABS;
+  const [tab, setTab] = useState<Tab>('schedule');
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const notif = useNotifications(session.user.id, isTrainer);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +50,9 @@ export default function Main({ session }: Props) {
         .eq('id', session.user.id)
         .maybeSingle();
       if (!cancelled) {
-        setProfile((data as Profile) || null);
+        const p = (data as Profile) || null;
+        setProfile(p);
+        setTab(p?.role === 'trainer' ? 'schedule' : 'myroster');
         setLoading(false);
       }
     })();
@@ -44,83 +61,50 @@ export default function Main({ session }: Props) {
     };
   }, [session.user.id]);
 
+  function signOut() {
+    Alert.alert('Sign out', 'Sign out of the scheduler?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => supabase.auth.signOut() },
+    ]);
+  }
+
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={{ flex: 1, backgroundColor: palette.surface2, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={palette.primary} />
       </View>
     );
   }
 
+  const actions: HeaderAction[] = [{ label: 'Sign out', onPress: signOut, danger: true }];
+  const subtitle = isTrainer ? 'Manage team schedules' : 'Your roster & availability';
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.surface2 }}>
+      <Header subtitle={subtitle} unread={notif.unread} onBell={() => setNotifOpen(true)} actions={actions} />
+      <UpdateBanner />
+      <TopTabs tabs={tabs} value={tab} onChange={setTab} />
+
       <View style={{ flex: 1 }}>
-        {tab === 'today' ? (
-          <HomeScreen session={session} profile={profile} />
-        ) : (
-          <CalendarScreen session={session} profile={profile} />
-        )}
+        {tab === 'schedule' && <ScheduleScreen session={session} profile={profile} />}
+        {tab === 'classes' && <Placeholder title="Classes" />}
+        {tab === 'staff' && <Placeholder title="Staff" />}
+        {tab === 'notifications' && <Placeholder title="Send a notification" />}
+        {tab === 'admin' && <Placeholder title="Admin" />}
+        {tab === 'guides' && <Placeholder title="App Guides" />}
+        {tab === 'myroster' && <Placeholder title="My Roster" />}
+        {tab === 'myavail' && <Placeholder title="My Availability" />}
       </View>
 
-      <View
-        style={[
-          styles.tabBar,
-          { backgroundColor: palette.surface, borderColor: palette.border },
-        ]}
-      >
-        <TabButton
-          label="Today"
-          icon="🏠"
-          active={tab === 'today'}
-          activeColor={palette.primary}
-          inactiveColor={palette.textMuted}
-          onPress={() => setTab('today')}
-        />
-        <TabButton
-          label="Calendar"
-          icon="🗓️"
-          active={tab === 'calendar'}
-          activeColor={palette.primary}
-          inactiveColor={palette.textMuted}
-          onPress={() => setTab('calendar')}
-        />
-      </View>
+      <NotificationsModal
+        visible={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        notifications={notif.notifications}
+        reads={notif.reads}
+        markRead={notif.markRead}
+        markAllRead={notif.markAllRead}
+        onGotoDate={() => setTab(isTrainer ? 'schedule' : 'myroster')}
+      />
     </View>
   );
 }
-
-function TabButton({
-  label,
-  icon,
-  active,
-  activeColor,
-  inactiveColor,
-  onPress,
-}: {
-  label: string;
-  icon: string;
-  active: boolean;
-  activeColor: string;
-  inactiveColor: string;
-  onPress: () => void;
-}) {
-  const color = active ? activeColor : inactiveColor;
-  return (
-    <Pressable onPress={onPress} style={styles.tabBtn}>
-      <Text style={{ fontSize: 20 }}>{icon}</Text>
-      <Text style={[styles.tabLabel, { color }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    paddingTop: spacing(2),
-    paddingBottom: spacing(6),
-  },
-  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-});
