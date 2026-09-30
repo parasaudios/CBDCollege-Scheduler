@@ -8,8 +8,12 @@ import UpdateBanner from './components/UpdateBanner';
 import { useNotifications } from './lib/useNotifications';
 import { supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
+import AdminScreen from './screens/AdminScreen';
 import ClassesScreen from './screens/ClassesScreen';
-import Placeholder from './screens/Placeholder';
+import GuidesScreen from './screens/GuidesScreen';
+import MyAvailabilityScreen from './screens/MyAvailabilityScreen';
+import MyRosterScreen from './screens/MyRosterScreen';
+import NotificationsScreen from './screens/NotificationsScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
 import StaffScreen from './screens/StaffScreen';
 import { useTheme } from './ThemeProvider';
@@ -91,11 +95,11 @@ export default function Main({ session }: { session: Session }) {
         {tab === 'schedule' && <ScheduleScreen session={session} profile={profile} />}
         {tab === 'classes' && <ClassesScreen session={session} profile={profile} />}
         {tab === 'staff' && <StaffScreen session={session} profile={profile} />}
-        {tab === 'notifications' && <Placeholder title="Send a notification" />}
-        {tab === 'admin' && <Placeholder title="Admin" />}
-        {tab === 'guides' && <Placeholder title="App Guides" />}
-        {tab === 'myroster' && <Placeholder title="My Roster" />}
-        {tab === 'myavail' && <Placeholder title="My Availability" />}
+        {tab === 'notifications' && <NotificationsScreen session={session} profile={profile} />}
+        {tab === 'admin' && <AdminScreen session={session} profile={profile} />}
+        {tab === 'guides' && <GuidesScreen profile={profile} />}
+        {tab === 'myroster' && <MyRosterScreen session={session} profile={profile} />}
+        {tab === 'myavail' && <MyAvailabilityScreen session={session} profile={profile} />}
       </View>
 
       <NotificationsModal
