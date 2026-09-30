@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import AutoRosterModal from '../components/AutoRosterModal';
 import DayDetailSheet from '../components/DayDetailSheet';
 import { Btn, Card, EmptyNote, Pills } from '../components/ui';
 import { loadRosterContext } from '../lib/data';
@@ -51,6 +52,7 @@ export default function ScheduleScreen({ session, profile }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false);
 
   const grid = useMemo(() => buildMonthGrid(year, month0), [year, month0]);
   const engine = useMemo(() => (ctx ? makeRoster(ctx) : null), [ctx]);
@@ -220,7 +222,14 @@ export default function ScheduleScreen({ session, profile }: Props) {
                   onSelect={setSelected}
                 />
               ) : (
-                <Overview grid={grid} engine={engine} onSelect={setSelected} />
+                <>
+                  {isTrainer ? (
+                    <View style={{ marginTop: spacing(3) }}>
+                      <Btn label="Auto-roster this month" icon="✨" variant="outline" size="sm" onPress={() => setAutoOpen(true)} />
+                    </View>
+                  ) : null}
+                  <Overview grid={grid} engine={engine} onSelect={setSelected} />
+                </>
               )}
             </View>
           </Card>
@@ -236,6 +245,19 @@ export default function ScheduleScreen({ session, profile }: Props) {
         onClose={() => setSelected(null)}
         onChanged={load}
       />
+
+      {ctx ? (
+        <AutoRosterModal
+          visible={autoOpen}
+          ctx={ctx}
+          year={year}
+          month0={month0}
+          session={session}
+          profile={profile}
+          onClose={() => setAutoOpen(false)}
+          onApplied={load}
+        />
+      ) : null}
     </View>
   );
 }

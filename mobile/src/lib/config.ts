@@ -10,8 +10,8 @@ export const SUPABASE_PUBLISHABLE_KEY =
 // App identity — keep these in sync with app.json (expo.version / expo.android.versionCode).
 // The self-update check compares APP_VERSION_CODE against the versionCode in the
 // published version.json, so it MUST match the versionCode of the shipped APK.
-export const APP_VERSION = '1.0.0';
-export const APP_VERSION_CODE = 1;
+export const APP_VERSION = '1.1.0';
+export const APP_VERSION_CODE = 2;
 
 // Where releases are hosted (kerblock-style self-hosted APK + version.json).
 // Change this to wherever you deploy the mobile/site/ folder. The download page,

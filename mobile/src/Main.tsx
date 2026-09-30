@@ -5,6 +5,8 @@ import Header, { type HeaderAction } from './components/Header';
 import NotificationsModal from './components/NotificationsModal';
 import TopTabs, { type TabDef } from './components/TopTabs';
 import UpdateBanner from './components/UpdateBanner';
+import { exportMonthPdf } from './lib/exportPdf';
+import { onNotificationTap, registerForPush } from './lib/push';
 import { useNotifications } from './lib/useNotifications';
 import { supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
@@ -62,8 +64,12 @@ export default function Main({ session }: { session: Session }) {
         setLoading(false);
       }
     })();
+    // Register for native push (best-effort) and open the bell when a push is tapped.
+    registerForPush(session.user.id);
+    const unsub = onNotificationTap(() => setNotifOpen(true));
     return () => {
       cancelled = true;
+      unsub();
     };
   }, [session.user.id]);
 
@@ -82,7 +88,19 @@ export default function Main({ session }: { session: Session }) {
     );
   }
 
-  const actions: HeaderAction[] = [{ label: 'Sign out', onPress: signOut, danger: true }];
+  async function exportPdf() {
+    const d = new Date();
+    try {
+      await exportMonthPdf(d.getFullYear(), d.getMonth(), 'CBD College Scheduler');
+    } catch (e: any) {
+      Alert.alert('Export failed', e?.message || 'Could not create the PDF.');
+    }
+  }
+
+  const actions: HeaderAction[] = [
+    { label: 'Export PDF (this month)', onPress: exportPdf },
+    { label: 'Sign out', onPress: signOut, danger: true },
+  ];
   const subtitle = isTrainer ? 'Manage team schedules' : 'Your roster & availability';
 
   return (

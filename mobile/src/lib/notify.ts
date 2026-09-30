@@ -34,15 +34,22 @@ export async function emitNotification(opts: EmitOpts): Promise<void> {
     console.warn('notification emit failed:', e);
   }
 
+  const pushBody: Record<string, any> = {
+    title: opts.title,
+    body: opts.message,
+    message: opts.message,
+    data,
+    tag: 'cbd-' + (opts.type || 'notif'),
+  };
+  if (opts.target_user_id) pushBody.target_user_id = opts.target_user_id;
+  // Web push (existing) + native push (Expo tokens). Both fire-and-forget.
   try {
-    const pushBody: Record<string, any> = {
-      title: opts.title,
-      body: opts.message,
-      data,
-      tag: 'cbd-' + (opts.type || 'notif'),
-    };
-    if (opts.target_user_id) pushBody.target_user_id = opts.target_user_id;
     supabase.functions.invoke('send-push', { body: pushBody }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+  try {
+    supabase.functions.invoke('send-native-push', { body: pushBody }).catch(() => {});
   } catch {
     /* ignore */
   }

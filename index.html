@@ -3249,6 +3249,9 @@ async function emitNotification(opts) {
         };
         if (opts.target_user_id) pushBody.target_user_id = opts.target_user_id;
         sb.functions.invoke('send-push', { body: pushBody }).catch(function(){});
+        // Also deliver to native (Expo) push tokens for the mobile app. Additive and
+        // fire-and-forget: no-op until send-native-push is deployed.
+        sb.functions.invoke('send-native-push', { body: pushBody }).catch(function(){});
     } catch (e) { /* ignore */ }
 }
 
