@@ -18,6 +18,8 @@ export interface StaffMember {
   user_id: string | null;
   priority: number | null;
   is_head_trainer: boolean | null;
+  priorities_by_dow?: Record<string, any> | null;
+  excluded_dows?: number[] | null;
 }
 
 export type DayRole = 'head_trainer' | 'assistant' | string;
@@ -40,6 +42,31 @@ export interface DayClass {
   capped_am?: boolean | null;
   capped_pm?: boolean | null;
   times_manually_set?: boolean | null;
+  am_start_time?: string | null;
+  am_end_time?: string | null;
+  pm_start_time?: string | null;
+  pm_end_time?: string | null;
+}
+
+export interface DowDefault {
+  am_start: string | null;
+  am_end: string | null;
+  pm_start: string | null;
+  pm_end: string | null;
+  students_am?: number;
+  students_pm?: number;
+  capped_am?: boolean;
+  capped_pm?: boolean;
+}
+
+export interface Settings {
+  min_students_for_one_assistant: number;
+  min_students_for_two_assistants: number;
+  default_class_times: Record<string, DowDefault>;
+  assistant_slot_times?: Record<string, string | null>;
+  assistant_slot_times_by_start?: Record<string, Record<string, string | null>>;
+  weekend_first_sat_ht_id?: string | null;
+  rotate_dows?: number[];
 }
 
 export interface NotificationRow {

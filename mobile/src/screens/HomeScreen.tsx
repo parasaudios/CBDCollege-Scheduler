@@ -12,18 +12,20 @@ import {
   View,
 } from 'react-native';
 import UpdateBanner from '../components/UpdateBanner';
+import { loadRosterContext } from '../lib/data';
 import { prettyDateLong, prettyTime, timeAgo, todayStr } from '../lib/format';
-import { buildExplicitRoster, roleLabel } from '../lib/roster';
+import { roleLabel } from '../lib/roster';
+import { makeRoster, type ComputedEntry } from '../lib/rosterCompute';
 import { supabase } from '../lib/supabase';
-import type {
-  AvailabilityRow,
-  DayClass,
-  NotificationRow,
-  Profile,
-  RosterEntry,
-  StaffMember,
-} from '../lib/types';
+import type { NotificationRow, Profile } from '../lib/types';
 import { paletteFor, radius, spacing, type Palette } from '../theme';
+
+interface TodayInfo {
+  holiday: boolean;
+  hasClass: boolean;
+  am: number;
+  pm: number;
+}
 
 interface Props {
   session: Session;
@@ -36,8 +38,8 @@ export default function HomeScreen({ session, profile }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [roster, setRoster] = useState<RosterEntry[]>([]);
-  const [dayClass, setDayClass] = useState<DayClass | null>(null);
+  const [roster, setRoster] = useState<ComputedEntry[]>([]);
+  const [todayInfo, setTodayInfo] = useState<TodayInfo | null>(null);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
   const today = todayStr();
@@ -47,30 +49,32 @@ export default function HomeScreen({ session, profile }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [staffRes, availRes, classRes] = await Promise.all([
-        supabase.from('cbd_staff_members').select('*').order('name'),
-        supabase.from('cbd_availability').select('*').eq('date', today),
-        supabase
-          .from('cbd_day_classes')
-          .select('*')
-          .eq('date', today)
-          .maybeSingle(),
-      ]);
-
-      const staff = (staffRes.data || []) as StaffMember[];
-      const avail = (availRes.data || []) as AvailabilityRow[];
-      setRoster(buildExplicitRoster(avail, staff));
-
-      setDayClass((classRes.data as DayClass) || null);
-
-      // Notifications: trainers see everything; assistants see only their own.
+      const d = new Date();
       let nq = supabase
         .from('cbd_notifications')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(20);
       if (!isTrainer) nq = nq.eq('target_user_id', userId);
-      const notifRes = await nq;
+
+      const [{ ctx }, notifRes] = await Promise.all([
+        loadRosterContext(d.getFullYear(), d.getMonth()),
+        nq,
+      ]);
+
+      const engine = makeRoster(ctx);
+      setRoster(engine.getRosterForDate(today));
+      const ci = engine.getEffectiveClassInfo(today);
+      const holiday = engine.isPublicHoliday(today);
+      const hasClass =
+        !holiday &&
+        (ci.from_default === false ||
+          ci.students_am > 0 ||
+          ci.students_pm > 0 ||
+          ci.capped_am ||
+          ci.capped_pm);
+      setTodayInfo({ holiday, hasClass, am: ci.students_am, pm: ci.students_pm });
+
       setNotifications((notifRes.data || []) as NotificationRow[]);
     } catch (e: any) {
       setError(e?.message || 'Could not load data.');
@@ -191,26 +195,20 @@ export default function HomeScreen({ session, profile }: Props) {
           {/* Today's classes */}
           <SectionTitle palette={palette}>Today's classes</SectionTitle>
           <Card palette={palette}>
-            {dayClass ? (
+            {todayInfo?.holiday ? (
+              <Text style={{ color: palette.warning }}>
+                Public holiday — no classes today.
+              </Text>
+            ) : todayInfo?.hasClass ? (
               <View style={styles.classRow}>
-                <ClassStat
-                  palette={palette}
-                  label="AM"
-                  value={dayClass.students_am ?? 0}
-                />
+                <ClassStat palette={palette} label="AM" value={todayInfo.am} />
                 <View
                   style={[styles.divider, { backgroundColor: palette.border }]}
                 />
-                <ClassStat
-                  palette={palette}
-                  label="PM"
-                  value={dayClass.students_pm ?? 0}
-                />
+                <ClassStat palette={palette} label="PM" value={todayInfo.pm} />
               </View>
             ) : (
-              <Text style={{ color: palette.textMuted }}>
-                No class record for today.
-              </Text>
+              <Text style={{ color: palette.textMuted }}>No classes today.</Text>
             )}
           </Card>
 
@@ -224,7 +222,7 @@ export default function HomeScreen({ session, profile }: Props) {
             ) : (
               roster.map((r, i) => (
                 <View
-                  key={r.staff_id}
+                  key={r.staff_id + r.day_role}
                   style={[
                     styles.rosterRow,
                     i > 0 && {

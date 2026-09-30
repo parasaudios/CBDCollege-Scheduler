@@ -48,6 +48,36 @@ export async function emitNotification(opts: EmitOpts): Promise<void> {
   }
 }
 
+// Notify a single staff member that a trainer changed their roster/availability.
+// No-op when there's no linked account or the trainer is editing themselves.
+// Mirrors the web app's notifyStaffOfRosterChange (subject = the affected staff).
+export async function notifyStaffOfRosterChange(opts: {
+  targetUserId: string | null | undefined;
+  actorId: string;
+  actorName: string;
+  subjectName: string;
+  type?: string;
+  title?: string;
+  message: string;
+  data?: Record<string, any>;
+}): Promise<void> {
+  if (!opts.targetUserId) return;
+  if (opts.targetUserId === opts.actorId) return;
+  await emitNotification({
+    type: opts.type || 'roster_changed',
+    title: opts.title || 'Your roster was updated',
+    message: opts.message,
+    target_user_id: opts.targetUserId,
+    actorId: opts.actorId,
+    actorName: opts.actorName,
+    data: {
+      subject_user_id: opts.targetUserId,
+      subject_name: opts.subjectName,
+      ...(opts.data || {}),
+    },
+  });
+}
+
 // Notify every trainer (except the acting assistant) that an assistant changed
 // their OWN availability. Subject stays the acting assistant so trainers' bell
 // entries read "<name>'s availability …", matching the web app.

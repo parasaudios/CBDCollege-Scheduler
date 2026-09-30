@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# roster cross-check harness (generated)
+scripts/xcheck/.engine/
+scripts/xcheck/.src/
+scripts/xcheck/.out/

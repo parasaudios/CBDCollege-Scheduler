@@ -34,12 +34,30 @@ update when a newer build is published.
   notifies the trainers — exactly like the web app, including the 14-day lock on
   marking yourself unavailable. Their own availability is marked on the calendar.
 
-The calendar shows the **saved** roster (explicit `cbd_availability`). Porting the
-web app's computed fallback for unsaved days (weekend rotation, head-trainer
-full-time, assistant scaling) and trainer-side roster editing comes next.
+**M3 — auto-roster, classes/students, trainer editing**
+- The calendar, Today screen and day detail now show the **fully computed** roster,
+  not just saved rows: the web app's resolution logic (weekend head-trainer
+  rotation, head-trainers-are-full-time, assistant scaling by student numbers,
+  public holidays, per-DOW priorities/exclusions/rotation) is ported to
+  `src/lib/rosterCompute.ts` and drives every screen.
+- Class numbers (AM/PM + capped) are computed with the same 0/0 and per-DOW
+  default rules as the web app.
+- **Trainers** can, from a day's detail sheet: edit that day's class numbers, and
+  pin the day's roster by toggling staff on/off. Both notify the affected staff.
+- The port is verified against the real web app: `scripts/xcheck/run.sh` diffs the
+  TS engine's output against `index.html`'s own functions across a battery of
+  dates/scenarios (currently 132 checks, 0 mismatches).
 
-Later milestones add the classes/students screens with the weekend rotation +
-auto-roster rules, trainer roster editing, and native push notifications.
+Later milestones add native push notifications, a richer notification detail view,
+and admin/exports.
+
+### Verifying the roster engine
+
+```bash
+cd scripts/xcheck && ./run.sh   # expects "132 checks, 0 mismatches"
+```
+
+Re-run after changing `src/lib/rosterCompute.ts` or the web app's roster logic.
 
 ## Project layout
 
@@ -53,9 +71,11 @@ mobile/
     lib/
       config.ts           Supabase keys, app version, release URL
       supabase.ts         Supabase client (AsyncStorage session)
-      types.ts            DB row types
+      types.ts            DB row + settings types
       format.ts           date/time helpers (formatDate matches the web app)
-      roster.ts           build a display roster from availability rows
+      rosterCompute.ts    the roster engine, ported from index.html (pure)
+      data.ts             loads a month into a RosterContext for the engine
+      roster.ts           small display helper (role label)
       notify.ts           emit notifications (mirrors the web app)
     theme.ts              colours mirrored from the web app
     screens/
@@ -64,7 +84,9 @@ mobile/
       CalendarScreen.tsx  the Calendar tab (month grid)
     components/
       UpdateBanner.tsx    self-update check
-      DayDetailSheet.tsx  per-day roster + assistant availability editor
+      DayDetailSheet.tsx  per-day roster + class/roster editors
+  scripts/
+    xcheck/               cross-checks rosterCompute.ts against the web app
   site/                   the download/update host (deploy this folder)
     index.html            download page
     version.json          release manifest (versionCode drives updates)

@@ -10,20 +10,15 @@ import {
   View,
 } from 'react-native';
 import DayDetailSheet from '../components/DayDetailSheet';
+import { loadRosterContext } from '../lib/data';
 import {
   buildMonthGrid,
   monthLabel,
-  monthRange,
   todayStr,
   WEEKDAY_HEADERS,
 } from '../lib/format';
-import { supabase } from '../lib/supabase';
-import type {
-  AvailabilityRow,
-  DayClass,
-  Profile,
-  StaffMember,
-} from '../lib/types';
+import { makeRoster, type RosterContext } from '../lib/rosterCompute';
+import type { Profile } from '../lib/types';
 import { paletteFor, radius, spacing, type Palette } from '../theme';
 
 interface Props {
@@ -43,69 +38,21 @@ export default function CalendarScreen({ session, profile }: Props) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [availByDate, setAvailByDate] = useState<Record<string, AvailabilityRow[]>>(
-    {},
-  );
-  const [classByDate, setClassByDate] = useState<Record<string, DayClass>>({});
-  const [myAvailByDate, setMyAvailByDate] = useState<Record<string, boolean>>({});
-
+  const [ctx, setCtx] = useState<RosterContext | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
   const grid = useMemo(() => buildMonthGrid(year, month0), [year, month0]);
+  const engine = useMemo(() => (ctx ? makeRoster(ctx) : null), [ctx]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const { start, end } = monthRange(year, month0);
-      const [staffRes, availRes, classRes, myAvailRes] = await Promise.all([
-        supabase.from('cbd_staff_members').select('*').order('name'),
-        supabase
-          .from('cbd_availability')
-          .select('*')
-          .gte('date', start)
-          .lte('date', end),
-        supabase
-          .from('cbd_day_classes')
-          .select('*')
-          .gte('date', start)
-          .lte('date', end),
-        isTrainer
-          ? Promise.resolve({ data: [] as any[] })
-          : supabase
-              .from('cbd_assistant_availability')
-              .select('*')
-              .eq('user_id', userId)
-              .gte('date', start)
-              .lte('date', end),
-      ]);
-
-      setStaff((staffRes.data || []) as StaffMember[]);
-
-      const avByDate: Record<string, AvailabilityRow[]> = {};
-      ((availRes.data || []) as AvailabilityRow[]).forEach((a) => {
-        if (a.status !== 'available') return;
-        (avByDate[a.date] = avByDate[a.date] || []).push(a);
-      });
-      setAvailByDate(avByDate);
-
-      const clByDate: Record<string, DayClass> = {};
-      ((classRes.data || []) as DayClass[]).forEach((c) => {
-        clByDate[c.date] = c;
-      });
-      setClassByDate(clByDate);
-
-      const mine: Record<string, boolean> = {};
-      ((myAvailRes.data || []) as { date: string; is_available: boolean }[]).forEach(
-        (m) => {
-          mine[m.date] = m.is_available;
-        },
-      );
-      setMyAvailByDate(mine);
+      const { ctx: loaded } = await loadRosterContext(year, month0);
+      setCtx(loaded);
     } catch (e: any) {
       setError(e?.message || 'Could not load the month.');
     }
-  }, [year, month0, isTrainer, userId]);
+  }, [year, month0]);
 
   useEffect(() => {
     (async () => {
@@ -135,9 +82,16 @@ export default function CalendarScreen({ session, profile }: Props) {
     setMonth0(d.getMonth());
   }
 
+  function myAvailFor(dateStr: string): boolean | undefined {
+    if (!ctx) return undefined;
+    const entry = (ctx.assistantAvailByDate[dateStr] || []).find(
+      (e) => e.user_id === userId,
+    );
+    return entry ? entry.is_available : undefined;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.surface2 }}>
-      {/* Header */}
       <View
         style={[
           styles.header,
@@ -158,7 +112,7 @@ export default function CalendarScreen({ session, profile }: Props) {
         </View>
       </View>
 
-      {loading ? (
+      {loading || !engine ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={palette.primary} />
         </View>
@@ -168,17 +122,13 @@ export default function CalendarScreen({ session, profile }: Props) {
             <View
               style={[
                 styles.errorBox,
-                {
-                  backgroundColor: palette.dangerLight,
-                  borderColor: palette.danger,
-                },
+                { backgroundColor: palette.dangerLight, borderColor: palette.danger },
               ]}
             >
               <Text style={{ color: palette.danger }}>{error}</Text>
             </View>
           ) : null}
 
-          {/* Weekday header */}
           <View style={styles.weekRow}>
             {WEEKDAY_HEADERS.map((w, i) => (
               <View key={i} style={styles.weekHeadCell}>
@@ -189,15 +139,21 @@ export default function CalendarScreen({ session, profile }: Props) {
             ))}
           </View>
 
-          {/* Day grid */}
           <View style={styles.grid}>
             {grid.map((dateStr, i) => {
               if (!dateStr) return <View key={i} style={styles.cell} />;
               const isToday = dateStr === today;
-              const rosterCount = (availByDate[dateStr] || []).length;
-              const dots = (availByDate[dateStr] || []).slice(0, 4);
-              const cls = classByDate[dateStr];
-              const myAvail = myAvailByDate[dateStr];
+              const holiday = engine.isPublicHoliday(dateStr);
+              const info = engine.getEffectiveClassInfo(dateStr);
+              const hasClass =
+                info.from_default === false ||
+                info.students_am > 0 ||
+                info.students_pm > 0 ||
+                info.capped_am ||
+                info.capped_pm;
+              const roster = engine.getRosterForDate(dateStr);
+              const dots = roster.slice(0, 4);
+              const myAvail = myAvailFor(dateStr);
               return (
                 <Pressable
                   key={i}
@@ -205,9 +161,7 @@ export default function CalendarScreen({ session, profile }: Props) {
                   style={[
                     styles.cell,
                     {
-                      backgroundColor: isToday
-                        ? palette.primaryLight
-                        : palette.surface,
+                      backgroundColor: isToday ? palette.primaryLight : palette.surface,
                       borderColor: isToday ? palette.primary : palette.border,
                     },
                   ]}
@@ -225,40 +179,35 @@ export default function CalendarScreen({ session, profile }: Props) {
                       {parseInt(dateStr.slice(-2), 10)}
                     </Text>
                     {myAvail === false ? (
-                      <View
-                        style={[styles.mine, { backgroundColor: palette.danger }]}
-                      />
+                      <View style={[styles.mine, { backgroundColor: palette.danger }]} />
                     ) : myAvail === true ? (
-                      <View
-                        style={[styles.mine, { backgroundColor: palette.success }]}
-                      />
+                      <View style={[styles.mine, { backgroundColor: palette.success }]} />
                     ) : null}
                   </View>
 
-                  {cls ? (
+                  {holiday ? (
+                    <Text style={[styles.clsBadge, { color: palette.warning }]}>PH</Text>
+                  ) : hasClass ? (
                     <Text style={[styles.clsBadge, { color: palette.textMuted }]}>
-                      {(cls.students_am ?? 0) + '/' + (cls.students_pm ?? 0)}
+                      {info.students_am + '/' + info.students_pm}
                     </Text>
                   ) : (
                     <View style={{ height: 13 }} />
                   )}
 
                   <View style={styles.dotRow}>
-                    {dots.map((a, di) => {
-                      const s = staff.find((x) => x.id === a.staff_id);
-                      return (
-                        <View
-                          key={di}
-                          style={[
-                            styles.miniDot,
-                            { backgroundColor: s?.color || palette.primary },
-                          ]}
-                        />
-                      );
-                    })}
-                    {rosterCount > 4 ? (
+                    {dots.map((r, di) => (
+                      <View
+                        key={di}
+                        style={[
+                          styles.miniDot,
+                          { backgroundColor: r.color || palette.primary },
+                        ]}
+                      />
+                    ))}
+                    {roster.length > 4 ? (
                       <Text style={[styles.more, { color: palette.textMuted }]}>
-                        +{rosterCount - 4}
+                        +{roster.length - 4}
                       </Text>
                     ) : null}
                   </View>
@@ -267,13 +216,10 @@ export default function CalendarScreen({ session, profile }: Props) {
             })}
           </View>
 
-          {/* Legend */}
           <View style={styles.legend}>
             <Text style={[styles.legendText, { color: palette.textMuted }]}>
-              Numbers show AM/PM students. Dots are rostered staff.
-              {!isTrainer
-                ? ' Green/red mark your own availability.'
-                : ''}
+              Numbers are AM/PM students (PH = public holiday). Dots are rostered
+              staff.{!isTrainer ? ' Green/red mark your own availability.' : ''}
             </Text>
           </View>
         </ScrollView>
@@ -284,7 +230,7 @@ export default function CalendarScreen({ session, profile }: Props) {
         dateStr={selected}
         session={session}
         profile={profile}
-        staff={staff}
+        ctx={ctx}
         onClose={() => setSelected(null)}
         onChanged={load}
       />
@@ -324,11 +270,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 18, fontWeight: '800', marginBottom: spacing(2) },
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   navBtn: {
     width: 40,
     height: 40,
@@ -356,7 +298,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     padding: 3,
-    // small gutter via margin trick handled by border + padding
   },
   cellTop: {
     flexDirection: 'row',
