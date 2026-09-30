@@ -8,8 +8,10 @@ import UpdateBanner from './components/UpdateBanner';
 import { useNotifications } from './lib/useNotifications';
 import { supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
+import ClassesScreen from './screens/ClassesScreen';
 import Placeholder from './screens/Placeholder';
 import ScheduleScreen from './screens/ScheduleScreen';
+import StaffScreen from './screens/StaffScreen';
 import { useTheme } from './ThemeProvider';
 
 type TrainerTab = 'schedule' | 'classes' | 'staff' | 'notifications' | 'admin' | 'guides';
@@ -87,8 +89,8 @@ export default function Main({ session }: { session: Session }) {
 
       <View style={{ flex: 1 }}>
         {tab === 'schedule' && <ScheduleScreen session={session} profile={profile} />}
-        {tab === 'classes' && <Placeholder title="Classes" />}
-        {tab === 'staff' && <Placeholder title="Staff" />}
+        {tab === 'classes' && <ClassesScreen session={session} profile={profile} />}
+        {tab === 'staff' && <StaffScreen session={session} profile={profile} />}
         {tab === 'notifications' && <Placeholder title="Send a notification" />}
         {tab === 'admin' && <Placeholder title="Admin" />}
         {tab === 'guides' && <Placeholder title="App Guides" />}
