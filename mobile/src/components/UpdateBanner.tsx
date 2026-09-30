@@ -33,9 +33,10 @@ export default function UpdateBanner() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(VERSION_MANIFEST_URL, {
-          cache: 'no-store' as RequestCache,
-        });
+        // Cache-bust: RN's fetch may ignore the `cache` option, and version.json
+        // must never be read stale (it's how the app learns an update exists).
+        const url = VERSION_MANIFEST_URL + '?t=' + Date.now();
+        const res = await fetch(url, { cache: 'no-store' as RequestCache });
         if (!res.ok) return;
         const m = (await res.json()) as Manifest;
         if (
