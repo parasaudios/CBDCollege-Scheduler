@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { supabase } from './src/lib/supabase';
-import HomeScreen from './src/screens/HomeScreen';
+import Main from './src/Main';
 import LoginScreen from './src/screens/LoginScreen';
 import { paletteFor } from './src/theme';
 
@@ -51,7 +51,7 @@ export default function App() {
           <ActivityIndicator size="large" color={palette.primary} />
         </View>
       ) : session ? (
-        <HomeScreen session={session} />
+        <Main session={session} />
       ) : (
         <LoginScreen />
       )}

@@ -22,16 +22,19 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function onSignIn() {
-    const e = email.trim();
-    if (!e || !password) {
-      setError('Enter your email and password.');
+    const raw = email.trim().toLowerCase();
+    if (!raw || !password) {
+      setError('Enter your name and password.');
       return;
     }
+    // Match the web app: a bare name (no @) resolves to the college domain.
+    const resolved =
+      raw.indexOf('@') === -1 ? raw + '@cbdcollege.edu.au' : raw;
     setBusy(true);
     setError(null);
     // On success, App.tsx's onAuthStateChange listener swaps to the home screen.
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: e,
+      email: resolved,
       password,
     });
     if (signInError) {
@@ -71,12 +74,12 @@ export default function LoginScreen() {
           ]}
         >
           <Text style={[styles.label, { color: palette.textSecondary }]}>
-            Email
+            Name or email
           </Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
-            placeholder="you@example.com"
+            placeholder="your name"
             placeholderTextColor={palette.textMuted}
             autoCapitalize="none"
             autoCorrect={false}

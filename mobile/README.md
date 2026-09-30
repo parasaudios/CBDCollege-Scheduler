@@ -13,38 +13,58 @@ update when a newer build is published.
 > `app.json` is already filled in), but the current focus is getting Android
 > working and shipped.
 
-## What's in this milestone (M1)
+## What's built so far
 
+**M1 — foundation**
 - Expo (SDK 57) + TypeScript project.
 - Supabase client with session persisted in `AsyncStorage` (stays logged in).
-- **Login** screen (email/password, same credentials as the web app).
-- **Home** screen: your profile, today's class numbers (AM/PM), who's rostered
+- **Login** (name or email + password — a bare name resolves to
+  `@cbdcollege.edu.au`, same as the web app).
+- **Today** screen: your profile, today's class numbers (AM/PM), who's rostered
   today, and recent notifications (trainers see all; assistants see their own).
 - Self-update banner that reads the published `version.json`.
 
-Later milestones add the full roster calendar, availability editing, the
-classes/students screens with the weekend rotation + auto-roster rules, and
-native push notifications.
+**M2 — roster calendar + availability editing**
+- Bottom tabs: **Today** and **Calendar**.
+- **Calendar**: month grid with per-day AM/PM student numbers and coloured dots
+  for rostered staff; tap a day for its detail.
+- **Day detail** sheet: the day's classes and full roster.
+- **Assistant self-availability**: assistants set Available / Not available (with
+  an optional note) per day, which writes `cbd_assistant_availability` and
+  notifies the trainers — exactly like the web app, including the 14-day lock on
+  marking yourself unavailable. Their own availability is marked on the calendar.
+
+The calendar shows the **saved** roster (explicit `cbd_availability`). Porting the
+web app's computed fallback for unsaved days (weekend rotation, head-trainer
+full-time, assistant scaling) and trainer-side roster editing comes next.
+
+Later milestones add the classes/students screens with the weekend rotation +
+auto-roster rules, trainer roster editing, and native push notifications.
 
 ## Project layout
 
 ```
 mobile/
-  App.tsx                 auth gate: Login vs Home
+  App.tsx                 auth gate: Login vs Main
   app.json                Expo config (name, package, version, icons)
   eas.json                EAS build profiles (APK output)
   src/
+    Main.tsx              loads profile once; bottom tabs (Today/Calendar)
     lib/
       config.ts           Supabase keys, app version, release URL
       supabase.ts         Supabase client (AsyncStorage session)
       types.ts            DB row types
       format.ts           date/time helpers (formatDate matches the web app)
+      roster.ts           build a display roster from availability rows
+      notify.ts           emit notifications (mirrors the web app)
     theme.ts              colours mirrored from the web app
     screens/
       LoginScreen.tsx
-      HomeScreen.tsx
+      HomeScreen.tsx      the Today tab
+      CalendarScreen.tsx  the Calendar tab (month grid)
     components/
       UpdateBanner.tsx    self-update check
+      DayDetailSheet.tsx  per-day roster + assistant availability editor
   site/                   the download/update host (deploy this folder)
     index.html            download page
     version.json          release manifest (versionCode drives updates)

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import UpdateBanner from '../components/UpdateBanner';
 import { prettyDateLong, prettyTime, timeAgo, todayStr } from '../lib/format';
+import { buildExplicitRoster, roleLabel } from '../lib/roster';
 import { supabase } from '../lib/supabase';
 import type {
   AvailabilityRow,
@@ -26,29 +27,27 @@ import { paletteFor, radius, spacing, type Palette } from '../theme';
 
 interface Props {
   session: Session;
+  profile: Profile | null;
 }
 
-export default function HomeScreen({ session }: Props) {
+export default function HomeScreen({ session, profile }: Props) {
   const palette = paletteFor(useColorScheme());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [dayClass, setDayClass] = useState<DayClass | null>(null);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
   const today = todayStr();
   const userId = session.user.id;
+  const isTrainer = profile?.role === 'trainer';
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const isTrainer = await loadIsTrainer(userId);
-
-      const [profileRes, staffRes, availRes, classRes] = await Promise.all([
-        supabase.from('cbd_profiles').select('*').eq('id', userId).maybeSingle(),
+      const [staffRes, availRes, classRes] = await Promise.all([
         supabase.from('cbd_staff_members').select('*').order('name'),
         supabase.from('cbd_availability').select('*').eq('date', today),
         supabase
@@ -58,36 +57,9 @@ export default function HomeScreen({ session }: Props) {
           .maybeSingle(),
       ]);
 
-      if (profileRes.data) setProfile(profileRes.data as Profile);
-
       const staff = (staffRes.data || []) as StaffMember[];
-      const staffById: Record<string, StaffMember> = {};
-      staff.forEach((s) => {
-        staffById[s.id] = s;
-      });
-
       const avail = (availRes.data || []) as AvailabilityRow[];
-      const entries: RosterEntry[] = avail
-        .filter((a) => a.status === 'available')
-        .map((a) => {
-          const s = staffById[a.staff_id];
-          return {
-            staff_id: a.staff_id,
-            name: s?.name || 'Unknown',
-            color: s?.color || null,
-            day_role: a.day_role,
-            is_head_trainer: !!s?.is_head_trainer,
-            start_time: a.start_time,
-            end_time: a.end_time,
-          };
-        })
-        // Head trainers first, then alphabetical.
-        .sort((a, b) => {
-          if (a.is_head_trainer !== b.is_head_trainer)
-            return a.is_head_trainer ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-      setRoster(entries);
+      setRoster(buildExplicitRoster(avail, staff));
 
       setDayClass((classRes.data as DayClass) || null);
 
@@ -103,7 +75,7 @@ export default function HomeScreen({ session }: Props) {
     } catch (e: any) {
       setError(e?.message || 'Could not load data.');
     }
-  }, [today, userId]);
+  }, [today, userId, isTrainer]);
 
   useEffect(() => {
     (async () => {
@@ -136,7 +108,7 @@ export default function HomeScreen({ session }: Props) {
 
   const displayName =
     profile?.full_name || session.user.email || 'there';
-  const roleLabel =
+  const roleBadge =
     profile?.role === 'trainer' ? 'Trainer' : profile ? 'Assistant' : '';
 
   return (
@@ -202,7 +174,7 @@ export default function HomeScreen({ session }: Props) {
             <Text style={[styles.greeting, { color: palette.textPrimary }]}>
               Hi {firstName(displayName)}
             </Text>
-            {roleLabel ? (
+            {roleBadge ? (
               <View
                 style={[
                   styles.badge,
@@ -210,7 +182,7 @@ export default function HomeScreen({ session }: Props) {
                 ]}
               >
                 <Text style={[styles.badgeText, { color: palette.primaryDark }]}>
-                  {roleLabel}
+                  {roleBadge}
                 </Text>
               </View>
             ) : null}
@@ -276,11 +248,7 @@ export default function HomeScreen({ session }: Props) {
                     <Text
                       style={[styles.rosterMeta, { color: palette.textMuted }]}
                     >
-                      {r.is_head_trainer
-                        ? 'Head Trainer'
-                        : r.day_role === 'assistant'
-                          ? 'Assistant'
-                          : 'Trainer'}
+                      {roleLabel(r)}
                       {r.start_time
                         ? ` · ${prettyTime(r.start_time)}${
                             r.end_time ? '–' + prettyTime(r.end_time) : ''
@@ -337,16 +305,6 @@ export default function HomeScreen({ session }: Props) {
       )}
     </View>
   );
-}
-
-// Trainers see all notifications; the role lives on cbd_profiles.
-async function loadIsTrainer(userId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('cbd_profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
-  return (data as { role?: string } | null)?.role === 'trainer';
 }
 
 function firstName(name: string): string {

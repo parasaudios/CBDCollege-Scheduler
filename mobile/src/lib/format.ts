@@ -71,6 +71,49 @@ export function prettyTime(t: string | null | undefined): string {
   return `${h}:${min}${ampm}`;
 }
 
+// "Tue, 30 Sep" — matches the web app's _prettyDateShort wording used in
+// notification messages (built by hand so it doesn't depend on Intl/Hermes).
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export function prettyDateShortDow(dateStr: string): string {
+  const d = parseDate(dateStr);
+  return `${WEEKDAYS_SHORT[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+}
+
+// Whole days from local midnight today to the given date (matches web _daysUntil).
+export function daysUntil(dateStr: string): number {
+  const d = parseDate(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+export function monthLabel(year: number, month0: number): string {
+  return `${MONTHS[month0]} ${year}`;
+}
+
+// Grid of YYYY-MM-DD strings for a month, padded with nulls so the first cell
+// lands on the right weekday. Weeks start Sunday (getDay() === 0).
+export function buildMonthGrid(year: number, month0: number): (string | null)[] {
+  const first = new Date(year, month0, 1);
+  const startPad = first.getDay(); // 0 = Sunday
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < startPad; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(formatDate(new Date(year, month0, d)));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+export const WEEKDAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+// First/last day of a month as YYYY-MM-DD (for range queries).
+export function monthRange(year: number, month0: number): { start: string; end: string } {
+  return {
+    start: formatDate(new Date(year, month0, 1)),
+    end: formatDate(new Date(year, month0 + 1, 0)),
+  };
+}
+
 // Relative "time ago" for notification timestamps.
 export function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
