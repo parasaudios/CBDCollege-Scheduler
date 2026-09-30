@@ -13,43 +13,52 @@ update when a newer build is published.
 > `app.json` is already filled in), but the current focus is getting Android
 > working and shipped.
 
-## What's built so far
+## Features (matches the web app)
 
-**M1 — foundation**
-- Expo (SDK 57) + TypeScript project.
-- Supabase client with session persisted in `AsyncStorage` (stays logged in).
-- **Login** (name or email + password — a bare name resolves to
-  `@cbdcollege.edu.au`, same as the web app).
-- **Today** screen: your profile, today's class numbers (AM/PM), who's rostered
-  today, and recent notifications (trainers see all; assistants see their own).
-- Self-update banner that reads the published `version.json`.
+The app mirrors the web scheduler's look and functions, with the same top tabs.
 
-**M2 — roster calendar + availability editing**
-- Bottom tabs: **Today** and **Calendar**.
-- **Calendar**: month grid with per-day AM/PM student numbers and coloured dots
-  for rostered staff; tap a day for its detail.
-- **Day detail** sheet: the day's classes and full roster.
-- **Assistant self-availability**: assistants set Available / Not available (with
-  an optional note) per day, which writes `cbd_assistant_availability` and
-  notifies the trainers — exactly like the web app, including the 14-day lock on
-  marking yourself unavailable. Their own availability is marked on the calendar.
+**Trainers:** Schedule (today hero + team roster calendar + Team overview + Sync
+students + Auto-roster), Classes (Vasto sync + per-weekday default class times +
+public holidays), Staff (add/edit/remove staff, link accounts, auto-roster rules,
+assistant slot times; weekly availability patterns + one-off overrides), send
+Notifications, Admin (create users, passwords, emails, roles, delete), App Guides.
 
-**M3 — auto-roster, classes/students, trainer editing**
-- The calendar, Today screen and day detail now show the **fully computed** roster,
-  not just saved rows: the web app's resolution logic (weekend head-trainer
-  rotation, head-trainers-are-full-time, assistant scaling by student numbers,
-  public holidays, per-DOW priorities/exclusions/rotation) is ported to
-  `src/lib/rosterCompute.ts` and drives every screen.
-- Class numbers (AM/PM + capped) are computed with the same 0/0 and per-DOW
-  default rules as the web app.
-- **Trainers** can, from a day's detail sheet: edit that day's class numbers, and
-  pin the day's roster by toggling staff on/off. Both notify the affected staff.
-- The port is verified against the real web app: `scripts/xcheck/run.sh` diffs the
-  TS engine's output against `index.html`'s own functions across a battery of
-  dates/scenarios (currently 132 checks, 0 mismatches).
+**Assistants:** My Roster (today/next-shift + calendar), My Availability (weekly
+pattern + one-off overrides with the 14-day lock), App Guides.
 
-Later milestones add native push notifications, a richer notification detail view,
-and admin/exports.
+**Everywhere:** the notification bell (list + rich detail with the day snapshot),
+light/dark theme toggle, Export PDF, and self-update banner.
+
+The roster shown is **fully computed** by a faithful port of the web app's
+resolution logic (`src/lib/rosterCompute.ts`): weekend head-trainer rotation,
+head-trainers-are-full-time, assistant scaling, public holidays, per-DOW
+priorities/exclusions/rotation. It's verified against the real web app —
+`scripts/xcheck/run.sh` diffs it against `index.html`'s own functions (132 checks,
+0 mismatches).
+
+**Native push** uses `expo-notifications` (real OS notifications). See setup below.
+
+### Verifying the roster engine
+
+```bash
+cd scripts/xcheck && ./run.sh   # expects "132 checks, 0 mismatches"
+```
+
+Re-run after changing `src/lib/rosterCompute.ts` or the web app's roster logic.
+
+### Native push setup (one-time)
+
+1. Run `../supabase-native-push.sql` in Supabase (creates `cbd_expo_push_tokens`).
+2. Deploy the sender: `supabase functions deploy send-native-push --project-ref nqbonrcmbhjutlrpjfpk`
+3. Give EAS your Android push credentials so the build can receive FCM messages:
+   `eas credentials` → Android → Push Notifications (FCM V1) → upload the service
+   account key from your Firebase project (Firebase console → Project settings →
+   Service accounts → Generate new private key). This is a one-time step like the
+   keystore.
+
+The app registers a device token on launch and saves it; both the mobile and web
+apps call `send-native-push` on every notification, so native devices get an OS
+notification wherever the change was made.
 
 ### Verifying the roster engine
 
