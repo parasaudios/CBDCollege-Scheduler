@@ -1,0 +1,10 @@
+# version.json must never be served stale: it is how installed apps learn
+# that an update exists.
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Android only offers to install a download served as an APK.
+/cbd-college-scheduler.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="cbd-college-scheduler.apk"
+  Cache-Control: no-cache

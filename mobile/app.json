@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "CBD College Scheduler",
+    "slug": "cbd-college-scheduler",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "cbdscheduler",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.parasaudios.cbdscheduler"
+    },
+    "android": {
+      "package": "com.parasaudios.cbdscheduler",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#dbeafe",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
