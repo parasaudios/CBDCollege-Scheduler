@@ -124,6 +124,26 @@ CREATE POLICY "cbd_assist_avail_write" ON public.cbd_assistant_availability
     WITH CHECK (user_id = auth.uid() OR public.cbd_is_trainer());
 
 -- ============================================================
+-- REALTIME
+-- ------------------------------------------------------------
+-- The app subscribes to Supabase Realtime for these tables. Freshly-created
+-- tables aren't in the realtime publication automatically, so add them here.
+-- Without this, changes still arrive via the app's ~15s polling, just not
+-- instantly. Safe to run repeatedly.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'cbd_notifications') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.cbd_notifications;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'cbd_notification_reads') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.cbd_notification_reads;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'cbd_assistant_availability') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.cbd_assistant_availability;
+  END IF;
+END $$;
+
+-- ============================================================
 -- DONE. If cbd_notifications previously had no INSERT policy for
 -- assistants, this file adds it, enabling assistant -> trainer alerts.
 -- ============================================================
