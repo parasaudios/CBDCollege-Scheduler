@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import StaffModal from '../components/StaffModal';
-import { Badge, Btn, Card, CardHeader, EmptyNote, Pills } from '../components/ui';
+import { Badge, Btn, Card, CardHeader, EmptyNote, Pills, StatusBadge } from '../components/ui';
 import { loadSettings } from '../lib/data';
 import { prettyDateLong, todayStr } from '../lib/format';
 import { notifyStaffOfRosterChange } from '../lib/notify';
@@ -381,9 +381,7 @@ function OverrideEditor({
         return (
           <Pressable key={d} onPress={() => tap(d)} style={[styles.ovDayRow, { borderBottomColor: palette.border }]}>
             <Text style={{ color: palette.textPrimary, flex: 1, fontSize: 14 }}>{prettyDateLong(d)}</Text>
-            <Text style={{ color: ov === false ? palette.danger : ov === true ? palette.success : palette.textMuted, fontSize: 13, fontWeight: '600' }}>
-              {ov === false ? 'Not available' : ov === true ? 'Available' : 'Pattern'}
-            </Text>
+            <StatusBadge kind={ov === false ? 'unavailable' : ov === true ? 'available' : 'pattern'} />
           </Pressable>
         );
       })}

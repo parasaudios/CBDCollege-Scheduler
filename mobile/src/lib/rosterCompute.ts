@@ -549,6 +549,7 @@ export function makeRoster(ctx: RosterContext) {
     computeRosterForDate,
     getRosterForDate,
     getEffectiveAvailability,
+    isStaffAvailableOnDate,
     ruleHTForDate,
   };
 }

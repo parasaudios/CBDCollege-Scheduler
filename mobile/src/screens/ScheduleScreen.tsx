@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import AutoRosterModal from '../components/AutoRosterModal';
 import DayDetailSheet from '../components/DayDetailSheet';
-import { Btn, Card, EmptyNote, Pills } from '../components/ui';
+import { Btn, Card, EmptyNote, Pills, StatusBadge, type StatusKind } from '../components/ui';
 import { loadRosterContext } from '../lib/data';
 import {
   buildMonthGrid,
@@ -24,7 +24,7 @@ import {
 import { roleLabel } from '../lib/roster';
 import { makeRoster, type RosterContext } from '../lib/rosterCompute';
 import { supabase } from '../lib/supabase';
-import type { Profile } from '../lib/types';
+import type { Profile, StaffMember } from '../lib/types';
 import { useTheme } from '../ThemeProvider';
 import { HERO_GRADIENT, radius, spacing } from '../theme';
 
@@ -50,6 +50,7 @@ export default function ScheduleScreen({ session, profile }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [ctx, setCtx] = useState<RosterContext | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selStaffId, setSelStaffId] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [autoOpen, setAutoOpen] = useState(false);
@@ -80,6 +81,17 @@ export default function ScheduleScreen({ session, profile }: Props) {
     await load();
     setRefreshing(false);
   }, [load]);
+
+  // Default the colour-by staff member to the signed-in trainer (or the first
+  // staff member), and keep the choice stable as the month data reloads.
+  useEffect(() => {
+    if (!ctx) return;
+    setSelStaffId((prev) => {
+      if (prev && ctx.staff.some((s) => s.id === prev)) return prev;
+      const mine = ctx.staff.find((s) => s.user_id === userId);
+      return mine?.id ?? ctx.staff[0]?.id ?? null;
+    });
+  }, [ctx, userId]);
 
   function step(delta: number) {
     let m = month0 + delta;
@@ -213,14 +225,25 @@ export default function ScheduleScreen({ session, profile }: Props) {
               </View>
 
               {sub === 'roster' ? (
-                <RosterGrid
-                  grid={grid}
-                  engine={engine}
-                  today={today}
-                  isTrainer={isTrainer}
-                  myAvailFor={myAvailFor}
-                  onSelect={setSelected}
-                />
+                <>
+                  {isTrainer && ctx ? (
+                    <StaffPicker
+                      staff={ctx.staff}
+                      value={selStaffId}
+                      onChange={setSelStaffId}
+                    />
+                  ) : null}
+                  <RosterGrid
+                    grid={grid}
+                    engine={engine}
+                    staff={ctx ? ctx.staff : []}
+                    selStaffId={selStaffId}
+                    today={today}
+                    isTrainer={isTrainer}
+                    myAvailFor={myAvailFor}
+                    onSelect={setSelected}
+                  />
+                </>
               ) : (
                 <>
                   {isTrainer ? (
@@ -262,9 +285,66 @@ export default function ScheduleScreen({ session, profile }: Props) {
   );
 }
 
+// Horizontal chip picker: choose which staff member the calendar colours by.
+function StaffPicker({
+  staff,
+  value,
+  onChange,
+}: {
+  staff: StaffMember[];
+  value: string | null;
+  onChange: (id: string) => void;
+}) {
+  const { palette } = useTheme();
+  if (!staff.length) return null;
+  return (
+    <View style={{ marginTop: spacing(3) }}>
+      <Text style={[styles.pickerLabel, { color: palette.textMuted }]}>COLOUR DAYS BY</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pickerRow}
+      >
+        {staff.map((s) => {
+          const active = s.id === value;
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => onChange(s.id)}
+              style={[
+                styles.staffChip,
+                {
+                  backgroundColor: active ? palette.primary : palette.surface,
+                  borderColor: active ? palette.primary : palette.border,
+                },
+              ]}
+            >
+              <View style={[styles.staffChipDot, { backgroundColor: s.color || palette.primary }]} />
+              <Text
+                style={{
+                  color: active ? '#fff' : palette.textPrimary,
+                  fontWeight: active ? '700' : '600',
+                  fontSize: 13,
+                }}
+              >
+                {s.name.split(' ')[0]}
+              </Text>
+              {s.is_head_trainer ? (
+                <Text style={{ color: active ? 'rgba(255,255,255,0.85)' : palette.textMuted, fontSize: 10, fontWeight: '700' }}>HT</Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 function RosterGrid({
   grid,
   engine,
+  staff,
+  selStaffId,
   today,
   isTrainer,
   myAvailFor,
@@ -272,12 +352,15 @@ function RosterGrid({
 }: {
   grid: (string | null)[];
   engine: ReturnType<typeof makeRoster>;
+  staff: StaffMember[];
+  selStaffId: string | null;
   today: string;
   isTrainer: boolean;
   myAvailFor: (d: string) => boolean | undefined;
   onSelect: (d: string) => void;
 }) {
   const { palette } = useTheme();
+  const selName = selStaffId ? staff.find((s) => s.id === selStaffId)?.name.split(' ')[0] : null;
   return (
     <>
       <View style={styles.weekRow}>
@@ -297,22 +380,63 @@ function RosterGrid({
             info.from_default === false || info.students_am > 0 || info.students_pm > 0 || info.capped_am || info.capped_pm;
           const roster = engine.getRosterForDate(dateStr);
           const dots = roster.slice(0, 4);
+
+          // Selected-staff status — mirrors the web calendar's green/amber/red fill.
+          // green = rostered, amber = partial, red = rostered but marked unavailable
+          // (a conflict). Days the selected staff isn't on stay plain.
+          let status: 'available' | 'partial' | 'unavailable' | null = null;
+          let staffIsOn = false;
+          if (isTrainer && selStaffId && !holiday) {
+            const entry = roster.find((r) => r.staff_id === selStaffId);
+            if (entry) {
+              const selStaff = staff.find((s) => s.id === selStaffId);
+              const active = entry.status === 'available' || entry.status === 'partial';
+              const conflict = !!(selStaff && active && !engine.isStaffAvailableOnDate(selStaff, dateStr));
+              status = conflict ? 'unavailable' : (entry.status === 'partial' ? 'partial' : 'available');
+              staffIsOn = active && !conflict;
+            }
+          }
+
+          // Assistant view keeps its own-availability dot.
           const myAvail = !isTrainer ? myAvailFor(dateStr) : undefined;
+
+          const bg = holiday
+            ? palette.holiday + '22'
+            : status === 'available'
+              ? palette.successLight
+              : status === 'partial'
+                ? palette.warningLight
+                : status === 'unavailable'
+                  ? palette.dangerLight
+                  : isToday
+                    ? palette.primaryLight
+                    : palette.surface;
+          const border = isToday
+            ? palette.primary
+            : status === 'available'
+              ? palette.successBorder
+              : status === 'partial'
+                ? palette.warningBorder
+                : status === 'unavailable'
+                  ? palette.dangerBorder
+                  : holiday
+                    ? palette.holiday
+                    : palette.border;
+
+          // Class student count: green when the selected staff is on, red when a
+          // class is on but they aren't (matches the web tick/cross colouring).
+          const clsColor =
+            isTrainer && selStaffId && hasClass
+              ? staffIsOn
+                ? palette.success
+                : palette.danger
+              : palette.textMuted;
+
           return (
             <Pressable
               key={i}
               onPress={() => onSelect(dateStr)}
-              style={[
-                styles.cell,
-                {
-                  backgroundColor: holiday
-                    ? palette.holiday + '22'
-                    : isToday
-                      ? palette.primaryLight
-                      : palette.surface,
-                  borderColor: isToday ? palette.primary : holiday ? palette.holiday : palette.border,
-                },
-              ]}
+              style={[styles.cell, { backgroundColor: bg, borderColor: border }]}
             >
               <View style={styles.cellTop}>
                 <Text
@@ -332,7 +456,7 @@ function RosterGrid({
               {holiday ? (
                 <Text style={[styles.phTag, { color: palette.holiday }]}>PH</Text>
               ) : hasClass ? (
-                <Text style={[styles.clsBadge, { color: palette.textMuted }]}>
+                <Text style={[styles.clsBadge, { color: clsColor, fontWeight: isTrainer && selStaffId ? '800' : '600' }]}>
                   {info.students_am + '/' + info.students_pm}
                 </Text>
               ) : (
@@ -358,8 +482,18 @@ function RosterGrid({
         })}
       </View>
       <Text style={[styles.legend, { color: palette.textMuted }]}>
-        Numbers are AM/PM students (PH = public holiday). Dots are rostered staff; ringed = head trainer.
-        {!isTrainer ? ' Green/red mark your own availability.' : ''}
+        {isTrainer && selName ? (
+          <>
+            <Text style={{ color: palette.success, fontWeight: '700' }}>Green</Text> = {selName} rostered ·{' '}
+            <Text style={{ color: palette.warning, fontWeight: '700' }}>Amber</Text> = partial ·{' '}
+            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = class on, not rostered. Dots show everyone on; ringed = head trainer.
+          </>
+        ) : (
+          <>
+            Numbers are AM/PM students (PH = public holiday). Dots are rostered staff; ringed = head trainer.
+            {!isTrainer ? ' Green/red mark your own availability.' : ''}
+          </>
+        )}
       </Text>
     </>
   );
@@ -378,27 +512,36 @@ function Overview({
   const { palette } = useTheme();
   const days = grid.filter((d): d is string => !!d && (engine.isClassDay(d) || engine.getRosterForDate(d).length > 0));
   if (days.length === 0) return <EmptyNote>No class days this month.</EmptyNote>;
+  const accentFor = (kind: StatusKind) =>
+    kind === 'holiday' ? palette.holiday : kind === 'rostered' ? palette.success : palette.danger;
   return (
     <View style={{ marginTop: spacing(3) }}>
       {days.map((d) => {
+        const holiday = engine.isPublicHoliday(d);
         const roster = engine.getRosterForDate(d);
         const info = engine.getEffectiveClassInfo(d);
+        const kind: StatusKind = holiday ? 'holiday' : roster.length > 0 ? 'rostered' : 'unstaffed';
         return (
           <Pressable
             key={d}
             onPress={() => onSelect(d)}
-            style={[styles.ovRow, { borderBottomColor: palette.border }]}
+            style={[styles.ovRow, { borderColor: palette.border, backgroundColor: palette.surface2 }]}
           >
+            <View style={[styles.ovAccent, { backgroundColor: accentFor(kind) }]} />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.textPrimary, fontWeight: '600', fontSize: 14 }}>
-                {prettyDateLong(d)}
-              </Text>
-              <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 2 }}>
-                {info.students_am}/{info.students_pm} students
-                {roster.length ? ' · ' + roster.map((r) => r.name.split(' ')[0]).join(', ') : ' · no one rostered'}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(2) }}>
+                <Text style={{ color: palette.textPrimary, fontWeight: '700', fontSize: 14, flexShrink: 1 }}>
+                  {prettyDateLong(d)}
+                </Text>
+                <StatusBadge kind={kind} />
+              </View>
+              <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 3 }}>
+                {holiday ? 'Public holiday — no classes' : `${info.students_am}/${info.students_pm} students`}
+                {!holiday && roster.length ? ' · ' + roster.map((r) => r.name.split(' ')[0]).join(', ') : ''}
+                {!holiday && !roster.length ? ' · no one rostered' : ''}
               </Text>
             </View>
-            <Text style={{ color: palette.textMuted }}>›</Text>
+            <Text style={{ color: palette.textMuted, fontSize: 18 }}>›</Text>
           </Pressable>
         );
       })}
@@ -442,6 +585,10 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing(4), borderBottomWidth: 1, gap: spacing(3) },
   cardTitle: { fontSize: 17, fontWeight: '700' },
   cardSub: { fontSize: 12, marginTop: 2 },
+  pickerLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: spacing(2) },
+  pickerRow: { flexDirection: 'row', gap: spacing(2), paddingRight: spacing(2) },
+  staffChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing(3), paddingVertical: spacing(2) },
+  staffChipDot: { width: 10, height: 10, borderRadius: 5 },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing(4), marginBottom: spacing(3) },
   navBtn: { width: 40, height: 40, borderRadius: radius, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   monthLabel: { fontSize: 17, fontWeight: '700' },
@@ -459,6 +606,7 @@ const styles = StyleSheet.create({
   miniDot: { width: 7, height: 7, borderRadius: 4 },
   more: { fontSize: 9, marginLeft: 1 },
   legend: { fontSize: 12, lineHeight: 17, marginTop: spacing(3) },
-  ovRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing(3), borderBottomWidth: 1, gap: spacing(3) },
+  ovRow: { flexDirection: 'row', alignItems: 'center', padding: spacing(3), borderWidth: 1, borderRadius: radius, gap: spacing(3), marginBottom: spacing(2) },
+  ovAccent: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
   dot: { width: 12, height: 12, borderRadius: 6 },
 });

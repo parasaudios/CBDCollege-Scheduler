@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Btn, Card, CardHeader } from '../components/ui';
+import { Btn, Card, CardHeader, Dot } from '../components/ui';
 import { loadSettings } from '../lib/data';
 import { prettyDateLong } from '../lib/format';
 import { emitNotification } from '../lib/notify';
@@ -233,15 +233,16 @@ export default function ClassesScreen({ session, profile }: { session: Session; 
               onChangeText={setPhLabel}
               placeholder="Label (optional)"
               placeholderTextColor={palette.textMuted}
-              style={[styles.input, { flex: 1.4, backgroundColor: palette.surface2, borderColor: palette.border, color: palette.textPrimary }]}
+              style={[styles.input, { flex: 1.3, backgroundColor: palette.surface2, borderColor: palette.border, color: palette.textPrimary }]}
             />
-            <Btn label="Add" size="sm" onPress={addHoliday} />
           </View>
+          <Btn label="Add holiday" icon="+" onPress={addHoliday} style={{ marginTop: spacing(2) }} />
           {holidays.length === 0 ? (
             <Text style={{ color: palette.textMuted, marginTop: spacing(3) }}>No public holidays set.</Text>
           ) : (
             holidays.map((h) => (
               <View key={h.date} style={[styles.phRow, { borderTopColor: palette.border }]}>
+                <Dot tone="holiday" />
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: palette.textPrimary, fontWeight: '600' }}>{prettyDateLong(h.date)}</Text>
                   <Text style={{ color: palette.textMuted, fontSize: 12 }}>{h.label}</Text>
@@ -292,6 +293,6 @@ const styles = StyleSheet.create({
   capRow: { flexDirection: 'row', gap: spacing(6), marginTop: spacing(1) },
   capItem: { flexDirection: 'row', alignItems: 'center', gap: spacing(2) },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: spacing(3), paddingVertical: spacing(2), fontSize: 15 },
-  phAddRow: { flexDirection: 'row', gap: spacing(2), alignItems: 'flex-end' },
+  phAddRow: { flexDirection: 'row', gap: spacing(2) },
   phRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(3), paddingVertical: spacing(3), borderTopWidth: 1, marginTop: spacing(2) },
 });

@@ -163,7 +163,8 @@ export default function MyAvailabilityScreen({ session, profile }: { session: Se
             })}
           </View>
           <Text style={[styles.legend, { color: palette.textMuted }]}>
-            Green = available, red = not available. Marking yourself unavailable within {LOCK_DAYS} days needs a trainer.
+            <Text style={{ color: palette.success, fontWeight: '700' }}>Green</Text> = available ·{' '}
+            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = not available. Marking yourself unavailable within {LOCK_DAYS} days needs a trainer.
           </Text>
         </View>
       </Card>

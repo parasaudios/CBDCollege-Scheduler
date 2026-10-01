@@ -22,7 +22,8 @@ import { makeRoster, type ComputedEntry, type RosterContext } from '../lib/roste
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../ThemeProvider';
 import type { DayClass, Profile } from '../lib/types';
-import { paletteFor, radius, spacing, type Palette } from '../theme';
+import { radius, spacing, type Palette } from '../theme';
+import { StatusBadge, type StatusKind } from './ui';
 
 const LOCK_DAYS = 14; // mirrors web ASSISTANT_UNAVAIL_LOCK_DAYS
 
@@ -58,6 +59,14 @@ export default function DayDetailSheet({
     engine && dateStr ? engine.getRosterForDate(dateStr) : [];
   const info = engine && dateStr ? engine.getEffectiveClassInfo(dateStr) : null;
   const holiday = engine && dateStr ? engine.isPublicHoliday(dateStr) : false;
+  const classDay = engine && dateStr ? engine.isClassDay(dateStr) : false;
+  const headerKind: StatusKind = holiday
+    ? 'holiday'
+    : !classDay
+      ? 'noclass'
+      : roster.length > 0
+        ? 'rostered'
+        : 'unstaffed';
 
   // Assistant self-availability
   const [choice, setChoice] = useState<AvailChoice>('unset');
@@ -318,9 +327,12 @@ export default function DayDetailSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={[styles.sheetTitle, { color: palette.textPrimary }]}>
-              {dateStr ? prettyDateLong(dateStr) : ''}
-            </Text>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing(2), flexWrap: 'wrap' }}>
+              <Text style={[styles.sheetTitle, { color: palette.textPrimary }]}>
+                {dateStr ? prettyDateLong(dateStr) : ''}
+              </Text>
+              {dateStr ? <StatusBadge kind={headerKind} /> : null}
+            </View>
             <Pressable onPress={onClose} hitSlop={10}>
               <Text style={{ color: palette.textMuted, fontSize: 18 }}>✕</Text>
             </Pressable>
@@ -480,25 +492,38 @@ export default function DayDetailSheet({
                 >
                   Edit roster
                 </Text>
-                {ctx?.staff.map((s) => (
-                  <View key={s.id} style={styles.staffToggleRow}>
-                    <View style={[styles.dot, { backgroundColor: s.color || palette.primary }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: palette.textPrimary, fontWeight: '600' }}>
-                        {s.name}
-                      </Text>
-                      <Text style={{ color: palette.textMuted, fontSize: 12 }}>
-                        {s.is_head_trainer ? 'Head Trainer' : 'Assistant'}
-                      </Text>
-                    </View>
-                    <Switch
-                      value={onSet.has(s.id)}
-                      onValueChange={(v) => toggleStaff(s.id, v)}
-                      disabled={saving}
-                      trackColor={{ true: palette.primary, false: palette.border }}
-                    />
-                  </View>
-                ))}
+                {ctx?.staff.map((s) => {
+                  const on = onSet.has(s.id);
+                  return (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => { if (!saving) toggleStaff(s.id, !on); }}
+                      style={[
+                        styles.staffToggleRow,
+                        {
+                          backgroundColor: on ? palette.successLight : palette.surface2,
+                          borderColor: on ? palette.successBorder : palette.border,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.dot, { backgroundColor: s.color || palette.primary }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: palette.textPrimary, fontWeight: '600' }}>
+                          {s.name}
+                        </Text>
+                        <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+                          {s.is_head_trainer ? 'Head Trainer' : 'Assistant'}
+                        </Text>
+                      </View>
+                      <Switch
+                        value={on}
+                        onValueChange={(v) => toggleStaff(s.id, v)}
+                        disabled={saving}
+                        trackColor={{ true: palette.success, false: palette.border }}
+                      />
+                    </Pressable>
+                  );
+                })}
                 <PrimaryButton
                   label="Save roster"
                   palette={palette}
@@ -681,7 +706,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing(2),
   },
-  sheetTitle: { fontSize: 17, fontWeight: '800', flex: 1 },
+  sheetTitle: { fontSize: 17, fontWeight: '800' },
   section: {
     fontSize: 12,
     fontWeight: '700',
@@ -729,7 +754,12 @@ const styles = StyleSheet.create({
   staffToggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing(2),
     paddingVertical: spacing(2),
+    paddingHorizontal: spacing(3),
+    borderWidth: 1,
+    borderRadius: radius,
+    marginBottom: spacing(2),
   },
   hint: { fontSize: 12, marginTop: spacing(3), lineHeight: 17 },
   status: { marginTop: spacing(4), fontSize: 14 },

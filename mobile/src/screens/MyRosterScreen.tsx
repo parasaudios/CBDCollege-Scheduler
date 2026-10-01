@@ -131,7 +131,10 @@ export default function MyRosterScreen({ session, profile }: { session: Session;
                 );
               })}
             </View>
-            <Text style={[styles.legend, { color: palette.textMuted }]}>Green = you're rostered. Red = class runs but you're not needed. PH = public holiday.</Text>
+            <Text style={[styles.legend, { color: palette.textMuted }]}>
+              <Text style={{ color: palette.success, fontWeight: '700' }}>Green</Text> = you're rostered ·{' '}
+              <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = class runs, you're not needed · PH = public holiday.
+            </Text>
           </View>
         </Card>
       </ScrollView>

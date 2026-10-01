@@ -53,8 +53,8 @@ export function Btn({
   }
   const pad =
     size === 'sm'
-      ? { paddingVertical: spacing(2), paddingHorizontal: spacing(3) }
-      : { paddingVertical: spacing(3), paddingHorizontal: spacing(4) };
+      ? { paddingVertical: spacing(2), paddingHorizontal: spacing(3), minHeight: 36 }
+      : { paddingVertical: spacing(3), paddingHorizontal: spacing(5), minHeight: 48 };
   return (
     <Pressable
       onPress={onPress}
@@ -134,7 +134,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-type Tone = 'primary' | 'muted' | 'success' | 'danger' | 'warning';
+type Tone = 'primary' | 'muted' | 'success' | 'danger' | 'warning' | 'holiday';
 export function Badge({ label, tone = 'primary' }: { label: string; tone?: Tone }) {
   const { palette } = useTheme();
   const map: Record<Tone, { bg: string; fg: string }> = {
@@ -143,6 +143,7 @@ export function Badge({ label, tone = 'primary' }: { label: string; tone?: Tone 
     success: { bg: palette.successLight, fg: palette.success },
     danger: { bg: palette.dangerLight, fg: palette.danger },
     warning: { bg: palette.warningLight, fg: palette.warning },
+    holiday: { bg: palette.holiday + '22', fg: palette.holiday },
   };
   const c = map[tone];
   return (
@@ -150,6 +151,49 @@ export function Badge({ label, tone = 'primary' }: { label: string; tone?: Tone 
       <Text style={[styles.badgeText, { color: c.fg }]}>{label}</Text>
     </View>
   );
+}
+
+// A small solid status dot — the compact cousin of Badge for tight rows.
+export function Dot({ tone = 'muted', size = 10 }: { tone?: Tone; size?: number }) {
+  const { palette } = useTheme();
+  const map: Record<Tone, string> = {
+    primary: palette.primary,
+    muted: palette.textMuted,
+    success: palette.success,
+    danger: palette.danger,
+    warning: palette.warning,
+    holiday: palette.holiday,
+  };
+  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: map[tone] }} />;
+}
+
+// Shared roster/availability vocabulary so every screen speaks the same colours.
+// green = on/available, red = off/not needed, amber = partial, purple = holiday.
+export type StatusKind =
+  | 'rostered'
+  | 'unstaffed'
+  | 'partial'
+  | 'holiday'
+  | 'available'
+  | 'unavailable'
+  | 'pattern'
+  | 'noclass';
+const STATUS_META: Record<StatusKind, { tone: Tone; label: string }> = {
+  rostered: { tone: 'success', label: 'Rostered' },
+  unstaffed: { tone: 'danger', label: 'Unstaffed' },
+  partial: { tone: 'warning', label: 'Partial' },
+  holiday: { tone: 'holiday', label: 'Holiday' },
+  available: { tone: 'success', label: 'Available' },
+  unavailable: { tone: 'danger', label: 'Not available' },
+  pattern: { tone: 'muted', label: 'Pattern' },
+  noclass: { tone: 'muted', label: 'No class' },
+};
+export function statusTone(kind: StatusKind): Tone {
+  return STATUS_META[kind].tone;
+}
+export function StatusBadge({ kind, label }: { kind: StatusKind; label?: string }) {
+  const meta = STATUS_META[kind];
+  return <Badge label={label ?? meta.label} tone={meta.tone} />;
 }
 
 // Rounded pill sub-tabs (matches .sub-tabs in the web app).
