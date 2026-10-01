@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { setAppBadge } from './push';
 import { supabase } from './supabase';
 import type { NotificationRow } from './types';
 
@@ -49,6 +50,11 @@ export function useNotifications(userId: string, isTrainer: boolean) {
   }, [load]);
 
   const unread = notifications.filter((n) => !reads[n.id]).length;
+
+  // Mirror the unread count onto the home-screen app-icon badge.
+  useEffect(() => {
+    setAppBadge(unread);
+  }, [unread]);
 
   const markRead = useCallback(
     async (id: string) => {

@@ -6,7 +6,7 @@ import NotificationsModal from './components/NotificationsModal';
 import TopTabs, { type TabDef } from './components/TopTabs';
 import UpdateBanner from './components/UpdateBanner';
 import { exportMonthPdf } from './lib/exportPdf';
-import { onNotificationTap, registerForPush } from './lib/push';
+import { onNotificationTap, registerForPush, sendTestNotification } from './lib/push';
 import { useNotifications } from './lib/useNotifications';
 import { supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
@@ -97,7 +97,20 @@ export default function Main({ session }: { session: Session }) {
     }
   }
 
+  async function testNotif() {
+    const res = await sendTestNotification();
+    if (res === 'denied') {
+      Alert.alert(
+        'Notifications are off',
+        'Turn on notifications for this app in your phone settings, then try again.',
+      );
+    } else {
+      Alert.alert('Test sent', 'Check your notification shade — a test notification should appear now.');
+    }
+  }
+
   const actions: HeaderAction[] = [
+    { label: 'Send test notification', onPress: testNotif },
     { label: 'Export PDF (this month)', onPress: exportPdf },
     { label: 'Sign out', onPress: signOut, danger: true },
   ];
