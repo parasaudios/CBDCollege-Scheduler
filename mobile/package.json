@@ -1,0 +1,34 @@
+{
+  "name": "cbd-college-scheduler",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "expo": "~57.0.26",
+    "expo-constants": "~57.0.20",
+    "expo-device": "~57.0.2",
+    "expo-notifications": "~57.0.21",
+    "expo-print": "~57.0.2",
+    "expo-sharing": "~57.0.22",
+    "expo-status-bar": "~57.0.1",
+    "expo-updates": "~57.0.24",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-url-polyfill": "^2.0.0"
+  },
+  "devDependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "@types/react": "~19.2.2",
+    "react-dom": "^19.2.3",
+    "react-native-web": "^0.21.3",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

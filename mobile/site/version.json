@@ -1,0 +1,9 @@
+{
+  "versionCode": 3,
+  "versionName": "1.2.0",
+  "apk": "cbd-college-scheduler.apk",
+  "sha256": "",
+  "size": 0,
+  "notes": "Full rebuild to match the web app, native push, and over-the-air updates. After this build, most updates arrive automatically — no reinstall.",
+  "published": ""
+}
