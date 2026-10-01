@@ -379,7 +379,6 @@ function RosterGrid({
           const hasClass =
             info.from_default === false || info.students_am > 0 || info.students_pm > 0 || info.capped_am || info.capped_pm;
           const roster = engine.getRosterForDate(dateStr);
-          const dots = roster.slice(0, 4);
 
           // Selected-staff status — mirrors the web calendar's green/amber/red fill.
           // green = rostered, amber = partial, red = rostered but marked unavailable
@@ -453,28 +452,18 @@ function RosterGrid({
                   <View style={[styles.mine, { backgroundColor: palette.success }]} />
                 ) : null}
               </View>
-              {holiday ? (
-                <Text style={[styles.phTag, { color: palette.holiday }]}>PH</Text>
-              ) : hasClass ? (
-                <Text style={[styles.clsBadge, { color: clsColor, fontWeight: isTrainer && selStaffId ? '800' : '600' }]}>
-                  {info.students_am + '/' + info.students_pm}
-                </Text>
-              ) : (
-                <View style={{ height: 13 }} />
-              )}
-              <View style={styles.dotRow}>
-                {dots.map((r, di) => (
-                  <View
-                    key={di}
-                    style={[
-                      styles.miniDot,
-                      { backgroundColor: r.color || palette.primary },
-                      r.is_head_trainer && { borderWidth: 1.5, borderColor: palette.primary },
-                    ]}
-                  />
-                ))}
-                {roster.length > 4 ? (
-                  <Text style={[styles.more, { color: palette.textMuted }]}>+{roster.length - 4}</Text>
+              <View style={styles.cellBody}>
+                {holiday ? (
+                  <Text style={[styles.phTag, { color: palette.holiday }]}>PH</Text>
+                ) : hasClass ? (
+                  <Text
+                    style={[styles.clsNum, { color: clsColor }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.6}
+                  >
+                    {info.students_am + '/' + info.students_pm}
+                  </Text>
                 ) : null}
               </View>
             </Pressable>
@@ -486,11 +475,11 @@ function RosterGrid({
           <>
             <Text style={{ color: palette.success, fontWeight: '700' }}>Green</Text> = {selName} rostered ·{' '}
             <Text style={{ color: palette.warning, fontWeight: '700' }}>Amber</Text> = partial ·{' '}
-            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = class on, not rostered. Dots show everyone on; ringed = head trainer.
+            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = class on, not rostered. Big numbers are AM/PM students — tap a day for who's on.
           </>
         ) : (
           <>
-            Numbers are AM/PM students (PH = public holiday). Dots are rostered staff; ringed = head trainer.
+            Numbers are AM/PM students (PH = public holiday). Tap a day for who's rostered.
             {!isTrainer ? ' Green/red mark your own availability.' : ''}
           </>
         )}
@@ -596,15 +585,13 @@ const styles = StyleSheet.create({
   weekHeadCell: { width: CELL_PCT as any, alignItems: 'center' },
   weekHeadText: { fontSize: 12, fontWeight: '700' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: CELL_PCT as any, aspectRatio: 0.8, borderWidth: 1, borderRadius: 8, padding: 3 },
+  cell: { width: CELL_PCT as any, aspectRatio: 0.9, borderWidth: 1, borderRadius: 8, padding: 3 },
   cellTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dayNum: { fontSize: 13 },
   mine: { width: 7, height: 7, borderRadius: 4 },
-  clsBadge: { fontSize: 11, fontWeight: '600', marginTop: 1 },
-  phTag: { fontSize: 10, fontWeight: '800', marginTop: 1 },
-  dotRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 'auto', gap: 2 },
-  miniDot: { width: 7, height: 7, borderRadius: 4 },
-  more: { fontSize: 9, marginLeft: 1 },
+  cellBody: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  clsNum: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  phTag: { fontSize: 12, fontWeight: '800' },
   legend: { fontSize: 12, lineHeight: 17, marginTop: spacing(3) },
   ovRow: { flexDirection: 'row', alignItems: 'center', padding: spacing(3), borderWidth: 1, borderRadius: radius, gap: spacing(3), marginBottom: spacing(2) },
   ovAccent: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
