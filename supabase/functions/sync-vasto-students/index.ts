@@ -41,6 +41,10 @@ const ACTOR_ID = Deno.env.get("VASTO_ACTOR_ID") || null;
 // Auto-roster: when "1", the sync fills missing assistants on understaffed days and notifies
 // them. Off by default so it can be validated via ?dry=1 (preview) before going live.
 const AUTO_ROSTER = Deno.env.get("VASTO_AUTO_ROSTER") === "1";
+// Vasto is slow per request, so fetch each account's day pages in small concurrent
+// batches instead of one-at-a-time. Tune via VASTO_CONCURRENCY (lower it if Vasto
+// starts rate-limiting / returning errors under load).
+const CONCURRENCY = Math.max(1, parseInt(Deno.env.get("VASTO_CONCURRENCY") || "6", 10));
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -402,23 +406,26 @@ Deno.serve(async (req) => {
         const jar = new Jar();
         await login(jar, acct.username, acct.password);
         if (jar.size === 0) throw new Error("no session cookie after login");
-        for (const day of days) {
-          let html = "";
+        // Fetch the day pages concurrently in small batches (big speed-up vs one-by-one).
+        const scanDay = async (day: { iso: string; vasto: string }) => {
           try {
             const r = await fetch(`${BASE}/elearning/trainer_day.php?date=${day.vasto}`, {
               headers: { "User-Agent": UA, "Cookie": jar.header() },
             });
-            if (r.status !== 200) { st.failed++; continue; }
-            html = await r.text();
-          } catch (_) { st.failed++; continue; }
-          st.scanned++;
-          const { am, pm } = parseDayCounts(html);
-          if (am === null && pm === null) continue; // this account has no class data for that day
-          const cur = merged.get(day.iso);
-          merged.set(day.iso, {
-            am: Math.max(cur?.am ?? 0, am ?? 0),
-            pm: Math.max(cur?.pm ?? 0, pm ?? 0),
-          });
+            if (r.status !== 200) { st.failed++; return; }
+            const html = await r.text();
+            st.scanned++;
+            const { am, pm } = parseDayCounts(html);
+            if (am === null && pm === null) return; // this account has no class data for that day
+            const cur = merged.get(day.iso);
+            merged.set(day.iso, {
+              am: Math.max(cur?.am ?? 0, am ?? 0),
+              pm: Math.max(cur?.pm ?? 0, pm ?? 0),
+            });
+          } catch (_) { st.failed++; }
+        };
+        for (let i = 0; i < days.length; i += CONCURRENCY) {
+          await Promise.all(days.slice(i, i + CONCURRENCY).map(scanDay));
         }
       } catch (e) {
         st.error = String((e as Error).message || e); // one account failing must not sink the others
