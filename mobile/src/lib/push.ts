@@ -7,15 +7,57 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
-// Show a banner + play a sound even when the app is foregrounded.
+// Show a banner + play a sound even when the app is foregrounded, and let
+// notifications affect the app-icon badge.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
   }),
 });
+
+// Keep the home-screen app-icon badge in sync with the unread count (Discord-style).
+// iOS shows the exact number; Android shows it on launchers that support numeric
+// badges (e.g. Samsung One UI), otherwise a dot. Best-effort — never throws.
+export async function setAppBadge(count: number): Promise<void> {
+  try {
+    await Notifications.setBadgeCountAsync(Math.max(0, count));
+  } catch {
+    /* badges unsupported on this launcher — ignore */
+  }
+}
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('default', {
+    name: 'Default',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#2563eb',
+  });
+}
+
+// Fire a local OS notification immediately — no server or FCM needed. Handy for
+// checking how notifications look/sound on this device.
+export async function sendTestNotification(): Promise<'sent' | 'denied'> {
+  await ensureAndroidChannel();
+  const existing = await Notifications.getPermissionsAsync();
+  let status = existing.status;
+  if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
+  if (status !== 'granted') return 'denied';
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Test notification',
+      body: 'If you can see this, OS notifications are working on this device. 🎉',
+      data: { test: true },
+      sound: 'default',
+    },
+    trigger: null, // deliver now
+  });
+  return 'sent';
+}
 
 function projectId(): string | undefined {
   const anyC = Constants as any;
