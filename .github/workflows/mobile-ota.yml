@@ -1,0 +1,44 @@
+# Over-the-air update for the CBD College Scheduler mobile app.
+#
+# On every push to `main` that changes mobile/ (JavaScript/TypeScript, assets),
+# this publishes an EAS Update to the "production" branch. Installed apps built on
+# the "production" channel (see mobile/eas.json) download it on next launch — no
+# reinstall. Native changes (new modules, app.json native config) still need a new
+# APK; bump the version in app.json and build when that happens.
+#
+# One-time setup: add an EXPO_TOKEN repository secret
+#   (GitHub → repo Settings → Secrets and variables → Actions → New repository secret)
+#   created at https://expo.dev/settings/access-tokens
+name: Mobile OTA update
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**']
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish OTA update
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: eas update --branch production --message "${COMMIT_MSG:-manual update}" --non-interactive

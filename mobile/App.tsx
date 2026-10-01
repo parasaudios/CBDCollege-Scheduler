@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
+import { startOtaUpdates } from './src/lib/updates';
 import { supabase } from './src/lib/supabase';
 import Main from './src/Main';
 import LoginScreen from './src/screens/LoginScreen';
@@ -12,6 +13,9 @@ AppState.addEventListener('change', (state) => {
   if (state === 'active') supabase.auth.startAutoRefresh();
   else supabase.auth.stopAutoRefresh();
 });
+
+// Check for over-the-air updates on launch + each foreground.
+startOtaUpdates();
 
 function Root() {
   const { palette, effective } = useTheme();
