@@ -1,0 +1,46 @@
+# On-demand native build for the CBD College Scheduler mobile app.
+#
+# Run it from GitHub → Actions → "Mobile build (APK)" → Run workflow (works from
+# a phone browser), or have it triggered for you. It queues an EAS build using
+# the EXPO_TOKEN secret and returns immediately (--no-wait); the finished APK
+# appears on the Expo dashboard with an install link.
+#
+# Use this when a NATIVE change needs a new build (new icon, new native module,
+# app.json native config, version bump). Pure JS/TS changes ship via the OTA
+# workflow instead — no build needed.
+name: Mobile build (APK)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Queue EAS build
+        run: eas build --platform android --profile ${{ inputs.profile }} --non-interactive --no-wait
