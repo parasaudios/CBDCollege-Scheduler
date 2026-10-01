@@ -21,9 +21,8 @@
       "package": "com.parasaudios.cbdscheduler",
       "versionCode": 3,
       "adaptiveIcon": {
-        "backgroundColor": "#dbeafe",
+        "backgroundColor": "#eef2ff",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
