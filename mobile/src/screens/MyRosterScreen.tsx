@@ -151,12 +151,12 @@ function NavBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 const CELL_PCT = `${100 / 7}%`;
 const styles = StyleSheet.create({
-  hero: { borderRadius: 14, padding: spacing(4), marginBottom: spacing(3) },
+  hero: { borderRadius: 14, paddingHorizontal: spacing(4), paddingVertical: spacing(3), marginBottom: spacing(3) },
   heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
-  heroDate: { color: '#fff', fontSize: 20, fontWeight: '800', marginTop: 2 },
-  badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: spacing(3), paddingVertical: spacing(1), marginTop: spacing(3) },
-  heroNext: { color: '#fff', marginTop: spacing(3), fontSize: 14, fontWeight: '600' },
-  heroEmpty: { color: 'rgba(255,255,255,0.85)', marginTop: spacing(3), fontSize: 14, fontStyle: 'italic' },
+  heroDate: { color: '#fff', fontSize: 18, fontWeight: '800', marginTop: 1 },
+  badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: spacing(3), paddingVertical: spacing(1), marginTop: spacing(2) },
+  heroNext: { color: '#fff', marginTop: spacing(2), fontSize: 14, fontWeight: '600' },
+  heroEmpty: { color: 'rgba(255,255,255,0.85)', marginTop: spacing(2), fontSize: 14, fontStyle: 'italic' },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing(3) },
   navBtn: { width: 40, height: 40, borderRadius: radius, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   monthLabel: { fontSize: 17, fontWeight: '700' },
