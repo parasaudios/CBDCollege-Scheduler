@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useTheme } from '../ThemeProvider';
+import { appVersionLabel } from '../lib/version';
 import { radius, spacing } from '../theme';
 
 const HEADER_BG = '#2563eb'; // brand blue, same in light & dark (matches web header)
@@ -108,6 +109,9 @@ function MenuSheet({
           </Text>
         </Pressable>
       ))}
+      <View style={[styles.menuFooter, { borderTopColor: palette.border }]}>
+        <Text style={{ color: palette.textMuted, fontSize: 12 }}>{appVersionLabel()}</Text>
+      </View>
     </View>
   );
 }
@@ -178,4 +182,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   menuItem: { paddingVertical: spacing(3), paddingHorizontal: spacing(4) },
+  menuFooter: { paddingVertical: spacing(2), paddingHorizontal: spacing(4), borderTopWidth: 1 },
 });

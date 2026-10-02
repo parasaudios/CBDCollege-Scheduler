@@ -137,17 +137,17 @@ When the build finishes, EAS gives you a URL to download the `.apk`.
 
 ## Publish a release (self-hosted, kerblock-style)
 
-1. **Bump the version** in three places so they agree:
-   - `app.json` → `expo.version` and `expo.android.versionCode`
-   - `src/lib/config.ts` → `APP_VERSION` and `APP_VERSION_CODE`
-   - (the APK you build will carry these)
-   `versionCode` must increase every release — it's what the update check and
-   Android both compare.
+1. **Set the version name** in `app.json` → `expo.version`, using semver: patch
+   (`1.3.0`→`1.3.1`) for small fixes, minor (`→1.4.0`) for features, major
+   (`→2.0.0`) for big/breaking changes. The app reads this at runtime (see
+   `src/lib/version.ts`), so there's nothing to keep in sync by hand.
+   The Android `versionCode` is auto-incremented by EAS on every build
+   (`appVersionSource: remote` + `autoIncrement` in `eas.json`) — don't hand-edit it.
 2. **Build** the APK (above) and download it.
 3. **Assemble `site/`:**
    - Copy the APK into `site/` as `cbd-college-scheduler.apk`.
    - Update `site/version.json`:
-     - `versionCode` / `versionName` → match this build
+     - `versionName` → this build's version (the update check compares this, as semver)
      - `size` → the APK's byte size
      - `sha256` → `sha256sum cbd-college-scheduler.apk` (lower-case hex)
      - `notes` → short "what's new"
@@ -158,13 +158,13 @@ When the build finishes, EAS gives you a URL to download the `.apk`.
    `_headers` file makes `version.json` uncacheable and serves the APK with the
    right content-type (works on Cloudflare Pages / Netlify).
 
-Installed apps check `version.json` on launch; when its `versionCode` is higher
-than the running build, the update banner links users to the download page.
+Installed apps check `version.json` on launch; when its `versionName` is a newer
+semver than the running build, the update banner links users to the download page.
 
 ## Configuration notes
 
 - **Supabase keys** in `config.ts` are the URL + *publishable (anon)* key — the
   same ones the web app ships. They're safe in a client; Row Level Security
   protects the data.
-- Keep `APP_VERSION_CODE` (config.ts) equal to `android.versionCode` (app.json)
-  or the update check will misfire.
+- The app version is read at runtime (`src/lib/version.ts` → `APP_VERSION`, from
+  the build's `expo.version`), so there's nothing to keep in sync in `config.ts`.

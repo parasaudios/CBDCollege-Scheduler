@@ -6,17 +6,14 @@ import {
   Text,
   View,
 } from 'react-native';
-import {
-  APP_VERSION_CODE,
-  RELEASE_BASE_URL,
-  VERSION_MANIFEST_URL,
-} from '../lib/config';
+import { RELEASE_BASE_URL, VERSION_MANIFEST_URL } from '../lib/config';
+import { APP_VERSION, isNewerVersion } from '../lib/version';
 import { useTheme } from '../ThemeProvider';
 import { radius, spacing } from '../theme';
 
 interface Manifest {
-  versionCode: number;
   versionName: string;
+  versionCode?: number;
   notes?: string;
 }
 
@@ -42,8 +39,8 @@ export default function UpdateBanner() {
         if (
           !cancelled &&
           m &&
-          typeof m.versionCode === 'number' &&
-          m.versionCode > APP_VERSION_CODE
+          typeof m.versionName === 'string' &&
+          isNewerVersion(m.versionName, APP_VERSION)
         ) {
           setAvailable(m);
         }
