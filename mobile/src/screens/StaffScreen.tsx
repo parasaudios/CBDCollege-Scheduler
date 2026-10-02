@@ -20,7 +20,7 @@ import type { Profile, Settings, StaffMember } from '../lib/types';
 import { useTheme } from '../ThemeProvider';
 import { radius, spacing } from '../theme';
 
-type Sub = 'manage' | 'availability';
+type Sub = 'manage' | 'availability' | 'timeoff';
 const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DOW_SHORT: Record<number, string> = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 0: 'Sun' };
 
@@ -58,7 +58,15 @@ export default function StaffScreen({ session, profile }: { session: Session; pr
   return (
     <View style={{ flex: 1, backgroundColor: palette.surface2 }}>
       <View style={{ padding: spacing(3), paddingBottom: 0 }}>
-        <Pills options={[{ key: 'manage' as Sub, label: 'Manage Staff' }, { key: 'availability' as Sub, label: 'Availability' }]} value={sub} onChange={setSub} />
+        <Pills
+          options={[
+            { key: 'manage' as Sub, label: 'Manage Staff' },
+            { key: 'availability' as Sub, label: 'Availability' },
+            { key: 'timeoff' as Sub, label: 'Time Off' },
+          ]}
+          value={sub}
+          onChange={setSub}
+        />
       </View>
       {sub === 'manage' ? (
         <ManageStaff
@@ -70,8 +78,10 @@ export default function StaffScreen({ session, profile }: { session: Session; pr
           onAdd={() => { setEditing(null); setModalOpen(true); }}
           onEdit={(s) => { setEditing(s); setModalOpen(true); }}
         />
-      ) : (
+      ) : sub === 'availability' ? (
         <AvailabilityTab session={session} profile={profile} staff={staff} profiles={profiles} onReload={load} />
+      ) : (
+        <TimeOffTab staff={staff} />
       )}
 
       <StaffModal
@@ -393,6 +403,75 @@ function OverrideEditor({
   );
 }
 
+// Time Off: a record of everyone's booked-off days (cbd_assistant_availability
+// where is_available = false), newest-first upcoming + the last 60 days.
+function TimeOffTab({ staff }: { staff: StaffMember[] }) {
+  const { palette } = useTheme();
+  const [rows, setRows] = useState<{ date: string; user_id: string; note: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 60);
+    const since = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const { data } = await supabase
+      .from('cbd_assistant_availability')
+      .select('date, user_id, note')
+      .eq('is_available', false)
+      .gte('date', since)
+      .order('date', { ascending: true });
+    setRows((data || []) as { date: string; user_id: string; note: string | null }[]);
+  }, []);
+
+  useEffect(() => { (async () => { setLoading(true); await load(); setLoading(false); })(); }, [load]);
+
+  const today = todayStr();
+  const personFor = (uid: string) => staff.find((s) => s.user_id === uid);
+  const upcoming = rows.filter((r) => r.date >= today);
+  const past = rows.filter((r) => r.date < today).reverse();
+
+  const renderRow = (r: { date: string; user_id: string; note: string | null }) => {
+    const p = personFor(r.user_id);
+    return (
+      <View key={r.user_id + r.date} style={[styles.timeOffRow, { borderBottomColor: palette.border }]}>
+        <View style={[styles.dot, { backgroundColor: p?.color || palette.textMuted }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: palette.textPrimary, fontWeight: '600', fontSize: 14 }}>{p?.name || 'Unknown'}</Text>
+          <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 2 }}>
+            {prettyDateLong(r.date)}{r.note ? ` · ${r.note}` : ''}
+          </Text>
+        </View>
+        <Badge label="Off" tone="danger" />
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={{ padding: spacing(6), alignItems: 'center' }}>
+        <ActivityIndicator color={palette.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: spacing(3), paddingBottom: spacing(12), gap: spacing(3) }}>
+      <Card>
+        <CardHeader title="Upcoming time off" subtitle={`${upcoming.length} day${upcoming.length === 1 ? '' : 's'} booked off`} />
+        <View style={{ padding: spacing(3) }}>
+          {upcoming.length === 0 ? <EmptyNote>No upcoming days off.</EmptyNote> : upcoming.map(renderRow)}
+        </View>
+      </Card>
+      {past.length > 0 ? (
+        <Card>
+          <CardHeader title="Earlier (last 60 days)" subtitle={`${past.length} record${past.length === 1 ? '' : 's'}`} />
+          <View style={{ padding: spacing(3) }}>{past.map(renderRow)}</View>
+        </Card>
+      ) : null}
+    </ScrollView>
+  );
+}
+
 function NumRow({ label, value, onChange, palette }: { label: string; value: string; onChange: (v: string) => void; palette: any }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(3) }}>
@@ -425,4 +504,5 @@ const styles = StyleSheet.create({
   dowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing(1) },
   dowPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing(3), paddingVertical: spacing(1) },
   ovDayRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing(3), borderBottomWidth: 1 },
+  timeOffRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(3), paddingVertical: spacing(3), borderBottomWidth: 1 },
 });
