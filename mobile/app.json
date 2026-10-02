@@ -3,7 +3,7 @@
     "name": "CBD College Scheduler",
     "slug": "cbd-college-scheduler",
     "owner": "paradoxxxical",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "cbdscheduler",
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.parasaudios.cbdscheduler",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#2563eb",
         "foregroundImage": "./assets/android-icon-foreground.png",
