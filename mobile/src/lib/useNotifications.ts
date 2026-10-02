@@ -5,23 +5,23 @@ import { supabase } from './supabase';
 import type { NotificationRow } from './types';
 
 // Loads notifications + read receipts, exposes unread count and mark-read helpers.
-// Everyone sees only what's addressed to them — notifications targeted at them,
-// plus broadcasts (target_user_id NULL). Changes are fanned out per-recipient
-// (see notify.ts), so this is how each person sees only changes that affect them
-// (Cameron is targeted on every change, so he still sees everything).
+// Most people see only what's addressed to them — notifications targeted at them
+// plus broadcasts (target_user_id NULL). The developer (Cameron) passes
+// seeAll=true and sees EVERY notification (RLS already lets trainers read all),
+// so nothing is ever hidden from him regardless of who it was targeted at.
 // Polls every 15s while the app is foregrounded (matches the web app).
-export function useNotifications(userId: string) {
+export function useNotifications(userId: string, seeAll = false) {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [reads, setReads] = useState<Record<string, boolean>>({});
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
-    const q = supabase
+    let q = supabase
       .from('cbd_notifications')
       .select('*')
-      .or(`target_user_id.eq.${userId},target_user_id.is.null`)
       .order('created_at', { ascending: false })
       .limit(50);
+    if (!seeAll) q = q.or(`target_user_id.eq.${userId},target_user_id.is.null`);
     const [nRes, rRes] = await Promise.all([
       q,
       supabase.from('cbd_notification_reads').select('notification_id').eq('user_id', userId),
@@ -32,7 +32,7 @@ export function useNotifications(userId: string) {
       map[r.notification_id] = true;
     });
     setReads(map);
-  }, [userId]);
+  }, [userId, seeAll]);
 
   useEffect(() => {
     load();

@@ -42,11 +42,14 @@ export default function Main({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const isTrainer = profile?.role === 'trainer';
+  // Cameron is the developer and must see EVERY notification, not just ones
+  // targeted at him. (Matches the app's existing weekend-anchor "cameron" rule.)
+  const isDeveloper = (profile?.full_name || '').toLowerCase().includes('cameron');
   const tabs = isTrainer ? TRAINER_TABS : ASSISTANT_TABS;
   const [tab, setTab] = useState<Tab>('schedule');
   const [notifOpen, setNotifOpen] = useState(false);
 
-  const notif = useNotifications(session.user.id);
+  const notif = useNotifications(session.user.id, isDeveloper);
 
   useEffect(() => {
     let cancelled = false;
