@@ -24,18 +24,17 @@ type TrainerTab = 'schedule' | 'classes' | 'staff' | 'notifications' | 'admin' |
 type AssistantTab = 'myroster' | 'myavail' | 'guides';
 type Tab = TrainerTab | AssistantTab;
 
+// Keep the tab bar to a few top-level sections so it never overflows the screen;
+// less-frequent trainer tools (announcements, user accounts, guides) live in the
+// header ⋯ menu instead.
 const TRAINER_TABS: TabDef<Tab>[] = [
   { key: 'schedule', label: 'Schedule' },
   { key: 'classes', label: 'Classes' },
   { key: 'staff', label: 'Staff' },
-  { key: 'notifications', label: 'Notifications' },
-  { key: 'admin', label: 'Admin' },
-  { key: 'guides', label: 'App Guides' },
 ];
 const ASSISTANT_TABS: TabDef<Tab>[] = [
   { key: 'myroster', label: 'My Roster' },
   { key: 'myavail', label: 'My Availability' },
-  { key: 'guides', label: 'App Guides' },
 ];
 
 export default function Main({ session }: { session: Session }) {
@@ -109,12 +108,27 @@ export default function Main({ session }: { session: Session }) {
     }
   }
 
+  // Overflow destinations that aren't top-level tabs, routed via the header menu.
+  const navActions: HeaderAction[] = isTrainer
+    ? [
+        { label: '📣  Send announcement', onPress: () => setTab('notifications') },
+        { label: '👥  User accounts', onPress: () => setTab('admin') },
+        { label: '📖  App guides', onPress: () => setTab('guides') },
+      ]
+    : [{ label: '📖  App guides', onPress: () => setTab('guides') }];
+
   const actions: HeaderAction[] = [
-    { label: 'Send test notification', onPress: testNotif },
-    { label: 'Export PDF (this month)', onPress: exportPdf },
+    ...navActions,
+    { label: '🔔  Send test notification', onPress: testNotif },
+    { label: '📄  Export PDF (this month)', onPress: exportPdf },
     { label: 'Sign out', onPress: signOut, danger: true },
   ];
-  const subtitle = isTrainer ? 'Manage team schedules' : 'Your roster & availability';
+  const overflowTitle: Partial<Record<Tab, string>> = {
+    notifications: 'Send announcement',
+    admin: 'User accounts',
+    guides: 'App guides',
+  };
+  const subtitle = overflowTitle[tab] || (isTrainer ? 'Manage team schedules' : 'Your roster & availability');
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surface2 }}>
