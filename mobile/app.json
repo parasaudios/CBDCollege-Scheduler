@@ -30,7 +30,15 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-notifications"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#2563eb"
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "61f51f7d-93d6-481b-8923-aecc556401a7"
