@@ -171,7 +171,7 @@ function ManageStaff({
 
       <Card>
         <CardHeader title="Auto-roster Rules" subtitle="How many assistants a class needs." />
-        <View style={{ padding: spacing(4), gap: spacing(3) }}>
+        <View style={{ padding: spacing(3), gap: spacing(3) }}>
           <NumRow label="Need 1 assistant when class ≥" value={min1} onChange={setMin1} palette={palette} />
           <NumRow label="Need 2 assistants when class ≥" value={min2} onChange={setMin2} palette={palette} />
           <Text style={{ color: palette.textSecondary, fontSize: 13, fontWeight: '600', marginTop: spacing(1) }}>
@@ -190,7 +190,7 @@ function ManageStaff({
 
       <Card>
         <CardHeader title="Assistant Start Times by Slot" subtitle="When each assistant slot starts." />
-        <View style={{ padding: spacing(4), gap: spacing(2) }}>
+        <View style={{ padding: spacing(3), gap: spacing(2) }}>
           {['1', '2', '3', '4'].map((k) => (
             <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing(3) }}>
               <Text style={{ color: palette.textSecondary, width: 90 }}>{ordinal(k)} picked</Text>

@@ -263,7 +263,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardHeader: {
-    padding: spacing(4),
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(3),
     borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
