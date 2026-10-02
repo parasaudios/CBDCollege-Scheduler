@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1066914541113",
+    "project_id": "cbdscheduler",
+    "storage_bucket": "cbdscheduler.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1066914541113:android:30511854da06a03b34a7e8",
+        "android_client_info": {
+          "package_name": "com.parasaudios.cbdscheduler"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYbKDEvHhgq24IU2SLro4Z-L05sjcW7S4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

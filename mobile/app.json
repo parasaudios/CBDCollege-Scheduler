@@ -19,7 +19,8 @@
     },
     "android": {
       "package": "com.parasaudios.cbdscheduler",
-      "versionCode": 4,
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#2563eb",
         "foregroundImage": "./assets/android-icon-foreground.png",
