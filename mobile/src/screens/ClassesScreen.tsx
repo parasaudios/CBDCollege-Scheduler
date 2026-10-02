@@ -165,7 +165,7 @@ export default function ClassesScreen({ session, profile }: { session: Session; 
       {/* Vasto sync */}
       <Card>
         <CardHeader title="Student Numbers (Vasto)" subtitle="Pull the latest class sizes." />
-        <View style={{ padding: spacing(4) }}>
+        <View style={{ padding: spacing(3) }}>
           <Btn label="Sync next 30 days" icon="↻" busy={syncing} onPress={syncStudents} />
           {syncMsg ? <Text style={{ color: palette.textMuted, marginTop: spacing(3), fontSize: 13 }}>{syncMsg}</Text> : null}
         </View>
@@ -174,7 +174,7 @@ export default function ClassesScreen({ session, profile }: { session: Session; 
       {/* Default class times */}
       <Card>
         <CardHeader title="Default Class Times" subtitle="Per weekday defaults used when there's no per-day record." />
-        <View style={{ padding: spacing(4), gap: spacing(2) }}>
+        <View style={{ padding: spacing(3), gap: spacing(2) }}>
           <View style={styles.copyRow}>
             <Btn label="Mon→Tue–Fri" size="sm" variant="outline" onPress={() => copy(1, [2, 3, 4, 5])} />
             <Btn label="Sat→Sun" size="sm" variant="outline" onPress={() => copy(6, [0])} />
@@ -220,7 +220,7 @@ export default function ClassesScreen({ session, profile }: { session: Session; 
       {/* Public holidays */}
       <Card>
         <CardHeader title="Public Holidays & Closed Days" subtitle="Days with no classes." />
-        <View style={{ padding: spacing(4) }}>
+        <View style={{ padding: spacing(3) }}>
           <View style={styles.phAddRow}>
             <TextInput
               value={phDate}
