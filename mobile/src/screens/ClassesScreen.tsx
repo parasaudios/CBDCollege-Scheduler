@@ -13,7 +13,7 @@ import {
 import { Btn, Card, CardHeader, Dot } from '../components/ui';
 import { loadSettings } from '../lib/data';
 import { prettyDateLong } from '../lib/format';
-import { emitNotification } from '../lib/notify';
+import { allTrainerUserIds, notifyChange } from '../lib/notify';
 import { supabase } from '../lib/supabase';
 import type { DowDefault, Profile, Settings } from '../lib/types';
 import { useTheme } from '../ThemeProvider';
@@ -97,12 +97,13 @@ export default function ClassesScreen({ session, profile }: { session: Session; 
       return;
     }
     if (notify) {
-      await emitNotification({
+      await notifyChange({
         type: 'default_class_times_changed',
-        title: 'Default class times updated',
-        message: 'The default class times/student numbers were changed.',
         actorId: session.user.id,
         actorName: profile?.full_name || 'A trainer',
+        affectedUserIds: await allTrainerUserIds(),
+        title: 'Default class times updated',
+        message: 'The default class times/student numbers were changed.',
         data: { action: 'default_class_times' },
       });
     }

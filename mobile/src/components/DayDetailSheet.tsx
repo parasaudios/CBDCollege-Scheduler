@@ -11,12 +11,12 @@ import {
   View,
 } from 'react-native';
 import {
-  daysUntil,
   prettyDateLong,
   prettyDateShortDow,
   prettyTime,
 } from '../lib/format';
-import { notifyStaffOfRosterChange, notifyTrainersOfAssistantChange } from '../lib/notify';
+import { rosteredUserIdsForDate } from '../lib/data';
+import { notifyChange } from '../lib/notify';
 import { roleLabel } from '../lib/roster';
 import { makeRoster, type ComputedEntry, type RosterContext } from '../lib/rosterCompute';
 import { supabase } from '../lib/supabase';
@@ -24,8 +24,6 @@ import { useTheme } from '../ThemeProvider';
 import type { DayClass, Profile } from '../lib/types';
 import { radius, spacing, type Palette } from '../theme';
 import { StatusBadge, type StatusKind } from './ui';
-
-const LOCK_DAYS = 14; // mirrors web ASSISTANT_UNAVAIL_LOCK_DAYS
 
 type AvailChoice = 'available' | 'unavailable' | 'unset';
 
@@ -104,20 +102,19 @@ export default function DayDetailSheet({
     setOnSet(new Set(engine.getRosterForDate(dateStr).map((r) => r.staff_id)));
   }, [visible, dateStr, ctx, engine, userId]);
 
-  const locked = !isTrainer && dateStr != null && daysUntil(dateStr) < LOCK_DAYS;
+  // user_ids rostered on the open day, from the in-memory (pre-change) context.
+  function beforeRosterIds(): (string | null | undefined)[] {
+    if (!engine || !dateStr || !ctx) return [];
+    return engine.getRosterForDate(dateStr).map((r) => ctx.staff.find((s) => s.id === r.staff_id)?.user_id);
+  }
 
   // ---------- assistant self-availability ----------
   async function saveMyAvailability(next: 'available' | 'unavailable') {
     if (!dateStr) return;
-    if (next === 'unavailable' && locked) {
-      setStatus(
-        `Too close to the date — dates within ${LOCK_DAYS} days can only be changed by a trainer.`,
-      );
-      return;
-    }
     setSaving(true);
     setStatus(null);
     const isAvail = next === 'available';
+    const before = beforeRosterIds();
     const { error } = await supabase
       .from('cbd_assistant_availability')
       .upsert(
@@ -129,8 +126,15 @@ export default function DayDetailSheet({
       setSaving(false);
       return;
     }
-    await notifyTrainersOfAssistantChange(userId, actorName, {
-      title: `${actorName} updated their availability`,
+    const after = await rosteredUserIdsForDate(dateStr);
+    await notifyChange({
+      type: 'availability_changed_by_assistant',
+      actorId: userId,
+      actorName,
+      subjectUserId: userId,
+      subjectName: actorName,
+      affectedUserIds: [...before, ...after],
+      title: `${actorName}'s availability changed`,
       message:
         prettyDateShortDow(dateStr) +
         ' — ' +
@@ -147,6 +151,7 @@ export default function DayDetailSheet({
     if (!dateStr) return;
     setSaving(true);
     setStatus(null);
+    const before = beforeRosterIds();
     const { error } = await supabase
       .from('cbd_assistant_availability')
       .delete()
@@ -157,8 +162,15 @@ export default function DayDetailSheet({
       setSaving(false);
       return;
     }
-    await notifyTrainersOfAssistantChange(userId, actorName, {
-      title: `${actorName} updated their availability`,
+    const after = await rosteredUserIdsForDate(dateStr);
+    await notifyChange({
+      type: 'availability_changed_by_assistant',
+      actorId: userId,
+      actorName,
+      subjectUserId: userId,
+      subjectName: actorName,
+      affectedUserIds: [...before, ...after],
+      title: `${actorName}'s availability changed`,
       message: prettyDateShortDow(dateStr) + ' — availability cleared',
       data: { date: dateStr, action: 'self_cleared' },
     });
@@ -199,23 +211,19 @@ export default function DayDetailSheet({
       setSaving(false);
       return;
     }
-    // Let rostered staff know the numbers changed (their roster may shift).
-    const rostered = engine ? engine.getRosterForDate(dateStr) : [];
-    await Promise.all(
-      rostered.map((r) => {
-        const st = ctx.staff.find((s) => s.id === r.staff_id);
-        return notifyStaffOfRosterChange({
-          targetUserId: st?.user_id,
-          actorId: userId,
-          actorName,
-          subjectName: st?.name || 'You',
-          type: 'class_changed',
-          title: 'Class numbers updated',
-          message: prettyDateShortDow(dateStr) + ` — now ${am}/${pm} students`,
-          data: { date: dateStr, students_am: am, students_pm: pm },
-        });
-      }),
-    );
+    // Let the people working that day know the numbers changed (their roster may
+    // shift — e.g. crossing the threshold that adds/removes an assistant).
+    const before = beforeRosterIds();
+    const after = await rosteredUserIdsForDate(dateStr);
+    await notifyChange({
+      type: 'class_changed',
+      actorId: userId,
+      actorName,
+      affectedUserIds: [...before, ...after],
+      title: 'Class numbers updated',
+      message: prettyDateShortDow(dateStr) + ` — now ${am}/${pm} students`,
+      data: { date: dateStr, students_am: am, students_pm: pm },
+    });
     setSaving(false);
     setStatus('Class numbers saved.');
     onChanged();
@@ -285,20 +293,27 @@ export default function DayDetailSheet({
       return;
     }
 
-    // Notify staff whose on/off state changed.
+    // Notify staff whose on/off state changed. Each changed person is the subject
+    // (gets "Your roster was updated"); everyone working that day + Cameron also
+    // hears about it, minus the trainer who made the change.
     const changed = ctx.staff.filter(
       (s) => onSet.has(s.id) !== baseline.has(s.id),
     );
+    const beforeIds = [...baseline].map((sid) => ctx.staff.find((s) => s.id === sid)?.user_id);
+    const afterIds = await rosteredUserIdsForDate(dateStr);
+    const affected = [...beforeIds, ...afterIds];
     await Promise.all(
       changed.map((s) => {
         const nowOn = onSet.has(s.id);
-        return notifyStaffOfRosterChange({
-          targetUserId: s.user_id,
+        return notifyChange({
+          type: 'roster_changed',
           actorId: userId,
           actorName,
+          subjectUserId: s.user_id,
           subjectName: s.name,
-          type: 'roster_changed',
-          title: 'Your roster was updated',
+          affectedUserIds: affected,
+          selfTitle: 'Your roster was updated',
+          title: `${s.name}'s roster was updated`,
           message:
             prettyDateShortDow(dateStr) +
             ' — ' +
@@ -400,16 +415,10 @@ export default function DayDetailSheet({
                     active={choice === 'unavailable'}
                     activeBg={palette.danger}
                     palette={palette}
-                    disabled={saving || locked}
+                    disabled={saving}
                     onPress={() => saveMyAvailability('unavailable')}
                   />
                 </View>
-                {locked ? (
-                  <Text style={[styles.lockNote, { color: palette.warning }]}>
-                    Within {LOCK_DAYS} days — to mark yourself unavailable, please
-                    speak to a trainer.
-                  </Text>
-                ) : null}
                 <TextInput
                   value={note}
                   onChangeText={setNote}

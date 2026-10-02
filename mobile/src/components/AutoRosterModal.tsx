@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Btn } from './ui';
 import { buildMonthGrid, monthLabel, prettyDateShortDow } from '../lib/format';
-import { notifyStaffOfRosterChange } from '../lib/notify';
+import { notifyChange } from '../lib/notify';
 import { makeRoster, type ComputedEntry, type RosterContext } from '../lib/rosterCompute';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
@@ -71,18 +71,21 @@ export default function AutoRosterModal({
           if (st?.user_id) affected.add(st.user_id);
         });
       }
-      // One summary notification per affected person.
+      // One notification per affected person (they get "Your roster was updated";
+      // Cameron is always copied via notifyChange).
       const actorName = profile?.full_name || 'A trainer';
       await Promise.all(
         Array.from(affected).map((uid) => {
           const st = ctx.staff.find((s) => s.user_id === uid);
-          return notifyStaffOfRosterChange({
-            targetUserId: uid,
+          return notifyChange({
+            type: 'roster_changed',
             actorId: session.user.id,
             actorName,
-            subjectName: st?.name || 'You',
-            type: 'roster_changed',
-            title: 'Your roster was updated',
+            subjectUserId: uid,
+            subjectName: st?.name || '',
+            affectedUserIds: [uid],
+            selfTitle: 'Your roster was updated',
+            title: `${st?.name || 'Someone'}'s roster was updated`,
             message: `${monthLabel(year, month0)} roster was auto-generated.`,
             data: { action: 'auto_roster' },
           });

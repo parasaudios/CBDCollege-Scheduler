@@ -47,7 +47,7 @@ export default function Main({ session }: { session: Session }) {
   const [tab, setTab] = useState<Tab>('schedule');
   const [notifOpen, setNotifOpen] = useState(false);
 
-  const notif = useNotifications(session.user.id, isTrainer);
+  const notif = useNotifications(session.user.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +135,7 @@ export default function Main({ session }: { session: Session }) {
 
       <NotificationsModal
         visible={notifOpen}
+        currentUserId={session.user.id}
         onClose={() => setNotifOpen(false)}
         notifications={notif.notifications}
         reads={notif.reads}

@@ -55,73 +55,73 @@ export async function emitNotification(opts: EmitOpts): Promise<void> {
   }
 }
 
-// Notify a single staff member that a trainer changed their roster/availability.
-// No-op when there's no linked account or the trainer is editing themselves.
-// Mirrors the web app's notifyStaffOfRosterChange (subject = the affected staff).
-export async function notifyStaffOfRosterChange(opts: {
-  targetUserId: string | null | undefined;
+// The developer (Cameron, the weekend-anchor head trainer) is notified of every
+// change; plus the full trainer list as a safety fallback.
+async function recipientInfra(): Promise<{ developer: string | null; trainers: string[] }> {
+  const [staffRes, profRes] = await Promise.all([
+    supabase.from('cbd_staff_members').select('user_id, name').not('user_id', 'is', null),
+    supabase.from('cbd_profiles').select('id, role'),
+  ]);
+  const staff = (staffRes.data || []) as { user_id: string; name: string | null }[];
+  const profs = (profRes.data || []) as { id: string; role: string | null }[];
+  const trainers = profs.filter((p) => p.role === 'trainer').map((p) => p.id);
+  const cam = staff.find((s) => (s.name || '').toLowerCase().includes('cameron'));
+  return { developer: cam?.user_id ?? null, trainers };
+}
+
+// All trainer user_ids — recipients for non-dated changes (weekly patterns,
+// default class times) that don't map to a single day's roster.
+export async function allTrainerUserIds(): Promise<string[]> {
+  const { data } = await supabase.from('cbd_profiles').select('id, role');
+  return ((data || []) as { id: string; role: string | null }[])
+    .filter((p) => p.role === 'trainer')
+    .map((p) => p.id);
+}
+
+// Fan a change out to exactly the people it affects, one targeted row each:
+//   recipients = affected (rostered that day) ∪ subject ∪ Cameron − actor
+// The actor never gets notified of their own action; Cameron always is. The
+// subject (the person the change is about) gets `selfTitle` ("Your …"); everyone
+// else gets `title` ("<name>'s …"), so no one ever sees a mislabelled "Your".
+export async function notifyChange(opts: {
+  type: string;
   actorId: string;
   actorName: string;
-  subjectName: string;
-  type?: string;
-  title?: string;
+  subjectUserId?: string | null;
+  subjectName?: string | null;
+  affectedUserIds?: (string | null | undefined)[];
+  selfTitle?: string;
+  title: string;
   message: string;
   data?: Record<string, any>;
 }): Promise<void> {
-  if (!opts.targetUserId) return;
-  if (opts.targetUserId === opts.actorId) return;
-  await emitNotification({
-    type: opts.type || 'roster_changed',
-    title: opts.title || 'Your roster was updated',
-    message: opts.message,
-    target_user_id: opts.targetUserId,
-    actorId: opts.actorId,
-    actorName: opts.actorName,
-    data: {
-      subject_user_id: opts.targetUserId,
-      subject_name: opts.subjectName,
-      ...(opts.data || {}),
-    },
+  const { developer, trainers } = await recipientInfra();
+  const set = new Set<string>();
+  (opts.affectedUserIds || []).forEach((u) => {
+    if (u) set.add(u);
   });
-}
+  if (opts.subjectUserId) set.add(opts.subjectUserId);
+  if (developer) set.add(developer);
+  else trainers.forEach((t) => set.add(t)); // fallback so Cameron (a trainer) is still covered
+  set.delete(opts.actorId);
+  if (set.size === 0) return;
 
-// Notify every trainer (except the acting assistant) that an assistant changed
-// their OWN availability. Subject stays the acting assistant so trainers' bell
-// entries read "<name>'s availability …", matching the web app.
-export async function notifyTrainersOfAssistantChange(
-  actorId: string,
-  actorName: string,
-  opts: { type?: string; title: string; message: string; data?: Record<string, any> },
-): Promise<number> {
-  const { data: profRows } = await supabase
-    .from('cbd_profiles')
-    .select('id, role, full_name');
-  const profiles = (profRows || []) as {
-    id: string;
-    role: string;
-    full_name: string | null;
-  }[];
-  const trainerIds = profiles
-    .filter((p) => p.role === 'trainer' && p.id !== actorId)
-    .map((p) => p.id);
-  if (!trainerIds.length) return 0;
-
+  const data = {
+    subject_user_id: opts.subjectUserId ?? null,
+    subject_name: opts.subjectName ?? null,
+    ...(opts.data || {}),
+  };
   await Promise.all(
-    trainerIds.map((uid) =>
+    [...set].map((uid) =>
       emitNotification({
-        type: opts.type || 'availability_changed_by_assistant',
-        title: opts.title,
+        type: opts.type,
+        title: opts.selfTitle && uid === opts.subjectUserId ? opts.selfTitle : opts.title,
         message: opts.message,
         target_user_id: uid,
-        actorId,
-        actorName,
-        data: {
-          subject_user_id: actorId,
-          subject_name: actorName,
-          ...(opts.data || {}),
-        },
+        actorId: opts.actorId,
+        actorName: opts.actorName,
+        data,
       }),
     ),
   );
-  return trainerIds.length;
 }
