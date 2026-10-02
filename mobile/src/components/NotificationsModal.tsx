@@ -17,6 +17,7 @@ import { radius, spacing } from '../theme';
 
 interface Props {
   visible: boolean;
+  currentUserId: string;
   onClose: () => void;
   notifications: NotificationRow[];
   reads: Record<string, boolean>;
@@ -25,8 +26,23 @@ interface Props {
   onGotoDate?: (date: string) => void;
 }
 
+// Render a stored title correctly for whoever is viewing: a row written in the
+// second person ("Your availability was updated") reads as "<name>'s availability
+// was updated" for anyone who isn't the subject. Harmless for rows that already
+// name the subject, and covers legacy/web-written rows too.
+function displayTitle(n: NotificationRow, uid: string): string {
+  const t = n.title || '';
+  const subjId = (n.data as any)?.subject_user_id as string | undefined;
+  const subjName = (n.data as any)?.subject_name as string | undefined;
+  if (subjId && subjName && subjId !== uid && /^your\b/i.test(t)) {
+    return subjName + "'s" + t.slice(4);
+  }
+  return t;
+}
+
 export default function NotificationsModal({
   visible,
+  currentUserId,
   onClose,
   notifications,
   reads,
@@ -73,7 +89,7 @@ export default function NotificationsModal({
           </View>
 
           {detail ? (
-            <Detail n={detail} onGotoDate={onGotoDate} onClose={onClose} />
+            <Detail n={detail} currentUserId={currentUserId} onGotoDate={onGotoDate} onClose={onClose} />
           ) : notifications.length === 0 ? (
             <View style={{ padding: spacing(8), alignItems: 'center' }}>
               <Text style={{ color: palette.textMuted }}>No notifications yet.</Text>
@@ -100,7 +116,7 @@ export default function NotificationsModal({
                         <Text style={{ color: palette.textMuted, fontSize: 11 }}>{timeAgo(n.created_at)}</Text>
                       </View>
                       <Text style={{ color: palette.textPrimary, fontWeight: '700', fontSize: 14, marginTop: 2 }}>
-                        {n.title}
+                        {displayTitle(n, currentUserId)}
                       </Text>
                       {n.message ? (
                         <Text numberOfLines={2} style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>
@@ -129,10 +145,12 @@ export default function NotificationsModal({
 
 function Detail({
   n,
+  currentUserId,
   onGotoDate,
   onClose,
 }: {
   n: NotificationRow;
+  currentUserId: string;
   onGotoDate?: (date: string) => void;
   onClose: () => void;
 }) {
@@ -182,7 +200,7 @@ function Detail({
         </Text>
       </View>
       <Text style={{ color: palette.textPrimary, fontSize: 18, fontWeight: '800', marginTop: spacing(2) }}>
-        {n.title}
+        {displayTitle(n, currentUserId)}
       </Text>
       {n.message ? (
         <Text style={{ color: palette.textSecondary, fontSize: 15, marginTop: spacing(2) }}>{n.message}</Text>

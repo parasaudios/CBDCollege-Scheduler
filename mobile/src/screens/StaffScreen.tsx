@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import StaffModal from '../components/StaffModal';
 import { Badge, Btn, Card, CardHeader, EmptyNote, Pills, StatusBadge } from '../components/ui';
-import { loadSettings } from '../lib/data';
+import { loadSettings, rosteredUserIdsForDate } from '../lib/data';
 import { prettyDateLong, todayStr } from '../lib/format';
-import { notifyStaffOfRosterChange } from '../lib/notify';
+import { notifyChange } from '../lib/notify';
 import { supabase } from '../lib/supabase';
 import type { Profile, Settings, StaffMember } from '../lib/types';
 import { useTheme } from '../ThemeProvider';
@@ -340,6 +340,7 @@ function OverrideEditor({
     if (!staff.user_id) return;
     (async () => {
       const actorName = profile?.full_name || 'A trainer';
+      const before = await rosteredUserIdsForDate(date);
       if (choice === 'clear') {
         await supabase.from('cbd_assistant_availability').delete().eq('user_id', staff.user_id).eq('date', date);
       } else {
@@ -348,13 +349,16 @@ function OverrideEditor({
           { onConflict: 'user_id,date' },
         );
       }
-      await notifyStaffOfRosterChange({
-        targetUserId: staff.user_id,
+      const after = await rosteredUserIdsForDate(date);
+      await notifyChange({
+        type: 'availability_changed_by_trainer',
         actorId: session.user.id,
         actorName,
+        subjectUserId: staff.user_id,
         subjectName: staff.name,
-        type: 'availability_changed_by_trainer',
-        title: 'Your availability was updated',
+        affectedUserIds: [...before, ...after],
+        selfTitle: 'Your availability was updated',
+        title: `${staff.name}'s availability was updated`,
         message: `${prettyDateLong(date)} — ${choice === 'clear' ? 'cleared' : choice === 'available' ? 'Available' : 'Not available'}`,
         data: { date, action: 'trainer_set' },
       });

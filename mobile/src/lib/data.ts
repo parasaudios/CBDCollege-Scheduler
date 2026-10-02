@@ -1,7 +1,7 @@
 // Loads a month's worth of data from Supabase and assembles a RosterContext for
 // the roster engine (rosterCompute.ts). Mirrors what the web app caches per month.
 import { formatDate, monthRange } from './format';
-import type { AssistAvail, RosterContext } from './rosterCompute';
+import { makeRoster, type AssistAvail, type RosterContext } from './rosterCompute';
 import { supabase } from './supabase';
 import type {
   AvailabilityRow,
@@ -184,4 +184,24 @@ export async function loadRosterContext(
     today: formatDate(new Date()),
   };
   return { ctx, staff };
+}
+
+// The linked-account user_ids of everyone rostered on a given date — i.e. the
+// people a change to that date actually affects (used to target notifications).
+// Loads a fresh context, so call it AFTER writing a change to get the new roster.
+export async function rosteredUserIdsForDate(dateStr: string): Promise<string[]> {
+  const p = dateStr.split('-');
+  if (p.length < 3) return [];
+  try {
+    const { ctx } = await loadRosterContext(+p[0], +p[1] - 1);
+    const engine = makeRoster(ctx);
+    const out: string[] = [];
+    engine.getRosterForDate(dateStr).forEach((r) => {
+      const s = ctx.staff.find((st) => st.id === r.staff_id);
+      if (s?.user_id) out.push(s.user_id);
+    });
+    return out;
+  } catch {
+    return [];
+  }
 }

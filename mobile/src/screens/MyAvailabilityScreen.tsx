@@ -10,14 +10,14 @@ import {
   View,
 } from 'react-native';
 import { Btn, Card, CardHeader } from '../components/ui';
-import { buildMonthGrid, daysUntil, monthLabel, monthRange, prettyDateLong, todayStr, WEEKDAY_HEADERS } from '../lib/format';
-import { notifyTrainersOfAssistantChange } from '../lib/notify';
+import { rosteredUserIdsForDate } from '../lib/data';
+import { buildMonthGrid, monthLabel, monthRange, prettyDateLong, todayStr, WEEKDAY_HEADERS } from '../lib/format';
+import { allTrainerUserIds, notifyChange } from '../lib/notify';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import { useTheme } from '../ThemeProvider';
 import { radius, spacing } from '../theme';
 
-const LOCK_DAYS = 14;
 const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DOW_SHORT: Record<number, string> = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 0: 'Sun' };
 
@@ -60,8 +60,14 @@ export default function MyAvailabilityScreen({ session, profile }: { session: Se
     const { error } = await supabase.from('cbd_profiles').update({ available_dows: dows }).eq('id', userId);
     setSavingPat(false);
     if (error) { Alert.alert('Error', error.message); return; }
-    await notifyTrainersOfAssistantChange(userId, actorName, {
-      title: `${actorName} updated their weekly availability`,
+    await notifyChange({
+      type: 'availability_changed_by_assistant',
+      actorId: userId,
+      actorName,
+      subjectUserId: userId,
+      subjectName: actorName,
+      affectedUserIds: await allTrainerUserIds(),
+      title: `${actorName}'s weekly availability changed`,
       message: 'Weekly availability pattern changed.',
       data: { action: 'self_pattern' },
     });
@@ -76,25 +82,29 @@ export default function MyAvailabilityScreen({ session, profile }: { session: Se
 
   function tapDay(date: string) {
     if (date < today) { Alert.alert('Past date', "You can't change availability for past days."); return; }
-    const locked = daysUntil(date) < LOCK_DAYS;
-    const opts: any[] = [{ text: 'Available', onPress: () => setDay(date, true) }];
-    if (locked) {
-      opts.push({ text: 'Not available (locked)', onPress: () => Alert.alert('Locked', `Within ${LOCK_DAYS} days — please ask a trainer to mark you unavailable.`) });
-    } else {
-      opts.push({ text: 'Not available', onPress: () => setDay(date, false) });
-    }
-    opts.push({ text: 'Clear', style: 'destructive', onPress: () => clearDay(date) });
-    opts.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert(prettyDateLong(date), 'Set your availability', opts);
+    Alert.alert(prettyDateLong(date), 'Set your availability', [
+      { text: 'Available', onPress: () => setDay(date, true) },
+      { text: 'Not available', onPress: () => setDay(date, false) },
+      { text: 'Clear', style: 'destructive', onPress: () => clearDay(date) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   async function setDay(date: string, isAvail: boolean) {
+    const before = await rosteredUserIdsForDate(date);
     const { error } = await supabase.from('cbd_assistant_availability').upsert(
       { user_id: userId, date, is_available: isAvail, note: '' }, { onConflict: 'user_id,date' },
     );
     if (error) { Alert.alert('Error', error.message); return; }
-    await notifyTrainersOfAssistantChange(userId, actorName, {
-      title: `${actorName} updated their availability`,
+    const after = await rosteredUserIdsForDate(date);
+    await notifyChange({
+      type: 'availability_changed_by_assistant',
+      actorId: userId,
+      actorName,
+      subjectUserId: userId,
+      subjectName: actorName,
+      affectedUserIds: [...before, ...after],
+      title: `${actorName}'s availability changed`,
       message: `${prettyDateLong(date)} — ${isAvail ? 'Available' : 'Not available'}`,
       data: { date, is_available: isAvail, action: 'self_set' },
     });
@@ -102,9 +112,17 @@ export default function MyAvailabilityScreen({ session, profile }: { session: Se
   }
 
   async function clearDay(date: string) {
+    const before = await rosteredUserIdsForDate(date);
     await supabase.from('cbd_assistant_availability').delete().eq('user_id', userId).eq('date', date);
-    await notifyTrainersOfAssistantChange(userId, actorName, {
-      title: `${actorName} updated their availability`,
+    const after = await rosteredUserIdsForDate(date);
+    await notifyChange({
+      type: 'availability_changed_by_assistant',
+      actorId: userId,
+      actorName,
+      subjectUserId: userId,
+      subjectName: actorName,
+      affectedUserIds: [...before, ...after],
+      title: `${actorName}'s availability changed`,
       message: `${prettyDateLong(date)} — availability cleared`,
       data: { date, action: 'self_cleared' },
     });
@@ -164,7 +182,7 @@ export default function MyAvailabilityScreen({ session, profile }: { session: Se
           </View>
           <Text style={[styles.legend, { color: palette.textMuted }]}>
             <Text style={{ color: palette.success, fontWeight: '700' }}>Green</Text> = available ·{' '}
-            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = not available. Marking yourself unavailable within {LOCK_DAYS} days needs a trainer.
+            <Text style={{ color: palette.danger, fontWeight: '700' }}>Red</Text> = not available. Tap any upcoming day to change it.
           </Text>
         </View>
       </Card>
