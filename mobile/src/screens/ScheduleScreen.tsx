@@ -192,9 +192,6 @@ export default function ScheduleScreen({ session, profile }: Props) {
             <View style={[styles.cardHeader, { borderBottomColor: palette.border }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.cardTitle, { color: palette.textPrimary }]}>Staff Roster</Text>
-                <Text style={[styles.cardSub, { color: palette.textMuted }]}>
-                  Tap a day to see or edit its roster.
-                </Text>
               </View>
               {isTrainer ? (
                 <Btn label="Sync students" icon="↻" variant="outline" size="sm" busy={syncing} onPress={syncStudents} />

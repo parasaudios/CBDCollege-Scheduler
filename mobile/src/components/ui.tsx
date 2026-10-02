@@ -252,7 +252,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   btnText: { fontWeight: '600' },
-  card: { borderRadius: radius, borderWidth: 1, overflow: 'hidden' },
+  card: {
+    borderRadius: radius,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
   cardHeader: {
     padding: spacing(4),
     borderBottomWidth: 1,
