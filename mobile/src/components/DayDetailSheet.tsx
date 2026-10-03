@@ -98,7 +98,11 @@ export default function DayDetailSheet({
           kind,
         };
       })
-      .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+      .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name))
+      // Rank = position in the day's pick order (1st, 2nd, …). This reflects the
+      // per-day priority set in Staff → Priority order; it's never the raw 100
+      // fallback, so an unconfigured day just ranks by the global order then name.
+      .map((a, i) => ({ ...a, rank: i + 1 }));
   }, [engine, dateStr, ctx]);
 
   // Assistant self-availability
@@ -393,7 +397,7 @@ export default function DayDetailSheet({
           </View>
 
           <ScrollView
-            contentContainerStyle={{ paddingBottom: spacing(8) }}
+            contentContainerStyle={{ paddingBottom: spacing(16) }}
             keyboardShouldPersistTaps="handled"
           >
             {/* Classes */}
@@ -460,7 +464,7 @@ export default function DayDetailSheet({
                           {a.name}
                         </Text>
                         <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 1 }}>
-                          {ordinal(a.priority)} priority{a.note ? ` · ${a.note}` : ''}
+                          {ordinal(a.rank)} priority{a.note ? ` · ${a.note}` : ''}
                         </Text>
                       </View>
                       <Badge label={label} tone={tone} />
@@ -807,8 +811,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     borderWidth: 1,
     paddingHorizontal: spacing(5),
-    paddingBottom: spacing(4),
-    maxHeight: '88%',
+    paddingBottom: spacing(6),
+    maxHeight: '90%',
   },
   grabber: { alignItems: 'center', paddingVertical: spacing(2) },
   grabberBar: { width: 40, height: 4, borderRadius: 2 },
