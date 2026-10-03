@@ -23,7 +23,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../ThemeProvider';
 import type { DayClass, Profile } from '../lib/types';
 import { radius, spacing, type Palette } from '../theme';
-import { StatusBadge, type StatusKind } from './ui';
+import { Badge, StatusBadge, type StatusKind } from './ui';
 
 type AvailChoice = 'available' | 'unavailable' | 'unset';
 
@@ -66,6 +66,41 @@ export default function DayDetailSheet({
         ? 'rostered'
         : 'unstaffed';
 
+  // Read-only preview: every assistant's status for this day + their priority.
+  // "Rostered" = actually on the roster; "Available" = free that day per their
+  // weekly pattern / overrides but not rostered; "Not available" otherwise.
+  const assistantPreview = useMemo(() => {
+    if (!engine || !dateStr || !ctx) return [];
+    const rosteredIds = new Set(
+      engine
+        .getRosterForDate(dateStr)
+        .filter((r) => r.status === 'available' || r.status === 'partial')
+        .map((r) => r.staff_id),
+    );
+    const overrides = ctx.assistantAvailByDate[dateStr] || [];
+    return ctx.staff
+      .filter((s) => !s.is_head_trainer)
+      .map((s) => {
+        const rostered = rosteredIds.has(s.id);
+        const available = engine.isStaffAvailableOnDate(s, dateStr);
+        const ov = s.user_id ? overrides.find((e) => e.user_id === s.user_id) : undefined;
+        const kind: 'rostered' | 'available' | 'unavailable' = rostered
+          ? 'rostered'
+          : available
+            ? 'available'
+            : 'unavailable';
+        return {
+          id: s.id,
+          name: s.name,
+          color: s.color,
+          priority: engine.effectivePriority(s, dateStr),
+          note: ov?.note || '',
+          kind,
+        };
+      })
+      .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+  }, [engine, dateStr, ctx]);
+
   // Assistant self-availability
   const [choice, setChoice] = useState<AvailChoice>('unset');
   const [note, setNote] = useState('');
@@ -76,6 +111,9 @@ export default function DayDetailSheet({
   const [cappedPm, setCappedPm] = useState(false);
   // Trainer: roster on/off set of staff_ids
   const [onSet, setOnSet] = useState<Set<string>>(new Set());
+  // Editing (class numbers + roster) stays collapsed until deliberately opened,
+  // so the modal is a read-only view by default and can't be edited by accident.
+  const [editOpen, setEditOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -100,6 +138,7 @@ export default function DayDetailSheet({
     setCappedAm(ci.capped_am);
     setCappedPm(ci.capped_pm);
     setOnSet(new Set(engine.getRosterForDate(dateStr).map((r) => r.staff_id)));
+    setEditOpen(false); // always start collapsed so edits are deliberate
   }, [visible, dateStr, ctx, engine, userId]);
 
   // user_ids rostered on the open day, from the in-memory (pre-change) context.
@@ -395,6 +434,45 @@ export default function DayDetailSheet({
               ))
             )}
 
+            {/* Assistant availability + priority preview (read-only) */}
+            {!holiday && assistantPreview.length > 0 ? (
+              <>
+                <Text style={[styles.section, { color: palette.textSecondary }]}>
+                  Assistant availability
+                </Text>
+                {assistantPreview.map((a) => {
+                  const tone = (a.kind === 'rostered'
+                    ? 'success'
+                    : a.kind === 'available'
+                      ? 'muted'
+                      : 'danger') as 'success' | 'muted' | 'danger';
+                  const label =
+                    a.kind === 'rostered'
+                      ? 'Rostered'
+                      : a.kind === 'available'
+                        ? 'Available'
+                        : 'Not available';
+                  return (
+                    <View key={a.id} style={styles.previewRow}>
+                      <View style={[styles.dot, { backgroundColor: a.color || palette.primary }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: palette.textPrimary, fontWeight: '600', fontSize: 15 }}>
+                          {a.name}
+                        </Text>
+                        <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 1 }}>
+                          {ordinal(a.priority)} priority{a.note ? ` · ${a.note}` : ''}
+                        </Text>
+                      </View>
+                      <Badge label={label} tone={tone} />
+                    </View>
+                  );
+                })}
+                <Text style={[styles.hint, { color: palette.textMuted }]}>
+                  Availability follows each person's weekly pattern in Staff → Availability. Order is pick priority.
+                </Text>
+              </>
+            ) : null}
+
             {/* Assistant self-availability */}
             {!isTrainer && (
               <View style={[styles.editor, { borderTopColor: palette.border }]}>
@@ -448,101 +526,119 @@ export default function DayDetailSheet({
               </View>
             )}
 
-            {/* Trainer: class numbers + roster editing */}
+            {/* Trainer: class numbers + roster editing — collapsed by default so the
+                modal reads as a summary and can't be edited by accident. */}
             {isTrainer && !holiday && (
               <View style={[styles.editor, { borderTopColor: palette.border }]}>
-                <Text style={[styles.section, { color: palette.textSecondary }]}>
-                  Edit class numbers
-                </Text>
-                <View style={styles.numRow}>
-                  <NumField
-                    label="AM students"
-                    value={amStr}
-                    onChange={setAmStr}
-                    palette={palette}
-                    disabled={saving}
-                  />
-                  <NumField
-                    label="PM students"
-                    value={pmStr}
-                    onChange={setPmStr}
-                    palette={palette}
-                    disabled={saving}
-                  />
-                </View>
-                <View style={styles.capRow}>
-                  <ToggleRow
-                    label="AM capped"
-                    value={cappedAm}
-                    onValueChange={setCappedAm}
-                    palette={palette}
-                    disabled={saving}
-                  />
-                  <ToggleRow
-                    label="PM capped"
-                    value={cappedPm}
-                    onValueChange={setCappedPm}
-                    palette={palette}
-                    disabled={saving}
-                  />
-                </View>
-                <PrimaryButton
-                  label="Save class numbers"
-                  palette={palette}
-                  disabled={saving}
-                  onPress={saveClassNumbers}
-                />
+                <Pressable onPress={() => setEditOpen((o) => !o)} style={styles.expanderHeader}>
+                  <Text style={[styles.section, { color: palette.textSecondary, marginTop: 0, marginBottom: 0 }]}>
+                    Edit day
+                  </Text>
+                  <Text style={{ color: palette.primary, fontSize: 14, fontWeight: '700' }}>
+                    {editOpen ? 'Hide ▾' : 'Edit ▸'}
+                  </Text>
+                </Pressable>
 
-                <Text
-                  style={[
-                    styles.section,
-                    { color: palette.textSecondary, marginTop: spacing(5) },
-                  ]}
-                >
-                  Edit roster
-                </Text>
-                {ctx?.staff.map((s) => {
-                  const on = onSet.has(s.id);
-                  return (
-                    <Pressable
-                      key={s.id}
-                      onPress={() => { if (!saving) toggleStaff(s.id, !on); }}
+                {!editOpen ? (
+                  <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: spacing(2) }}>
+                    Tap Edit to change class numbers or the roster for this day.
+                  </Text>
+                ) : (
+                  <View style={{ marginTop: spacing(1) }}>
+                    <Text style={[styles.section, { color: palette.textSecondary }]}>
+                      Class numbers
+                    </Text>
+                    <View style={styles.numRow}>
+                      <NumField
+                        label="AM students"
+                        value={amStr}
+                        onChange={setAmStr}
+                        palette={palette}
+                        disabled={saving}
+                      />
+                      <NumField
+                        label="PM students"
+                        value={pmStr}
+                        onChange={setPmStr}
+                        palette={palette}
+                        disabled={saving}
+                      />
+                    </View>
+                    <View style={styles.capRow}>
+                      <ToggleRow
+                        label="AM capped"
+                        value={cappedAm}
+                        onValueChange={setCappedAm}
+                        palette={palette}
+                        disabled={saving}
+                      />
+                      <ToggleRow
+                        label="PM capped"
+                        value={cappedPm}
+                        onValueChange={setCappedPm}
+                        palette={palette}
+                        disabled={saving}
+                      />
+                    </View>
+                    <PrimaryButton
+                      label="Save class numbers"
+                      palette={palette}
+                      disabled={saving}
+                      onPress={saveClassNumbers}
+                    />
+
+                    <Text
                       style={[
-                        styles.staffToggleRow,
-                        {
-                          backgroundColor: on ? palette.successLight : palette.surface2,
-                          borderColor: on ? palette.successBorder : palette.border,
-                        },
+                        styles.section,
+                        { color: palette.textSecondary, marginTop: spacing(5) },
                       ]}
                     >
-                      <View style={[styles.dot, { backgroundColor: s.color || palette.primary }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: palette.textPrimary, fontWeight: '600' }}>
-                          {s.name}
-                        </Text>
-                        <Text style={{ color: palette.textMuted, fontSize: 12 }}>
-                          {s.is_head_trainer ? 'Head Trainer' : 'Assistant'}
-                        </Text>
-                      </View>
-                      <Switch
-                        value={on}
-                        onValueChange={(v) => toggleStaff(s.id, v)}
-                        disabled={saving}
-                        trackColor={{ true: palette.success, false: palette.border }}
-                      />
-                    </Pressable>
-                  );
-                })}
-                <PrimaryButton
-                  label="Save roster"
-                  palette={palette}
-                  disabled={saving}
-                  onPress={saveRoster}
-                />
-                <Text style={[styles.hint, { color: palette.textMuted }]}>
-                  Saving pins this day's roster. Future weekends still follow the
-                  head-trainer rotation rule.
-                </Text>
+                      Roster
+                    </Text>
+                    {ctx?.staff.map((s) => {
+                      const on = onSet.has(s.id);
+                      return (
+                        <Pressable
+                          key={s.id}
+                          onPress={() => { if (!saving) toggleStaff(s.id, !on); }}
+                          style={[
+                            styles.staffToggleRow,
+                            {
+                              backgroundColor: on ? palette.successLight : palette.surface2,
+                              borderColor: on ? palette.successBorder : palette.border,
+                            },
+                          ]}
+                        >
+                          <View style={[styles.dot, { backgroundColor: s.color || palette.primary }]} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: palette.textPrimary, fontWeight: '600' }}>
+                              {s.name}
+                            </Text>
+                            <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+                              {s.is_head_trainer ? 'Head Trainer' : 'Assistant'}
+                            </Text>
+                          </View>
+                          <Switch
+                            value={on}
+                            onValueChange={(v) => toggleStaff(s.id, v)}
+                            disabled={saving}
+                            trackColor={{ true: palette.success, false: palette.border }}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                    <PrimaryButton
+                      label="Save roster"
+                      palette={palette}
+                      disabled={saving}
+                      onPress={saveRoster}
+                    />
+                    <Text style={[styles.hint, { color: palette.textMuted }]}>
+                      Saving pins this day's roster. Future weekends still follow the
+                      head-trainer rotation rule.
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -697,6 +793,13 @@ function PrimaryButton({
   );
 }
 
+// 1 -> "1st", 2 -> "2nd", 3 -> "3rd", 4 -> "4th", ... (for pick-priority labels).
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
@@ -772,4 +875,6 @@ const styles = StyleSheet.create({
   },
   hint: { fontSize: 12, marginTop: spacing(3), lineHeight: 17 },
   status: { marginTop: spacing(4), fontSize: 14 },
+  expanderHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  previewRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing(2) },
 });
