@@ -78,7 +78,7 @@ export default function DayDetailSheet({
         .map((r) => r.staff_id),
     );
     const overrides = ctx.assistantAvailByDate[dateStr] || [];
-    return ctx.staff
+    const items = ctx.staff
       .filter((s) => !s.is_head_trainer)
       .map((s) => {
         const rostered = rosteredIds.has(s.id);
@@ -89,20 +89,23 @@ export default function DayDetailSheet({
           : available
             ? 'available'
             : 'unavailable';
-        return {
-          id: s.id,
-          name: s.name,
-          color: s.color,
-          priority: engine.effectivePriority(s, dateStr),
-          note: ov?.note || '',
-          kind,
-        };
-      })
-      .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name))
-      // Rank = position in the day's pick order (1st, 2nd, …). This reflects the
-      // per-day priority set in Staff → Priority order; it's never the raw 100
-      // fallback, so an unconfigured day just ranks by the global order then name.
-      .map((a, i) => ({ ...a, rank: i + 1 }));
+        // Pick priority only applies to AVAILABLE staff, and only when one is
+        // actually configured. 100 is the unset default, so we show nothing then
+        // rather than fabricating a rank from list order.
+        const raw = engine.effectivePriority(s, dateStr);
+        const priority = available && raw !== 100 ? raw : null;
+        return { id: s.id, name: s.name, color: s.color, priority, note: ov?.note || '', kind };
+      });
+    // Available first (by real priority, unset ones last, then name); not-available last.
+    items.sort((a, b) => {
+      const av = a.kind !== 'unavailable';
+      const bv = b.kind !== 'unavailable';
+      if (av !== bv) return av ? -1 : 1;
+      const pa = a.priority ?? 9999;
+      const pb = b.priority ?? 9999;
+      return pa - pb || a.name.localeCompare(b.name);
+    });
+    return items;
   }, [engine, dateStr, ctx]);
 
   // Assistant self-availability
@@ -463,16 +466,20 @@ export default function DayDetailSheet({
                         <Text style={{ color: palette.textPrimary, fontWeight: '600', fontSize: 15 }}>
                           {a.name}
                         </Text>
-                        <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 1 }}>
-                          {ordinal(a.rank)} priority{a.note ? ` · ${a.note}` : ''}
-                        </Text>
+                        {a.priority != null || a.note ? (
+                          <Text style={{ color: palette.textMuted, fontSize: 12, marginTop: 1 }}>
+                            {a.priority != null ? `${ordinal(a.priority)} priority` : ''}
+                            {a.priority != null && a.note ? ' · ' : ''}
+                            {a.note || ''}
+                          </Text>
+                        ) : null}
                       </View>
                       <Badge label={label} tone={tone} />
                     </View>
                   );
                 })}
                 <Text style={[styles.hint, { color: palette.textMuted }]}>
-                  Availability follows each person's weekly pattern in Staff → Availability. Order is pick priority.
+                  Only available staff are ranked. Pick priority is set per weekday in the web app's Priority Order.
                 </Text>
               </>
             ) : null}
