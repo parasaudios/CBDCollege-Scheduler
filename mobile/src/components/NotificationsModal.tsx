@@ -40,6 +40,17 @@ function displayTitle(n: NotificationRow, uid: string): string {
   return t;
 }
 
+// A class/roster change can carry a structured before→after list in data.changes
+// ([{label, from, to}]). Prefer rendering that over the run-on message string.
+type Change = { label: string; from: string; to: string };
+function getChanges(n: NotificationRow): Change[] | null {
+  const ch = (n.data as any)?.changes;
+  if (!Array.isArray(ch) || ch.length === 0) return null;
+  return ch
+    .filter((c: any) => c && c.label != null)
+    .map((c: any) => ({ label: String(c.label), from: String(c.from), to: String(c.to) }));
+}
+
 export default function NotificationsModal({
   visible,
   currentUserId,
@@ -101,6 +112,10 @@ export default function NotificationsModal({
                 const unread = !reads[n.id];
                 const subject = n.data?.subject_name;
                 const actor = n.data?.actor_name;
+                const changes = getChanges(n);
+                const preview = changes
+                  ? changes.map((c) => `${c.label} → ${c.to}`).join(' · ')
+                  : n.message;
                 return (
                   <Pressable
                     key={n.id}
@@ -118,9 +133,9 @@ export default function NotificationsModal({
                       <Text style={{ color: palette.textPrimary, fontWeight: '700', fontSize: 14, marginTop: 2 }}>
                         {displayTitle(n, currentUserId)}
                       </Text>
-                      {n.message ? (
+                      {preview ? (
                         <Text numberOfLines={2} style={{ color: palette.textSecondary, fontSize: 13, marginTop: 2 }}>
-                          {n.message}
+                          {preview}
                         </Text>
                       ) : null}
                       {subject || actor ? (
@@ -157,6 +172,7 @@ function Detail({
   const { palette } = useTheme();
   const meta = notifTypeMeta(n.type);
   const date: string | undefined = n.data?.date;
+  const changes = getChanges(n);
   const [snapshot, setSnapshot] = useState<
     { name: string; color: string | null; day_role: string | null; status: string; start_time: string | null; end_time: string | null; is_head_trainer: boolean }[] | null
   >(null);
@@ -202,7 +218,21 @@ function Detail({
       <Text style={{ color: palette.textPrimary, fontSize: 18, fontWeight: '800', marginTop: spacing(2) }}>
         {displayTitle(n, currentUserId)}
       </Text>
-      {n.message ? (
+      {changes ? (
+        <View style={{ marginTop: spacing(3) }}>
+          <Text style={[styles.snapTitle, { color: palette.textSecondary, marginBottom: spacing(2) }]}>What changed</Text>
+          {changes.map((c, i) => (
+            <View key={i} style={styles.changeRow}>
+              <Text style={{ color: palette.textMuted, fontSize: 13, width: 108 }}>{c.label}</Text>
+              <Text style={{ fontSize: 14, flex: 1 }}>
+                <Text style={{ color: palette.textMuted }}>{c.from}</Text>
+                <Text style={{ color: palette.textMuted }}>{'  →  '}</Text>
+                <Text style={{ color: palette.textPrimary, fontWeight: '800' }}>{c.to}</Text>
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : n.message ? (
         <Text style={{ color: palette.textSecondary, fontSize: 15, marginTop: spacing(2) }}>{n.message}</Text>
       ) : null}
 
@@ -276,6 +306,7 @@ const styles = StyleSheet.create({
   unreadDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
   factRow: { flexDirection: 'row', paddingVertical: spacing(1) },
   snapTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  changeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing(1) },
   snapRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(3), paddingVertical: spacing(2) },
   dot: { width: 10, height: 10, borderRadius: 5 },
   gotoBtn: { marginTop: spacing(5), borderRadius: radius, paddingVertical: spacing(3), alignItems: 'center' },
