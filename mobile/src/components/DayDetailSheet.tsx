@@ -232,6 +232,16 @@ export default function DayDetailSheet({
     setStatus(null);
     const am = parseInt(amStr, 10) || 0;
     const pm = parseInt(pmStr, 10) || 0;
+    // Build an explicit before→after list (mirrors the web app) so the
+    // notification shows exactly what changed, cleanly, instead of a run-on string.
+    const beforeInfo = engine ? engine.getEffectiveClassInfo(dateStr) : null;
+    const changes: { label: string; from: string | number; to: string | number }[] = [];
+    if (beforeInfo) {
+      if ((beforeInfo.students_am || 0) !== am) changes.push({ label: 'AM students', from: beforeInfo.students_am || 0, to: am });
+      if ((beforeInfo.students_pm || 0) !== pm) changes.push({ label: 'PM students', from: beforeInfo.students_pm || 0, to: pm });
+      if (!!beforeInfo.capped_am !== cappedAm) changes.push({ label: 'AM capped', from: beforeInfo.capped_am ? 'Yes' : 'No', to: cappedAm ? 'Yes' : 'No' });
+      if (!!beforeInfo.capped_pm !== cappedPm) changes.push({ label: 'PM capped', from: beforeInfo.capped_pm ? 'Yes' : 'No', to: cappedPm ? 'Yes' : 'No' });
+    }
     const existing = ctx.dayClasses[dateStr] as DayClass | undefined;
     const row: Record<string, any> = {
       date: dateStr,
@@ -267,8 +277,13 @@ export default function DayDetailSheet({
       actorName,
       affectedUserIds: [...before, ...after],
       title: 'Class numbers updated',
-      message: prettyDateShortDow(dateStr) + ` — now ${am}/${pm} students`,
-      data: { date: dateStr, students_am: am, students_pm: pm },
+      message:
+        prettyDateShortDow(dateStr) +
+        ' — ' +
+        (changes.length
+          ? changes.map((c) => `${c.label}: ${c.from} → ${c.to}`).join(' · ')
+          : 'class details updated'),
+      data: { date: dateStr, changes, students_am: am, students_pm: pm },
     });
     setSaving(false);
     setStatus('Class numbers saved.');
