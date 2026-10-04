@@ -116,6 +116,11 @@ export default function DayDetailSheet({
   const [pmStr, setPmStr] = useState('0');
   const [cappedAm, setCappedAm] = useState(false);
   const [cappedPm, setCappedPm] = useState(false);
+  // What the number fields showed when the day opened (the effective value: per-day row if any,
+  // else the weekday default). Used on save to tell which fields were actually changed, so an
+  // untouched count is never baked over the real stored number.
+  const [snapAm, setSnapAm] = useState(0);
+  const [snapPm, setSnapPm] = useState(0);
   // Trainer: roster on/off set of staff_ids
   const [onSet, setOnSet] = useState<Set<string>>(new Set());
   // Editing (class numbers + roster) stays collapsed until deliberately opened,
@@ -144,6 +149,8 @@ export default function DayDetailSheet({
     setPmStr(String(ci.students_pm));
     setCappedAm(ci.capped_am);
     setCappedPm(ci.capped_pm);
+    setSnapAm(ci.students_am);
+    setSnapPm(ci.students_pm);
     setOnSet(new Set(engine.getRosterForDate(dateStr).map((r) => r.staff_id)));
     setEditOpen(false); // always start collapsed so edits are deliberate
   }, [visible, dateStr, ctx, engine, userId]);
@@ -232,21 +239,35 @@ export default function DayDetailSheet({
     setStatus(null);
     const am = parseInt(amStr, 10) || 0;
     const pm = parseInt(pmStr, 10) || 0;
-    // Build an explicit before→after list (mirrors the web app) so the
-    // notification shows exactly what changed, cleanly, instead of a run-on string.
+    const existing = ctx.dayClasses[dateStr] as DayClass | undefined;
+    // Only treat a count as changed when it differs from what the field showed on open. An
+    // untouched count keeps the real stored number (or the default when there's no row yet)
+    // instead of baking the pre-filled value — so a capped-only save never invents "16 students".
+    const amTouched = am !== snapAm;
+    const pmTouched = pm !== snapPm;
+    const finalAm = amTouched ? am : (existing && existing.students_am != null ? existing.students_am : am);
+    const finalPm = pmTouched ? pm : (existing && existing.students_pm != null ? existing.students_pm : pm);
+    // Build an explicit before→after list (mirrors the web app) so the notification shows exactly
+    // what changed, cleanly, diffed against what the day effectively resolved to before.
     const beforeInfo = engine ? engine.getEffectiveClassInfo(dateStr) : null;
     const changes: { label: string; from: string | number; to: string | number }[] = [];
     if (beforeInfo) {
-      if ((beforeInfo.students_am || 0) !== am) changes.push({ label: 'AM students', from: beforeInfo.students_am || 0, to: am });
-      if ((beforeInfo.students_pm || 0) !== pm) changes.push({ label: 'PM students', from: beforeInfo.students_pm || 0, to: pm });
+      if ((beforeInfo.students_am || 0) !== finalAm) changes.push({ label: 'AM students', from: beforeInfo.students_am || 0, to: finalAm });
+      if ((beforeInfo.students_pm || 0) !== finalPm) changes.push({ label: 'PM students', from: beforeInfo.students_pm || 0, to: finalPm });
       if (!!beforeInfo.capped_am !== cappedAm) changes.push({ label: 'AM capped', from: beforeInfo.capped_am ? 'Yes' : 'No', to: cappedAm ? 'Yes' : 'No' });
       if (!!beforeInfo.capped_pm !== cappedPm) changes.push({ label: 'PM capped', from: beforeInfo.capped_pm ? 'Yes' : 'No', to: cappedPm ? 'Yes' : 'No' });
     }
-    const existing = ctx.dayClasses[dateStr] as DayClass | undefined;
+    // Nothing actually changed vs what the day already resolves to — don't write a
+    // per-day override (which would bake in the weekday default) or fire a notification.
+    if (changes.length === 0) {
+      setSaving(false);
+      setStatus('No changes to save.');
+      return;
+    }
     const row: Record<string, any> = {
       date: dateStr,
-      students_am: am,
-      students_pm: pm,
+      students_am: finalAm,
+      students_pm: finalPm,
       capped_am: cappedAm,
       capped_pm: cappedPm,
       times_manually_set: !!(existing && existing.times_manually_set),
@@ -283,7 +304,7 @@ export default function DayDetailSheet({
         (changes.length
           ? changes.map((c) => `${c.label}: ${c.from} → ${c.to}`).join(' · ')
           : 'class details updated'),
-      data: { date: dateStr, changes, students_am: am, students_pm: pm },
+      data: { date: dateStr, changes, students_am: finalAm, students_pm: finalPm },
     });
     setSaving(false);
     setStatus('Class numbers saved.');
