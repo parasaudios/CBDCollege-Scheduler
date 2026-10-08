@@ -7657,6 +7657,14 @@ async function openDayDetail(dateStr) {
         document.getElementById('classStudentsPM').value = pmStudents || '';
         document.getElementById('classCappedAM').checked = amCapped;
         document.getElementById('classCappedPM').checked = pmCapped;
+        // Snapshot what the fields show at open time so, on save, we can tell which fields the
+        // trainer actually changed vs. left at the effective (per-day override, else weekday
+        // default) value. Untouched fields must not bake a default or clobber a real count that
+        // the Vasto sync may have written in the meantime.
+        classFields.dataset.snapshot = JSON.stringify({
+            students_am: amStudents || 0, students_pm: pmStudents || 0,
+            capped_am: !!amCapped, capped_pm: !!pmCapped
+        });
     } else {
         classFields.style.display = 'none';
         saveClassBtn.style.display = 'none';
@@ -7692,18 +7700,35 @@ async function saveDayClassAndRoster() {
     var cappedPM = document.getElementById('classCappedPM').checked;
 
     var prev = dayClassesCache[dateStr] || {};
+    // What the day effectively resolves to right now (per-day row if present, else the weekday
+    // default), read fresh BEFORE we overwrite the cache — so the change notification diffs against
+    // reality and a Vasto sync since the editor opened is respected.
+    var _effBefore = getEffectiveClassInfo(dateStr);
+    var _effTimesBefore = getEffectiveClassTimes(dateStr);
+    var _snap = {};
+    try { _snap = JSON.parse(document.getElementById('dayClassFields').dataset.snapshot || '{}'); } catch (e) { _snap = {}; }
+
     var dowDef = _dowDefaults(dateStr);
     var differs = (amStart && amStart !== dowDef.am_start) || (amEnd && amEnd !== dowDef.am_end) || (pmStart && pmStart !== dowDef.pm_start) || (pmEnd && pmEnd !== dowDef.pm_end);
     var willBeManual = !!prev.times_manually_set || differs;
 
+    // Only persist a field as a per-day override when the trainer actually changed it from what the
+    // editor showed. An untouched student count keeps the real stored value (or the default when
+    // there's no row yet) rather than baking the pre-filled number; untouched times are stored as
+    // null so getEffectiveClassTimes keeps falling back to the weekday default.
+    var _amTouched = studentsAM !== (_snap.students_am || 0);
+    var _pmTouched = studentsPM !== (_snap.students_pm || 0);
+    var _finalAM = _amTouched ? studentsAM : (prev.students_am != null ? prev.students_am : studentsAM);
+    var _finalPM = _pmTouched ? studentsPM : (prev.students_pm != null ? prev.students_pm : studentsPM);
+
     var classRow = {
         date: dateStr,
-        am_start_time: amStart,
-        am_end_time: amEnd,
-        pm_start_time: pmStart,
-        pm_end_time: pmEnd,
-        students_am: studentsAM,
-        students_pm: studentsPM,
+        am_start_time: willBeManual ? amStart : null,
+        am_end_time: willBeManual ? amEnd : null,
+        pm_start_time: willBeManual ? pmStart : null,
+        pm_end_time: willBeManual ? pmEnd : null,
+        students_am: _finalAM,
+        students_pm: _finalPM,
         capped_am: cappedAM,
         capped_pm: cappedPM,
         times_manually_set: willBeManual,
@@ -7779,10 +7804,22 @@ async function saveDayClassAndRoster() {
         var s = staffList.find(function(x) { return x.id === sid; });
         if (s) notifyStaffOfRosterChange(s.user_id, { title: 'Your roster was updated', message: 'You were taken off the roster for ' + _prettyDateShort(dateStr), data: { date: dateStr, action: 'unrostered' } });
     });
-    var _dcClassChanged = (prev.am_start_time || null) !== (amStart || null) || (prev.am_end_time || null) !== (amEnd || null)
-        || (prev.pm_start_time || null) !== (pmStart || null) || (prev.pm_end_time || null) !== (pmEnd || null)
-        || (prev.students_am || 0) !== studentsAM || (prev.students_pm || 0) !== studentsPM
-        || !!prev.capped_am !== cappedAM || !!prev.capped_pm !== cappedPM;
+    // Compare against what the day EFFECTIVELY resolved to before (per-day override, else weekday
+    // default), not the raw DB columns — otherwise an unchanged day reports phantom changes like
+    // "AM hours: none → 08:00–11:00" or a default student count the trainer never typed.
+    // After save the day's effective times are the entered ones when they're a manual override,
+    // otherwise they fall back to the (unchanged) weekday default — so !willBeManual means no change.
+    var _amHoursOld = _formatHoursRange(_effTimesBefore.am_start, _effTimesBefore.am_end);
+    var _amHoursNew = willBeManual ? _formatHoursRange(amStart, amEnd) : _amHoursOld;
+    var _pmHoursOld = _formatHoursRange(_effTimesBefore.pm_start, _effTimesBefore.pm_end);
+    var _pmHoursNew = willBeManual ? _formatHoursRange(pmStart, pmEnd) : _pmHoursOld;
+    var _amHoursChanged = _amHoursOld !== _amHoursNew;
+    var _pmHoursChanged = _pmHoursOld !== _pmHoursNew;
+    var _amStudentsChanged = (_effBefore.students_am || 0) !== _finalAM;
+    var _pmStudentsChanged = (_effBefore.students_pm || 0) !== _finalPM;
+    var _amCapChanged = !!_effBefore.capped_am !== cappedAM;
+    var _pmCapChanged = !!_effBefore.capped_pm !== cappedPM;
+    var _dcClassChanged = _amHoursChanged || _pmHoursChanged || _amStudentsChanged || _pmStudentsChanged || _amCapChanged || _pmCapChanged;
     if (_dcClassChanged) {
         var _dcJustAdded = {};
         rosteredOnIds.forEach(function(sid) { var s = staffList.find(function(x) { return x.id === sid; }); if (s && s.user_id) _dcJustAdded[s.user_id] = true; });
@@ -7790,16 +7827,16 @@ async function saveDayClassAndRoster() {
         if (_dcContinuing.length) {
             // Build an explicit before/after list so recipients see exactly what changed.
             var _dcChanges = [];
-            var _amOld = _formatHoursRange(prev.am_start_time, prev.am_end_time), _amNew = _formatHoursRange(amStart, amEnd);
-            if (_amOld !== _amNew) _dcChanges.push({ label: 'AM hours', from: _amOld || 'none', to: _amNew || 'none' });
-            var _pmOld = _formatHoursRange(prev.pm_start_time, prev.pm_end_time), _pmNew = _formatHoursRange(pmStart, pmEnd);
-            if (_pmOld !== _pmNew) _dcChanges.push({ label: 'PM hours', from: _pmOld || 'none', to: _pmNew || 'none' });
-            if ((prev.students_am || 0) !== studentsAM) _dcChanges.push({ label: 'AM students', from: (prev.students_am || 0), to: studentsAM });
-            if ((prev.students_pm || 0) !== studentsPM) _dcChanges.push({ label: 'PM students', from: (prev.students_pm || 0), to: studentsPM });
-            if (!!prev.capped_am !== cappedAM) _dcChanges.push({ label: 'AM capped', from: (prev.capped_am ? 'Yes' : 'No'), to: (cappedAM ? 'Yes' : 'No') });
-            if (!!prev.capped_pm !== cappedPM) _dcChanges.push({ label: 'PM capped', from: (prev.capped_pm ? 'Yes' : 'No'), to: (cappedPM ? 'Yes' : 'No') });
-            var _dcMsg = _dcChanges.length ? _dcChanges.map(function(c) { return c.label + ': ' + c.from + ' → ' + c.to; }).join(' · ') : 'Class details were updated';
-            notifyUsers(_dcContinuing, { type: 'class_changed', title: 'Class details updated', message: _prettyDateShort(dateStr) + ' — ' + _dcMsg, data: { date: dateStr, changes: _dcChanges, students_am: studentsAM, students_pm: studentsPM } });
+            if (_amHoursChanged) _dcChanges.push({ label: 'AM hours', from: _amHoursOld || 'none', to: _amHoursNew || 'none' });
+            if (_pmHoursChanged) _dcChanges.push({ label: 'PM hours', from: _pmHoursOld || 'none', to: _pmHoursNew || 'none' });
+            if (_amStudentsChanged) _dcChanges.push({ label: 'AM students', from: (_effBefore.students_am || 0), to: _finalAM });
+            if (_pmStudentsChanged) _dcChanges.push({ label: 'PM students', from: (_effBefore.students_pm || 0), to: _finalPM });
+            if (_amCapChanged) _dcChanges.push({ label: 'AM capped', from: (_effBefore.capped_am ? 'Yes' : 'No'), to: (cappedAM ? 'Yes' : 'No') });
+            if (_pmCapChanged) _dcChanges.push({ label: 'PM capped', from: (_effBefore.capped_pm ? 'Yes' : 'No'), to: (cappedPM ? 'Yes' : 'No') });
+            // Only fire when there's something concrete to report (never an empty "details updated").
+            if (_dcChanges.length) {
+                notifyUsers(_dcContinuing, { type: 'class_changed', title: 'Class details updated', message: _prettyDateShort(dateStr) + ' — ' + _dcChanges.map(function(c) { return c.label + ': ' + c.from + ' → ' + c.to; }).join(' · '), data: { date: dateStr, changes: _dcChanges, students_am: _finalAM, students_pm: _finalPM } });
+            }
         }
     }
 
