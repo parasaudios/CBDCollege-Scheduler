@@ -12,6 +12,7 @@ import {
 import DayDetailSheet from '../components/DayDetailSheet';
 import { Card } from '../components/ui';
 import { loadRosterContext } from '../lib/data';
+import { useRealtimeRefresh } from '../lib/useRealtimeRefresh';
 import { buildMonthGrid, monthLabel, prettyDateLong, prettyTime, todayStr, WEEKDAY_HEADERS } from '../lib/format';
 import { makeRoster, type RosterContext } from '../lib/rosterCompute';
 import type { Profile } from '../lib/types';
@@ -41,6 +42,9 @@ export default function MyRosterScreen({ session, profile }: { session: Session;
 
   useEffect(() => { (async () => { setLoading(true); await load(); setLoading(false); })(); }, [load]);
   const onRefresh = useCallback(async () => { setRefreshing(true); await load(); setRefreshing(false); }, [load]);
+
+  // Live updates: refresh my roster when class numbers / rosters change (e.g. the Vasto sync).
+  useRealtimeRefresh(load, session.access_token);
 
   function step(d: number) {
     let m = month0 + d, y = year;

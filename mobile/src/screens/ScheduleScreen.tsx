@@ -13,6 +13,7 @@ import AutoRosterModal from '../components/AutoRosterModal';
 import DayDetailSheet from '../components/DayDetailSheet';
 import { Btn, Card, EmptyNote, Pills, StatusBadge, type StatusKind } from '../components/ui';
 import { loadRosterContext } from '../lib/data';
+import { useRealtimeRefresh } from '../lib/useRealtimeRefresh';
 import {
   buildMonthGrid,
   monthLabel,
@@ -81,6 +82,10 @@ export default function ScheduleScreen({ session, profile }: Props) {
     await load();
     setRefreshing(false);
   }, [load]);
+
+  // Live updates: refresh the roster/overview when class numbers, rosters or staff
+  // change (e.g. the Vasto sync, or another trainer editing a day).
+  useRealtimeRefresh(load, session.access_token);
 
   // Default the colour-by staff member to the signed-in trainer (or the first
   // staff member), and keep the choice stable as the month data reloads.
